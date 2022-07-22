@@ -1,0 +1,70 @@
+{
+    "db_size": 119784227,
+    "created": "18/07/2022 02:01:42",
+    "seq_lastvals": {
+        "schm_customer.customer_company_id_seq": {
+            "schema": "schm_customer",
+            "seq_name": "customer_company_id_seq",
+            "value": 150010
+        },
+        "schm_other_1.some_tbl_id_seq": {
+            "schema": "schm_other_1",
+            "seq_name": "some_tbl_id_seq",
+            "value": 150010
+        },
+        "schm_other_2.some_tbl_id_seq": {
+            "schema": "schm_other_2",
+            "seq_name": "some_tbl_id_seq",
+            "value": 150010
+        },
+        "schm_other_2.exclude_tbl_id_seq": {
+            "schema": "schm_other_2",
+            "seq_name": "exclude_tbl_id_seq",
+            "value": 150010
+        },
+        "schm_customer.customer_manager_id_seq": {
+            "schema": "schm_customer",
+            "seq_name": "customer_manager_id_seq",
+            "value": 150010
+        },
+        "public.contracts_id_seq": {
+            "schema": "public",
+            "seq_name": "contracts_id_seq",
+            "value": 150010
+        }
+    },
+    "pg_version": "14.3",
+    "pg_dump_version": "14.3",
+    "dictionary_content_hash": "f13fd0a001630dcadab1bfb7b9486c650c8e57f6109c237880d75ca30d065fc0",
+    "dict_file": "test.json",
+    "files": {
+        "schm_other_2_exclude_tbl.dat.gz": {
+            "schema": "schm_other_2",
+            "table": "exclude_tbl"
+        },
+        "schm_other_1_some_tbl.dat.gz": {
+            "schema": "schm_other_1",
+            "table": "some_tbl"
+        },
+        "schm_other_2_some_tbl.dat.gz": {
+            "schema": "schm_other_2",
+            "table": "some_tbl"
+        },
+        "schm_customer_customer_company.dat.gz": {
+            "schema": "schm_customer",
+            "table": "customer_company"
+        },
+        "public_inn_info.dat.gz": {
+            "schema": "public",
+            "table": "inn_info"
+        },
+        "schm_customer_customer_manager.dat.gz": {
+            "schema": "schm_customer",
+            "table": "customer_manager"
+        },
+        "public_contracts.dat.gz": {
+            "schema": "public",
+            "table": "contracts"
+        }
+    }
+}
