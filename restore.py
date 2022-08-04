@@ -1,3 +1,6 @@
+import os
+import asyncpg
+import asyncio
 from common import *
 
 
@@ -27,8 +30,20 @@ async def run_pg_restore(ctx, section):
         ctx.logger.info(v)
 
 
-async def generate_restore_queries(ctx, db_conn):
-    return None
+def generate_restore_queries(ctx):
+    queries = []
+    for file_name, target in ctx.metadata['files'].items():
+        full_path = os.path.join(ctx.current_dir, 'output', ctx.args.input_dir, file_name)
+        schema = target["schema"]
+        table = target["table"]
+        query = "COPY \"%s\".\"%s\" FROM PROGRAM 'gunzip -c %s' %s" % (
+            schema,
+            table,
+            full_path,
+            ctx.args.copy_options
+        )
+        queries.append(query)
+    return queries
 
 
 async def restore_obj_func(ctx, pool, task, sn_id):
@@ -36,26 +51,20 @@ async def restore_obj_func(ctx, pool, task, sn_id):
 
     db_conn = await pool.acquire()
     try:
-        tr = db_conn.transaction()
-        await tr.start()
-        try:
-            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-            sn_id = await db_conn.fetch("select pg_export_snapshot()")
-            await make_restore_impl(ctx, db_conn, sn_id)
-        except:
-            await tr.rollback()
-            raise
-        else:
-            await tr.commit()
-        # BEGIN ISOLATION LEVEL REPEATABLE READ;
-        # SET TRANSACTION SNAPSHOT '00000004-00000E7B-1';
+        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+        await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
+        await db_conn.execute(task)
+        await db_conn.execute("COMMIT;")
+    except Exception as e:
+        ctx.logger.error("Exception in restore_obj_func:\n" + exception_helper())
+        raise Exception("Can't execute task: %s" % task)
     finally:
         await pool.release(db_conn)
 
     ctx.logger.info('================> Finished task %s' % str(task))
 
 
-async def make_restore_impl(ctx, db_conn, sn_id):
+async def make_restore_impl(ctx, sn_id):
     loop = asyncio.get_event_loop()
     tasks = set()
     pool = await asyncpg.create_pool(
@@ -64,11 +73,11 @@ async def make_restore_impl(ctx, db_conn, sn_id):
         max_size=ctx.args.threads
     )
 
-    queries = await generate_restore_queries(ctx, db_conn)
+    queries = generate_restore_queries(ctx)
 
     for v in queries:
         if len(tasks) >= ctx.args.threads:
-            # Wait for some upload to finish before adding a new one
+            # Wait for some restore to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             exception = done.pop().exception()
             if exception is not None:
@@ -77,7 +86,7 @@ async def make_restore_impl(ctx, db_conn, sn_id):
         if v != (None, None):
             tasks.add(loop.create_task(restore_obj_func(ctx, pool, v, sn_id)))
 
-    # Wait for the remaining uploads to finish
+    # Wait for the remaining restores to finish
     await asyncio.wait(tasks)
     await pool.close()
 
@@ -93,21 +102,73 @@ async def make_restore(ctx):
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
+    db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_is_empty = await db_conn.fetchval("""
+        SELECT NOT EXISTS(
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_schema not in ( 'pg_catalog', 'information_schema' ) AND table_type = 'BASE TABLE'
+        )""")
+
+    if not db_is_empty:
+        raise Exception("Target DB is not empty!")
+
+    metadata_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.input_dir, 'metadata.json'), 'r')
+    metadata_content = metadata_file.read()
+    metadata_file.close()
+    ctx.metadata = eval(metadata_content)
+
     await run_pg_restore(ctx, 'pre-data')
 
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+    # drop all CHECK constrains containing user-defined procedures to avoid
+    # performance degradation at the data loading stage
+    check_constraints = await db_conn.fetchval("""
+        SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
+        -- pc.consrc removed in 12 version
+        FROM (
+            SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
+            from (
+                SELECT T.v as v, t.conoid
+                FROM (
+                        SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
+                        FROM (
+                            SELECT conbin::text as v, oid as conoid
+                            FROM pg_constraint
+                            WHERE contype = 'c'
+                        ) T
+                ) T WHERE length(T.v) > 0
+            ) T
+        ) T
+        INNER JOIN pg_constraint pc on T.conoid = pc.oid
+        INNER JOIN pg_class cl on cl.oid = pc.conrelid
+        INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
+        WHERE T.func_oid in (
+            SELECT  p.oid
+            FROM    pg_namespace n
+            INNER JOIN pg_proc p ON p.pronamespace = n.oid
+            WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
+        )
+    """)
+
+    if check_constraints is not None:
+        for conn in check_constraints:
+            ctx.logger.info("Removing constraints: " + conn[2])
+            query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
+            await db_conn.execute(query)
+
     result = True
     tr = db_conn.transaction()
     await tr.start()
     try:
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+        await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
         sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-        await make_restore_impl(ctx, db_conn, sn_id)
+        await make_restore_impl(ctx, sn_id)
     except:
-        ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
+        ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
         result = False
     finally:
-        await tr.rollback()
+        await tr.commit()
         await db_conn.close()
 
     await run_pg_restore(ctx, 'post-data')

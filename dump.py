@@ -1,3 +1,9 @@
+from datetime import datetime
+import json
+import os
+import asyncpg
+import asyncio
+from hashlib import sha256
 from common import *
 
 
@@ -56,26 +62,16 @@ async def dump_obj_func(ctx, pool, task, sn_id):
 
 
 async def generate_dump_queries(ctx, db_conn):
-    def check_obj_exists(replacement_dictionary, schema, table):
-        dictionary = []
-        for k, v in replacement_dictionary.items():
-            if k == 'dictionary':
-                dictionary = v
-
-        for v in dictionary:
+    def check_obj_exists(dictionary_obj, schema, table):
+        for v in dictionary_obj:
             if "schema" in v and schema == v["schema"] and table == v["table"]:
                 return v
             if "schema" not in v and table == v["table"] and schema == 'public':
                 return v
         return None
 
-    def check_obj_exclude(replacement_dictionary, schema, table):
-        dictionary_exclude = []
-        for k, v in replacement_dictionary.items():
-            if k == 'dictionary_exclude':
-                dictionary_exclude = v
-
-        for v in dictionary_exclude:
+    def check_obj_exclude(dictionary_obj, schema, table):
+        for v in dictionary_obj:
             if "schema" in v and schema == v["schema"] and table == v["table"]:
                 return True
             if "schema" not in v and table == v["table"] and schema == 'public':
@@ -92,26 +88,29 @@ async def generate_dump_queries(ctx, db_conn):
     db_objs = await db_conn.fetch("""
         SELECT table_schema, table_name
         FROM information_schema.tables
-        WHERE table_schema not in ('pg_catalog', 'information_schema') and table_type = 'BASE TABLE'
+        WHERE
+            table_schema not in ('pg_catalog', 'information_schema') and
+            table_type = 'BASE TABLE'
     """)
 
     dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
     ctx.dictionary_content = dictionary_file.read()
     dictionary_file.close()
-    replacement_dictionary = eval(ctx.dictionary_content)
+    dictionary_obj = eval(ctx.dictionary_content)
 
     queries = []
     files = {}
 
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
-        file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, item[0] + "_" + item[1])
-        files["%s.dat.gz" % (item[0] + "_" + item[1])] = {"schema": item[0], "table": item[1]}
-        if check_obj_exclude(replacement_dictionary, item[0], item[1]):
+        if check_obj_exclude(dictionary_obj['dictionary_exclude'], item[0], item[1]):
             ctx.logger.info("Skipping: " + str(table_name))
             continue
 
-        a_obj = check_obj_exists(replacement_dictionary, item[0], item[1])
+        file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, item[0] + "_" + item[1])
+        files["%s.dat.gz" % (item[0] + "_" + item[1])] = {"schema": item[0], "table": item[1]}
+
+        a_obj = check_obj_exists(dictionary_obj['dictionary'], item[0], item[1])
 
         if a_obj is None:
             if not ctx.args.validate_dict:
@@ -205,7 +204,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
 
     for v in queries:
         if len(tasks) >= ctx.args.threads:
-            # Wait for some upload to finish before adding a new one
+            # Wait for some dump to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             exception = done.pop().exception()
             if exception is not None:
@@ -214,26 +213,42 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         if v != (None, None):
             tasks.add(loop.create_task(dump_obj_func(ctx, pool, v, sn_id)))
 
-    # Wait for the remaining uploads to finish
+    # Wait for the remaining dumps to finish
     await asyncio.wait(tasks)
     await pool.close()
 
     # Generate metadata.json
     query = """
-            select n.nspname as seq_schema,
-                   c.relname as seq_name
-            from pg_class c
-            join pg_namespace n on n.oid = c.relnamespace
-            where c.relkind = 'S';
+        SELECT
+            pn_t.nspname,
+            t.relname AS table_name,
+            a.attname AS column_name,
+            pn_s.nspname,
+            s.relname AS sequence_name
+        FROM pg_class AS t
+        JOIN pg_attribute AS a ON a.attrelid = t.oid
+        JOIN pg_depend AS d ON d.refobjid = t.oid AND d.refobjsubid = a.attnum
+        JOIN pg_class AS s ON s.oid = d.objid
+        JOIN pg_namespace AS pn_t ON pn_t.oid = t.relnamespace
+        JOIN pg_namespace AS pn_s ON pn_s.oid = s.relnamespace
+        WHERE
+            t.relkind IN ('r', 'P')
+            AND s.relkind = 'S'
+            AND d.deptype = 'a'
+            AND d.classid = 'pg_catalog.pg_class'::regclass
+            AND d.refclassid = 'pg_catalog.pg_class'::regclass
         """
     ctx.logger.debug(str(query))
 
     seq_res = await db_conn.fetch(query)
     seq_res_dict = {}
     for v in seq_res:
-        seq_name = v[0] + "." + v[1]
-        seq_val = await db_conn.fetchval("""select last_value from \"""" + v[0] + """\".\"""" + v[1] + "\"")
-        seq_res_dict[seq_name] = {"schema": v[0], "seq_name": v[1], "value": seq_val}
+        seq_name = v[3] + "." + v[4]
+        seq_val = await db_conn.fetchval("""select last_value from \"""" + v[3] + """\".\"""" + v[4] + "\"")
+
+        for _, f in files.items():
+            if v[0] == f["schema"] and v[1] == f["table"]:
+                seq_res_dict[seq_name] = {"schema": v[3], "seq_name": v[4], "value": seq_val}
 
     metadata = {}
     metadata["db_size"] = await db_conn.fetchval("""SELECT pg_database_size('""" + ctx.args.db_name + """')""")

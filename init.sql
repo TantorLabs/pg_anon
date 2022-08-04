@@ -25,8 +25,7 @@ $func$
   LANGUAGE plpgsql
   VOLATILE
   PARALLEL UNSAFE -- because of the EXCEPTION
-  SECURITY INVOKER
-  ;
+  SECURITY INVOKER;
 
 -- for time and timestamp values
 CREATE OR REPLACE FUNCTION anon_funcs.dnoise(
@@ -53,8 +52,7 @@ $func$
   LANGUAGE plpgsql
   VOLATILE
   PARALLEL UNSAFE -- because of the EXCEPTION
-  SECURITY INVOKER
-;
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.digest(
   seed TEXT,
@@ -69,11 +67,7 @@ $$
   IMMUTABLE
   RETURNS NULL ON NULL INPUT
   PARALLEL SAFE
-  SECURITY INVOKER
-
-;
-
-
+  SECURITY INVOKER;
 
 -- partial('abcdefgh',1,'xxxx',3) will return 'axxxxfgh';
 CREATE OR REPLACE FUNCTION anon_funcs.partial(
@@ -90,98 +84,24 @@ $$
   LANGUAGE SQL
   IMMUTABLE
   PARALLEL SAFE
-  SECURITY INVOKER
+  SECURITY INVOKER;
 
-;
-
---
--- partial_email('daamien@gmail.com') will becomme 'da******@gm******.com'
---
 CREATE OR REPLACE FUNCTION anon_funcs.partial_email(
   ov TEXT
 )
 RETURNS TEXT AS $$
--- This is an oversimplistic way to scramble an email address
--- The main goal is to avoid any complex regexp
--- by splitting the job into simpler tasks
-  SELECT substring(regexp_replace(ov, '@.*', '') FROM 1 FOR 2) -- da
+  SELECT substring(regexp_replace(ov, '@.*', '') FROM 1 FOR 2)
       || '******'
       || '@'
-      || substring(regexp_replace(ov, '.*@', '') FROM 1 FOR 2) -- gm
+      || substring(regexp_replace(ov, '.*@', '') FROM 1 FOR 2)
       || '******'
       || '.'
-      || regexp_replace(ov, '.*\.', '') -- com
-  ;
+      || regexp_replace(ov, '.*\.', '');
 $$
   LANGUAGE SQL
   IMMUTABLE
   PARALLEL SAFE
-  SECURITY INVOKER
-
-;
-
--- Transform an integer into a range of integer
-CREATE OR REPLACE FUNCTION anon_funcs.generalize_int4range(
-  val INTEGER,
-  step INTEGER default 10
-)
-RETURNS INT4RANGE
-AS $$
-SELECT int4range(
-    val / step * step,
-    ((val / step)+1) * step
-  );
-$$
-  LANGUAGE SQL
-  IMMUTABLE
-  PARALLEL SAFE
-  SECURITY INVOKER
-
-;
-
--- Transform a bigint into a range of bigint
-CREATE OR REPLACE FUNCTION anon_funcs.generalize_int8range(
-  val BIGINT,
-  step BIGINT DEFAULT 10
-)
-RETURNS INT8RANGE
-AS $$
-SELECT int8range(
-    val / step * step,
-    ((val / step)+1) * step
-  );
-$$
-  LANGUAGE SQL
-  IMMUTABLE
-  PARALLEL SAFE
-  SECURITY INVOKER
-
-;
-
--- Transform a numeric into a range of numeric
-CREATE OR REPLACE FUNCTION anon_funcs.generalize_numrange(
-  val NUMERIC,
-  step INTEGER DEFAULT 10
-)
-RETURNS NUMRANGE
-AS $$
-WITH i AS (
-  SELECT anon_funcs.generalize_int4range(val::INTEGER,step) as r
-)
-SELECT numrange(
-    lower(i.r)::NUMERIC,
-    upper(i.r)::NUMERIC
-  )
-FROM i
-;
-$$
-  LANGUAGE SQL
-  IMMUTABLE
-  PARALLEL SAFE
-  SECURITY INVOKER
-
-;
-
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_string(
   l integer
@@ -201,9 +121,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
+  SECURITY INVOKER;
 
 -- Zip code
 CREATE OR REPLACE FUNCTION anon_funcs.random_zip()
@@ -212,7 +130,7 @@ AS $$
   SELECT array_to_string(
          array(
                 select substr('0123456789',((random()*(10-1)+1)::integer),1)
-                from generate_series(1,5)
+                from generate_series(1,6)
             ),''
           );
 $$
@@ -220,9 +138,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_date_between(
   date_start timestamp WITH TIME ZONE,
@@ -235,9 +151,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_date()
 RETURNS timestamp with time zone AS $$
@@ -247,10 +161,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
-
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_int_between(
   int_start INTEGER,
@@ -263,9 +174,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_bigint_between(
   int_start BIGINT,
@@ -278,9 +187,7 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
-
-;
+  SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_phone(
   phone_prefix TEXT DEFAULT '0'
@@ -294,31 +201,25 @@ $$
   VOLATILE
   RETURNS NULL ON NULL INPUT
   PARALLEL RESTRICTED -- because random
-  SECURITY INVOKER
+  SECURITY INVOKER;
 
-;
-
---
--- hashing a seed with a random salt
---
 CREATE OR REPLACE FUNCTION anon_funcs.random_hash(
-  seed TEXT
+  seed TEXT,
+  algorithm TEXT
 )
 RETURNS TEXT AS
 $$
   SELECT anon_funcs.digest(
     seed,
     anon_funcs.random_string(6),
-    pg_catalog.current_setting('anon_funcs.algorithm')
+    algorithm
   );
 $$
   LANGUAGE SQL
   VOLATILE
   SECURITY DEFINER
   PARALLEL RESTRICTED -- because random
-  SET search_path = ''
-  RETURNS NULL ON NULL INPUT
-;
+  RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_in(
   a ANYARRAY
@@ -329,8 +230,7 @@ $$
 $$
   LANGUAGE SQL
   VOLATILE
-  RETURNS NULL ON NULL INPUT
-  ;
+  RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION anon_funcs.hex_to_int(
   hexval TEXT
@@ -343,10 +243,88 @@ BEGIN
     RETURN result;
 END;
 $$
-  LANGUAGE plpgsql
-  ;
+  LANGUAGE plpgsql;
 
+---------------------------------------------------------------------------
 
+do $$
+declare
+	common_res text[];
+	test_res text;
+begin
+	select array(
+		select test from (
+			----------------------------------------------------
+			select
+				'test: encode' as test,
+				encode((select encrypt('data', 'password', 'bf')), 'base64') = 'cSMq9gb1vOw=' as res
+			union all
+			select
+				'test: decode' as test,
+				decode(
+					(
+						select encode((select encrypt('data', 'password', 'bf')), 'base64')
+					),
+					'base64'
+				) = encrypt('data', 'password', 'bf')
+			union all
+			select
+				'test: decrypt' as test,
+				decrypt(
+				(
+					select decode('cSMq9gb1vOw=', 'base64')
+				), 'password', 'bf') = 'data'
+			union all
+			select
+				'test: convert_from' as test,
+				convert_from(decode('0YHQu9C+0LLQvg==', 'base64'), 'UTF8') = 'слово'
+			----------------------------------------------------
+			union all
+			select 'test: noise' as test, anon_funcs.noise(100, 1.2) < 300
+			union all
+			select 'test: dnoise' as test,
+				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') < '2020-03-02 10:10:10'::timestamp and
+				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') > '2020-01-02 10:10:10'::timestamp
+			union all
+			select 'test: digest' as test, anon_funcs.digest('text', 'salt', 'sha256') = '3353e16497ad272fea4382119ff2801e54f0a4cf2057f4e32d00317bda5126c3'
+			union all
+			select 'test: partial' as test, anon_funcs.partial('123456789',1,'***',3) = '1***789'
+			union all
+			select 'test: partial_email' as test, anon_funcs.partial_email('example@gmail.com') = 'ex******@gm******.com'
+			union all
+			select 'test: random_string' as test, length(anon_funcs.random_string(7)) = 7
+			union all
+			select 'test: random_zip' as test, anon_funcs.random_zip()::integer < 999999
+			union all
+			select 'test: random_date_between' as test,
+				anon_funcs.random_date_between('2020-02-02 10:10:10'::timestamp, '2022-02-05 10:10:10'::timestamp) <= '2022-02-05 10:10:10'::timestamp and
+				anon_funcs.random_date_between('2020-02-02 10:10:10'::timestamp, '2022-02-05 10:10:10'::timestamp) >= '2020-02-02 10:10:10'::timestamp
+			union all
+			select 'test: random_date' as test, anon_funcs.random_date() < now()
+			union all
+			select 'test: random_int_between' as test, anon_funcs.random_int_between(100, 200) < 200
+			union all
+			select 'test: random_bigint_between' as test, anon_funcs.random_bigint_between(6000000000, 7000000000) < 7000000000
+			union all
+			select 'test: random_phone' as test, length(anon_funcs.random_phone('+7')) = 11
+			union all
+			select 'test: random_hash' as test, length(anon_funcs.random_hash('seed', 'sha512')) = 128
+			union all
+			select 'test: random_in' as test, (select anon_funcs.random_in(array['a', 'b', 'c'])) in ('a', 'b', 'c')
+			union all
+			select 'test: hex_to_int' as test, anon_funcs.hex_to_int('8AB') = 2219
+			----------------------------------------------------
+		) t
+		where res = false
+	)
+	into common_res;
 
+	FOREACH test_res IN ARRAY common_res
+	LOOP
+		RAISE NOTICE 'FAILED %', test_res;
+	end loop;
 
-
+	if array_length(common_res, 1) > 0 then
+		raise exception '% test(s) failed!', array_length(common_res, 1);
+	end if;
+end$$;

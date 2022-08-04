@@ -1,4 +1,6 @@
-from common import *
+import argparse
+from enum import Enum
+import logging
 from dump import *
 from restore import *
 
@@ -34,7 +36,8 @@ class Context:
         self.args = args
         self.pg_version = None
         self.validate_limit = " limit 100 "
-        self.dictionary_content = None
+        self.dictionary_content = None  # for dump process
+        self.metadata = None            # for restore process
 
         if args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO

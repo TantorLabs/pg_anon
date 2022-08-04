@@ -1,8 +1,7 @@
 import unittest
-import os
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pg_anon import *
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 
 input_args = None
 
@@ -17,6 +16,7 @@ class DBOperations:
                 AND datname = '%s'
         """ % db_name)
 
+        print("""DROP DATABASE IF EXISTS %s and CREATE DATABASE""" % db_name)
         await db_conn.execute("""DROP DATABASE IF EXISTS %s""" % db_name)
         await db_conn.execute("""
             CREATE DATABASE %s
@@ -93,7 +93,6 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         ctx = Context(args)
 
         sourse_db_params = ctx.conn_params.copy()
-        sourse_db_params['database'] = 'sourse_db'
         db_conn = await asyncpg.connect(**sourse_db_params)
         await DBOperations.init_test_env(db_conn, 10)
         await db_conn.close()
@@ -118,7 +117,6 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         target_db_params = ctx.conn_params.copy()
         db_conn = await asyncpg.connect(**target_db_params)
-        await DBOperations.init_test_env(db_conn, 10)
         await db_conn.close()
 
         res = await MainRoutine(args).run()

@@ -143,3 +143,24 @@ select
 	10000000 + v * 10 as inn,
 	'company_info_' || v as company_info
 from generate_series(1,15001) as v;
+
+--------------------------------------------------------------
+DROP TABLE IF EXISTS public.key_value CASCADE;
+
+CREATE TABLE public.key_value
+(
+    id serial,
+    fld_key text,
+    fld_value text,
+    CONSTRAINT key_value_pkey UNIQUE (id)
+);
+
+INSERT INTO public.key_value (fld_key, fld_value)
+VALUES
+    ('email', 'email@example.com'),
+    ('password', '123456'),
+    ('address', 'Moscow city'),
+    ('login', 'login_name'),
+    ('first_name', 'Name'),
+    ('amount', '100');
+--------------------------------------------------------------
