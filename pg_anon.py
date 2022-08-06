@@ -38,6 +38,7 @@ class Context:
         self.validate_limit = " limit 100 "
         self.dictionary_content = None  # for dump process
         self.metadata = None            # for restore process
+        self.task_results = {}          # for dump process (key is hash() of SQL query)
 
         if args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO

@@ -44,7 +44,8 @@ async def dump_obj_func(ctx, pool, task, sn_id):
     try:
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        await db_conn.execute(task)
+        res = await db_conn.execute(task)
+        ctx.task_results[hash(task)] = re.findall(r"(\d+)", res)[0]
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % task)
@@ -201,6 +202,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     )
 
     queries, files = await generate_dump_queries(ctx, db_conn)
+    zipped_list = list(zip([hash(v) for v in queries], files))
 
     for v in queries:
         if len(tasks) >= ctx.args.threads:
@@ -210,8 +212,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
             if exception is not None:
                 await pool.close()
                 raise exception
-        if v != (None, None):
-            tasks.add(loop.create_task(dump_obj_func(ctx, pool, v, sn_id)))
+        tasks.add(loop.create_task(dump_obj_func(ctx, pool, v, sn_id)))
 
     # Wait for the remaining dumps to finish
     await asyncio.wait(tasks)
@@ -258,6 +259,10 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
     metadata["dictionary_content_hash"] = sha256(ctx.dictionary_content.encode('utf-8')).hexdigest()
     metadata["dict_file"] = ctx.args.dict_file
+
+    for v in zipped_list:
+        files[v[1]].update({"rows": ctx.task_results[v[0]]})
+
     metadata["files"] = files
     with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
         out_file.write(json.dumps(metadata, indent=4))
