@@ -264,6 +264,14 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         files[v[1]].update({"rows": ctx.task_results[v[0]]})
 
     metadata["files"] = files
+
+    total_tables_size = 0
+    for k, v in files.items():
+        total_tables_size += await db_conn.fetchval(
+            """select pg_total_relation_size('%s.%s')""" % (v['schema'], v['table'])
+        )
+    metadata["total_tables_size"] = total_tables_size
+
     with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
         out_file.write(json.dumps(metadata, indent=4))
 

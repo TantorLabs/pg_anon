@@ -2,6 +2,7 @@ import sys
 import traceback
 import subprocess
 import re
+from pkg_resources import parse_version as version
 
 
 def get_pg_util_version(util_name):
@@ -23,3 +24,30 @@ class PgAnonResult:
     params = None       # JSON
     result_code = None
     result_data = None
+
+
+def get_major_version(str_version):
+    return version(re.findall(r"(\d+)", str_version)[0])
+
+
+def pretty_size(bytes_v):
+    units = [
+        (1 << 50, ' PB'),
+        (1 << 40, ' TB'),
+        (1 << 30, ' GB'),
+        (1 << 20, ' MB'),
+        (1 << 10, ' KB'),
+        (1, (' byte', ' bytes')),
+    ]
+    for factor, suffix in units:
+        if bytes_v >= factor:
+            break
+    amount = int(bytes_v / factor)
+
+    if isinstance(suffix, tuple):
+        singular, multiple = suffix
+        if amount == 1:
+            suffix = singular
+        else:
+            suffix = multiple
+    return str(amount) + suffix

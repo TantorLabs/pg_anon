@@ -2,6 +2,7 @@ import os
 import asyncpg
 import asyncio
 from common import *
+import shutil
 
 
 async def run_pg_restore(ctx, section):
@@ -102,6 +103,26 @@ async def make_restore_impl(ctx, sn_id):
     await pool.close()
 
 
+async def check_free_disk_space(ctx, db_conn):
+    data_directory_location = await db_conn.fetchval(
+        """
+        SELECT setting
+        FROM pg_settings
+        WHERE name = 'data_directory'
+        """
+    )
+    disk_size = shutil.disk_usage(data_directory_location)
+    ctx.logger.info("Free disk space: " + pretty_size(disk_size.free))
+    ctx.logger.info("Required disk space: " + pretty_size(int(ctx.metadata['total_tables_size']) * 1.5))
+    if disk_size.free < int(ctx.metadata['total_tables_size']) * 1.5:
+        raise Exception(
+            "Not enough freed disk space! Free %s, Required %s" % (
+                pretty_size(disk_size.free),
+                pretty_size(int(ctx.metadata['total_tables_size']) * 1.5)
+            )
+        )
+
+
 async def make_restore(ctx):
     ctx.logger.info("-------------> Started restore")
 
@@ -129,6 +150,23 @@ async def make_restore(ctx):
     metadata_file.close()
     ctx.metadata = eval(metadata_content)
 
+    if get_major_version(ctx.pg_version) < get_major_version(ctx.metadata['pg_version']):
+        raise Exception(
+            "Target PostgreSQL major version %s is below than source %s!" % (
+                ctx.pg_version,
+                ctx.metadata['pg_version']
+            )
+        )
+
+    if get_major_version(get_pg_util_version(ctx.args.pg_restore)) < get_major_version(ctx.metadata['pg_dump_version']):
+        raise Exception(
+            "pg_restore major version %s is below than source pg_dump version %s!" % (
+                get_pg_util_version(ctx.args.pg_restore),
+                ctx.metadata['pg_dump_version']
+            )
+        )
+
+    await check_free_disk_space(ctx, db_conn)
     await run_pg_restore(ctx, 'pre-data')
 
     # drop all CHECK constrains containing user-defined procedures to avoid
