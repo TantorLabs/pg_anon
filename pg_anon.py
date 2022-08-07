@@ -258,6 +258,7 @@ class MainRoutine:
                 await make_dump(ctx)
             elif ctx.args.mode == AnonMode.RESTORE:
                 await make_restore(ctx)
+                await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
                 await make_init(ctx)
             else:

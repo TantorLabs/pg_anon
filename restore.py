@@ -46,6 +46,19 @@ def generate_restore_queries(ctx):
     return queries
 
 
+def generate_analyze_queries(ctx):
+    analyze_queries = []
+    for file_name, target in ctx.metadata['files'].items():
+        schema = target["schema"]
+        table = target["table"]
+        analyze_query = "analyze \"%s\".\"%s\"" % (
+            schema,
+            table
+        )
+        analyze_queries.append(analyze_query)
+    return analyze_queries
+
+
 async def restore_obj_func(ctx, pool, task, sn_id):
     ctx.logger.info('================> Started task %s' % str(task))
 
@@ -65,8 +78,6 @@ async def restore_obj_func(ctx, pool, task, sn_id):
 
 
 async def make_restore_impl(ctx, sn_id):
-    loop = asyncio.get_event_loop()
-    tasks = set()
     pool = await asyncpg.create_pool(
         **ctx.conn_params,
         min_size=ctx.args.threads,
@@ -74,7 +85,8 @@ async def make_restore_impl(ctx, sn_id):
     )
 
     queries = generate_restore_queries(ctx)
-
+    loop = asyncio.get_event_loop()
+    tasks = set()
     for v in queries:
         if len(tasks) >= ctx.args.threads:
             # Wait for some restore to finish before adding a new one
@@ -83,8 +95,7 @@ async def make_restore_impl(ctx, sn_id):
             if exception is not None:
                 await pool.close()
                 raise exception
-        if v != (None, None):
-            tasks.add(loop.create_task(restore_obj_func(ctx, pool, v, sn_id)))
+        tasks.add(loop.create_task(restore_obj_func(ctx, pool, v, sn_id)))
 
     # Wait for the remaining restores to finish
     await asyncio.wait(tasks)
@@ -174,3 +185,46 @@ async def make_restore(ctx):
     await run_pg_restore(ctx, 'post-data')
     ctx.logger.info("<------------- Finished restore")
     return result
+
+
+async def run_custom_query(ctx, pool, query):
+    # in single tx
+    ctx.logger.info('================> Started query %s' % str(query))
+
+    db_conn = await pool.acquire()
+    try:
+        await db_conn.execute(query)
+    except Exception as e:
+        ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
+        raise Exception("Can't execute query: %s" % query)
+    finally:
+        await db_conn.close()
+        await pool.release(db_conn)
+
+    ctx.logger.info('<================ Finished query %s' % str(query))
+
+
+async def run_analyze(ctx):
+    ctx.logger.info("-------------> Started analyze")
+    pool = await asyncpg.create_pool(
+        **ctx.conn_params,
+        min_size=ctx.args.threads,
+        max_size=ctx.args.threads
+    )
+
+    queries = generate_analyze_queries(ctx)
+    loop = asyncio.get_event_loop()
+    tasks = set()
+    for v in queries:
+        if len(tasks) >= ctx.args.threads:
+            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            exception = done.pop().exception()
+            if exception is not None:
+                await pool.close()
+                raise exception
+        tasks.add(loop.create_task(run_custom_query(ctx, pool, v)))
+
+    # Wait for the remaining queries to finish
+    await asyncio.wait(tasks)
+    await pool.close()
+    ctx.logger.info("<------------- Finished analyze")
