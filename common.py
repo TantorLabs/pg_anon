@@ -21,8 +21,8 @@ def exception_helper(show_traceback=True):
 
 
 class PgAnonResult:
-    params = None       # JSON
-    result_code = None
+    params = None            # JSON
+    result_code = ""         # done, fail
     result_data = None
 
 

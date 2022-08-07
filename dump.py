@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime
 import json
 import os
@@ -108,17 +109,19 @@ async def generate_dump_queries(ctx, db_conn):
             ctx.logger.info("Skipping: " + str(table_name))
             continue
 
-        file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, item[0] + "_" + item[1])
-        files["%s.dat.gz" % (item[0] + "_" + item[1])] = {"schema": item[0], "table": item[1]}
+        hashed_name = hashlib.md5((item[0] + "_" + item[1]).encode()).hexdigest()
+        full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
+        files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
         a_obj = check_obj_exists(dictionary_obj['dictionary'], item[0], item[1])
 
         if a_obj is None:
+            # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
                 query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
                     table_name,
                     (ctx.validate_limit if ctx.args.validate_full else ""),
-                    file_name,
+                    full_file_name,
                     ctx.args.copy_options
                 )
                 ctx.logger.info(str(query))
@@ -128,12 +131,14 @@ async def generate_dump_queries(ctx, db_conn):
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
+            # table found in dictionary
             if "raw_sql" in a_obj:
+                # the table is transferred using "raw_sql"
                 if not ctx.args.validate_dict:
                     query = "COPY (%s %s) to PROGRAM 'gzip > %s' %s" % (
                         a_obj['raw_sql'],
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        file_name,
+                        full_file_name,
                         ctx.args.copy_options
                     )
                     ctx.logger.info(str(query))
@@ -143,6 +148,7 @@ async def generate_dump_queries(ctx, db_conn):
                     ctx.logger.info(str(query))
                     queries.append(query)
             else:
+                # the table is transferred with the specific fields for anonymization
                 fields_list = await db_conn.fetch("""
                     SELECT column_name FROM information_schema.columns 
                     WHERE table_schema = '""" + item[0] + """' AND table_name='""" + item[1] + """'
@@ -179,7 +185,7 @@ async def generate_dump_queries(ctx, db_conn):
                         sql_expr,
                         table_name,
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        file_name,
+                        full_file_name,
                         ctx.args.copy_options
                     )
                     ctx.logger.info(str(query))
@@ -267,8 +273,11 @@ async def make_dump_impl(ctx, db_conn, sn_id):
 
     total_tables_size = 0
     for k, v in files.items():
+        # print("""select pg_total_relation_size('"%s"."%s"')""" % (v['schema'], v['table']))
+        schema = v['schema'].replace("'", "''")
+        table = v['table'].replace("'", "''")
         total_tables_size += await db_conn.fetchval(
-            """select pg_total_relation_size('%s.%s')""" % (v['schema'], v['table'])
+            """select pg_total_relation_size('"%s"."%s"')""" % (schema, table)
         )
     metadata["total_tables_size"] = total_tables_size
 
@@ -277,6 +286,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
 
 
 async def make_dump(ctx):
+    result = PgAnonResult()
     ctx.logger.info("-------------> Started dump mode")
 
     try:
@@ -319,10 +329,11 @@ async def make_dump(ctx):
         ctx.logger.info("<------------- Finished pg_dump")
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
-        return False
+        result.result_code = 'fail'
+        return result
 
     db_conn = await asyncpg.connect(**ctx.conn_params)
-    result = True
+    result.result_code = 'done'
     tr = db_conn.transaction()
     await tr.start()
     try:
@@ -331,12 +342,11 @@ async def make_dump(ctx):
         await make_dump_impl(ctx, db_conn, sn_id)
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
-        result = False
+        result.result_code = 'fail'
     finally:
         await tr.rollback()
         await db_conn.close()
 
-    if result:
+    if result.result_code == 'done':
         ctx.logger.info("<------------- Finished dump mode")
     return result
-

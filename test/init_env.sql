@@ -1,8 +1,10 @@
 DROP SCHEMA IF EXISTS schm_other_1 CASCADE;
 DROP SCHEMA IF EXISTS schm_other_2 CASCADE;
+DROP SCHEMA IF EXISTS "_SCHM.$complex#имя;@&* a'" CASCADE;
 
 CREATE SCHEMA IF NOT EXISTS schm_other_1;
 CREATE SCHEMA IF NOT EXISTS schm_other_2;
+CREATE SCHEMA IF NOT EXISTS "_SCHM.$complex#имя;@&* a'";
 
 DROP TABLE IF EXISTS schm_other_1.some_tbl CASCADE;
 DROP TABLE IF EXISTS schm_other_2.some_tbl CASCADE;
@@ -163,4 +165,31 @@ VALUES
     ('login', 'login_name'),
     ('first_name', 'Name'),
     ('amount', '100');
+--------------------------------------------------------------
+DROP TABLE IF EXISTS "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" CASCADE;    -- table "as is"
+DROP TABLE IF EXISTS "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'2" CASCADE;   -- table with SQL fld
+DROP TABLE IF EXISTS "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'3" CASCADE;   -- table with raw_sql
+
+CREATE TABLE "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'"
+(
+    id serial,
+    fld_key text,
+    "_FLD.$complex#имя;@&* a'" text,
+    CONSTRAINT key_value_pkey UNIQUE (id)
+);
+
+INSERT INTO "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" (fld_key, "_FLD.$complex#имя;@&* a'")
+VALUES
+    ('email', 'email@example.com'),
+    ('password', '123456'),
+    ('address', 'Moscow city'),
+    ('login', 'login_name'),
+    ('first_name', 'Name'),
+    ('amount', '100');
+
+CREATE TABLE "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'2"
+AS SELECT * FROM "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" WITH DATA;
+
+CREATE TABLE "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'3"
+AS SELECT * FROM "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" WITH DATA;
 --------------------------------------------------------------

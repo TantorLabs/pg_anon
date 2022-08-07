@@ -19,9 +19,10 @@ class OutputFormat(BasicEnum, Enum):
 
 
 class AnonMode(BasicEnum, Enum):
-    DUMP = 'dump'
-    RESTORE = 'restore'
-    INIT = 'init'
+    DUMP = 'dump'           # dump table contents to files using dictionary
+    RESTORE = 'restore'     # create tables in target database and load data from files
+    INIT = 'init'           # create a schema with anonymization helper functions
+    SYNC = 'sync'           # synchronize the contents of one or more tables
 
 
 class VerboseOptions(BasicEnum, Enum):
@@ -203,6 +204,7 @@ class Context:
 
 
 async def make_init(ctx):
+    result = PgAnonResult()
     ctx.logger.info("-------------> Started init mode")
     db_conn = await asyncpg.connect(**ctx.conn_params)
 
@@ -212,14 +214,16 @@ async def make_init(ctx):
         with open(os.path.join(ctx.current_dir, 'init.sql'), 'r') as f:
             data = f.read()
         await db_conn.execute(data)
+        await tr.commit()
+        result.result_code = "done"
     except:
         await tr.rollback()
-        await db_conn.close()
-        raise
-    else:
-        await tr.commit()
+        ctx.logger.error(exception_helper(show_traceback=True))
+        result.result_code = "fail"
+    finally:
         await db_conn.close()
     ctx.logger.info("<------------- Finished init mode")
+    return result
 
 
 class MainRoutine:
@@ -255,24 +259,19 @@ class MainRoutine:
         result = PgAnonResult()
         try:
             if ctx.args.mode == AnonMode.DUMP:
-                await make_dump(ctx)
+                result = await make_dump(ctx)
             elif ctx.args.mode == AnonMode.RESTORE:
-                await make_restore(ctx)
+                result = await make_restore(ctx)
                 await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
-                await make_init(ctx)
+                result = await make_init(ctx)
             else:
                 raise Exception("Unknown mode: " + ctx.args.mode)
 
             ctx.logger.info("==============================================================")
-            ctx.logger.info("Done")
+            ctx.logger.info("Mode = %s, result_code = %s" % (ctx.args.mode, result.result_code))
         except:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            msg = ""
-            for v in traceback.format_exception(exc_type, exc_value, exc_traceback):
-                msg += str(v) + '\n'
-            ctx.logger.error(msg)
-            # sys.exit(-1)
+            ctx.logger.error(exception_helper(show_traceback=True))
         finally:
             return result
 

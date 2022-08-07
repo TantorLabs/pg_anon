@@ -4,6 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 
 input_args = None
+passed_stages = []
 
 
 class DBOperations:
@@ -60,6 +61,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         sourse_db_params = ctx.conn_params.copy()
         sourse_db_params['database'] = 'sourse_db'
         db_conn = await asyncpg.connect(**sourse_db_params)
+
         await DBOperations.init_test_env(db_conn, 10)
         await db_conn.close()
 
@@ -73,10 +75,14 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         ])
 
         res = await MainRoutine(args).run()
-        x = 1
-        #self.assertTrue(res.result_code == PacketStatus.STARTED)
+        if res.result_code == "done":
+            passed_stages.append("test_01_init")
+        self.assertTrue(res.result_code == "done")
 
     async def test_02_dump(self):
+        if "test_01_init" not in passed_stages:
+            self.assertTrue(False)
+
         parser = Context.get_arg_parser()
         args = parser.parse_args([
             '--db-host=127.0.0.1',
@@ -98,10 +104,14 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         await db_conn.close()
 
         res = await MainRoutine(args).run()
-        x = 1
-        #self.assertTrue(res.result_code == PacketStatus.STARTED)
+        if res.result_code == "done":
+            passed_stages.append("test_02_dump")
+        self.assertTrue(res.result_code == "done")
 
     async def test_03_restore(self):
+        if "test_02_dump" not in passed_stages:
+            self.assertTrue(False)
+
         parser = Context.get_arg_parser()
         args = parser.parse_args([
             '--db-host=127.0.0.1',
@@ -120,9 +130,12 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         await db_conn.close()
 
         res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == "done")
+        if res.result_code == "done":
+            passed_stages.append("test_03_restore")
 
     async def test_03_validate(self):
-        pass
+        self.assertTrue(False)
 
 
 if __name__ == '__main__':

@@ -124,6 +124,7 @@ async def check_free_disk_space(ctx, db_conn):
 
 
 async def make_restore(ctx):
+    result = PgAnonResult()
     ctx.logger.info("-------------> Started restore")
 
     if ctx.args.input_dir.find("""/""") == -1 and ctx.args.input_dir.find("""\\""") == -1:
@@ -205,7 +206,7 @@ async def make_restore(ctx):
             query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
             await db_conn.execute(query)
 
-    result = True
+    result.result_code = "done"
     tr = db_conn.transaction()
     await tr.start()
     try:
@@ -215,7 +216,7 @@ async def make_restore(ctx):
         await make_restore_impl(ctx, sn_id)
     except:
         ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
-        result = False
+        result.result_code = "fail"
     finally:
         await tr.commit()
         await db_conn.close()

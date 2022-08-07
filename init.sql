@@ -325,6 +325,6 @@ begin
 	end loop;
 
 	if array_length(common_res, 1) > 0 then
-		raise exception '% test(s) failed!', array_length(common_res, 1);
+		raise exception '% test(s) failed! See "init.sql"', array_length(common_res, 1);
 	end if;
 end$$;
