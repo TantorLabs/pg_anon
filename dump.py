@@ -95,10 +95,14 @@ async def generate_dump_queries(ctx, db_conn):
             table_type = 'BASE TABLE'
     """)
 
-    dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
-    ctx.dictionary_content = dictionary_file.read()
-    dictionary_file.close()
-    dictionary_obj = eval(ctx.dictionary_content)
+    try:
+        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
+        ctx.dictionary_content = dictionary_file.read()
+        dictionary_file.close()
+        dictionary_obj = eval(ctx.dictionary_content)
+    except:
+        ctx.logger.error(exception_helper(show_traceback=True))
+        return [], {}
 
     queries = []
     files = {}
@@ -213,6 +217,10 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     )
 
     queries, files = await generate_dump_queries(ctx, db_conn)
+    if not queries:
+        await pool.close()
+        raise Exception("No objects for dump!")
+
     zipped_list = list(zip([hash(v) for v in queries], files))
 
     for v in queries:
