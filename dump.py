@@ -149,11 +149,16 @@ async def generate_dump_queries(ctx, db_conn):
                     queries.append(query)
             else:
                 # the table is transferred with the specific fields for anonymization
-                fields_list = await db_conn.fetch("""
-                    SELECT column_name FROM information_schema.columns 
-                    WHERE table_schema = '""" + item[0] + """' AND table_name='""" + item[1] + """'
-                    ORDER BY ordinal_position ASC
-                """)
+                fields_list = await db_conn.fetch(
+                    """
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_schema = '%s' AND table_name='%s'
+                        ORDER BY ordinal_position ASC
+                    """ % (
+                        item[0].replace("'", "''"),
+                        item[1].replace("'", "''")
+                    )
+                )
 
                 sql_expr = ""
 

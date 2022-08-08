@@ -27,6 +27,13 @@
 						ELSE fld_value
 					END"""
 			}
+		},
+		{
+			"schema":"_SCHM.$complex#имя;@&* a'",
+			"table":"_TBL.$complex#имя;@&* a'2",
+			"fields": {
+				"_FLD.$complex#имя;@&* a'": "'text const'"
+			}
 		}
 	],
 	"dictionary_exclude": [

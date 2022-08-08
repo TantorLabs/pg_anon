@@ -1,29 +1,22 @@
 # README #
 
-This README would normally document whatever steps are necessary to get your application up and running.
 
-### What is this repository for? ###
+### How to escape/unescape complex names of objects ###
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+```
+python3
 
-### How do I get set up? ###
+import json
+j = {"k": "_TBL.$complex#имя;@&* a'2"}
+json.dumps(j)
+>>
+	'{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+s = '{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
+u = json.loads(s)
+print(u['k'])
+>>
+	_TBL.$complex#имя;@&* a'2
 
-### Contribution guidelines ###
+```
 
-* Writing tests
-* Code review
-* Other guidelines
-
-### Who do I talk to? ###
-
-* Repo owner or admin
-* Other community or team contact
