@@ -193,3 +193,62 @@ AS SELECT * FROM "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" WI
 CREATE TABLE "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'3"
 AS SELECT * FROM "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" WITH DATA;
 --------------------------------------------------------------
+DROP TABLE IF EXISTS schm_other_2.tbl_test_anon_functions CASCADE;
+
+CREATE TABLE schm_other_2.tbl_test_anon_functions
+(
+    id serial,
+    fld_1_int bigint,           -- anon_funcs.noise
+    fld_2_datetime timestamp,   -- anon_funcs.dnoise
+    fld_3_txt text,             -- anon_funcs.digest
+    fld_4_txt text,             -- anon_funcs.partial
+    fld_5_email text,           -- anon_funcs.partial_email
+    fld_6_txt text,             -- anon_funcs.random_string
+    fld_7_zip int,              -- anon_funcs.random_zip
+    fld_8_datetime timestamp,   -- anon_funcs.random_date_between
+    fld_9_datetime timestamp,   -- anon_funcs.random_date()
+    fld_10_int int,             -- anon_funcs.random_int_between
+    fld_11_int bigint,          -- anon_funcs.random_bigint_between
+    fld_12_phone text,          -- anon_funcs.random_phone
+    fld_13_txt text,            -- anon_funcs.random_hash
+    fld_14_txt text,            -- anon_funcs.random_in
+    fld_15_txt text,            -- anon_funcs.hex_to_int
+    CONSTRAINT tbl_test_anon_functions_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_other_2.tbl_test_anon_functions
+(
+	fld_1_int,
+	fld_2_datetime,
+	fld_3_txt,
+	fld_4_txt,
+	fld_5_email,
+	fld_6_txt,
+	fld_7_zip,
+	fld_8_datetime,
+	fld_9_datetime,
+	fld_10_int,
+	fld_11_int,
+	fld_12_phone,
+	fld_13_txt,
+	fld_14_txt,
+	fld_15_txt
+)
+select
+	v, 					            -- fld_1_int,
+	NOW() + (random() * (NOW() + '365 days' - NOW())) + '365 days', -- fld_2_datetime,
+	'fld_3_txt_' || v, 	            -- fld_3_txt,
+	'fld_4_txt_' || v, 	            -- fld_4_txt,
+	'info' || v || '@' || 'company_name_' || v || '.com', -- fld_5_email,
+	'fld_6_txt' || v, 	            -- fld_6_txt,
+	v, 					            -- fld_7_zip,
+	NOW() + (random() * (NOW() + '100 days' - NOW())) + '100 days', -- fld_8_datetime,
+	NOW() + (random() * (NOW() + '200 days' - NOW())) + '200 days', -- fld_9_datetime,
+	v, 								-- fld_10_int,
+	v, 								-- fld_11_int,
+	'+7' || (1000000 + v), 			-- fld_12_phone,
+	'fld_13_txt' || v, 				-- fld_13_txt,
+	'fld_14_txt' || v,				-- fld_14_txt,
+	to_hex(v)::text					-- fld_15_txt
+from generate_series(1,15001) as v;
+--------------------------------------------------------------

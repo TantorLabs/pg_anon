@@ -91,7 +91,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-port=5432',
             '--db-user-password=yImTVbL3TLxF',
             '--mode=dump',
-            '--dict-file=test.json',
+            '--dict-file=test.py',
             '--threads=1',
             '--clear-output-dir'
         ])

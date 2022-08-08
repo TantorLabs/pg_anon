@@ -140,7 +140,11 @@ async def make_restore(ctx):
         SELECT NOT EXISTS(
             SELECT table_schema, table_name
             FROM information_schema.tables
-            WHERE table_schema not in ( 'pg_catalog', 'information_schema' ) AND table_type = 'BASE TABLE'
+            WHERE table_schema not in (
+                    'pg_catalog',
+                    'information_schema',
+                    'anon_funcs'
+                ) AND table_type = 'BASE TABLE'
         )""")
 
     if not db_is_empty:
