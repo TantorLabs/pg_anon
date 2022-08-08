@@ -57,7 +57,7 @@
 					"fld_8_datetime": """
 						anon_funcs.random_date_between(
 							fld_8_datetime - interval '1 year',
-							fld_8_datetime - interval '1 year'
+							fld_8_datetime + interval '1 year'
 						)
 					""",
 					"fld_9_datetime": "anon_funcs.random_date()",
