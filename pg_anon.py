@@ -200,6 +200,11 @@ class Context:
             action='store_true',
             default=False
         )
+        parser.add_argument(
+            "--drop-custom-check-constr",
+            action='store_true',
+            default=False
+        )
         return parser
 
 

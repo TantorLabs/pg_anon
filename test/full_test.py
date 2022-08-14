@@ -120,7 +120,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-port=5432',
             '--db-user-password=yImTVbL3TLxF',
             '--mode=restore',
-            '--input-dir=test'
+            '--input-dir=test',
+            '--drop-custom-check-constr'
         ])
 
         ctx = Context(args)

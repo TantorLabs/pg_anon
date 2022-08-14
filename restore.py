@@ -174,41 +174,42 @@ async def make_restore(ctx):
     await check_free_disk_space(ctx, db_conn)
     await run_pg_restore(ctx, 'pre-data')
 
-    # drop all CHECK constrains containing user-defined procedures to avoid
-    # performance degradation at the data loading stage
-    check_constraints = await db_conn.fetch("""
-        SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
-        -- pc.consrc removed in 12 version
-        FROM (
-            SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
-            from (
-                SELECT T.v as v, t.conoid
-                FROM (
-                        SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
-                        FROM (
-                            SELECT conbin::text as v, oid as conoid
-                            FROM pg_constraint
-                            WHERE contype = 'c'
-                        ) T
-                ) T WHERE length(T.v) > 0
+    if ctx.args.drop_custom_check_constr:
+        # drop all CHECK constrains containing user-defined procedures to avoid
+        # performance degradation at the data loading stage
+        check_constraints = await db_conn.fetch("""
+            SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
+            -- pc.consrc removed in 12 version
+            FROM (
+                SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
+                from (
+                    SELECT T.v as v, t.conoid
+                    FROM (
+                            SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
+                            FROM (
+                                SELECT conbin::text as v, oid as conoid
+                                FROM pg_constraint
+                                WHERE contype = 'c'
+                            ) T
+                    ) T WHERE length(T.v) > 0
+                ) T
             ) T
-        ) T
-        INNER JOIN pg_constraint pc on T.conoid = pc.oid
-        INNER JOIN pg_class cl on cl.oid = pc.conrelid
-        INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
-        WHERE T.func_oid in (
-            SELECT  p.oid
-            FROM    pg_namespace n
-            INNER JOIN pg_proc p ON p.pronamespace = n.oid
-            WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
-        )
-    """)
+            INNER JOIN pg_constraint pc on T.conoid = pc.oid
+            INNER JOIN pg_class cl on cl.oid = pc.conrelid
+            INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
+            WHERE T.func_oid in (
+                SELECT  p.oid
+                FROM    pg_namespace n
+                INNER JOIN pg_proc p ON p.pronamespace = n.oid
+                WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
+            )
+        """)
 
-    if check_constraints is not None:
-        for conn in check_constraints:
-            ctx.logger.info("Removing constraints: " + conn[2])
-            query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
-            await db_conn.execute(query)
+        if check_constraints is not None:
+            for conn in check_constraints:
+                ctx.logger.info("Removing constraints: " + conn[2])
+                query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
+                await db_conn.execute(query)
 
     result.result_code = "done"
     tr = db_conn.transaction()
