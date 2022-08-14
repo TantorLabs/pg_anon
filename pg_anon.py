@@ -59,6 +59,9 @@ class Context:
             self.logger.addHandler(handler)
             self.logger.setLevel(log_level)
 
+        if args.db_user_password == '' and os.environ.get('PGPASSWORD') is not None:
+            args.db_user_password = os.environ["PGPASSWORD"]
+
         if args.db_certfile == '' and args.db_keyfile == '':
             self.conn_params = {
                 "host": args.db_host,

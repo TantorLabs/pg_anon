@@ -9,27 +9,60 @@ input_args = None
 passed_stages = []
 
 
+class TestParams:
+    test_db_user = 'anon_test_user'         # default value
+    test_db_user_password = 'mYy5RexGsZ'
+    test_db_host = '127.0.0.1'
+    test_db_port = '5432'
+    test_source_db = 'test_source_db'
+    test_target_db = 'test_target_db'
+
+    def __init__(self):
+        if os.environ.get('TEST_DB_USER') is not None:
+            self.test_db_user = os.environ["TEST_DB_USER"]
+        if os.environ.get('PGPASSWORD') is not None:
+            self.test_db_user_password = os.environ["TEST_DB_USER_PASSWORD"]
+        if os.environ.get('TEST_DB_USER_PASSWORD') is not None:
+            self.test_db_user_password = os.environ["TEST_DB_USER_PASSWORD"]
+        if os.environ.get('TEST_DB_HOST') is not None:
+            self.test_db_host = os.environ["TEST_DB_HOST"]
+        if os.environ.get('TEST_DB_PORT') is not None:
+            self.test_db_port = os.environ["TEST_DB_PORT"]
+        if os.environ.get('TEST_SOURCE_DB') is not None:
+            self.test_source_db = os.environ["TEST_SOURCE_DB"]
+        if os.environ.get('TEST_TARGET_DB') is not None:
+            self.test_target_db = os.environ["TEST_TARGET_DB"]
+
+
+params = TestParams()
+
+
 class DBOperations:
     @staticmethod
     async def init_db(db_conn, db_name):
-        await db_conn.execute("""
-            SELECT pg_terminate_backend(pid)
-            FROM pg_stat_activity
-            WHERE pid <> pg_backend_pid()
-                AND datname = '%s'
-        """ % db_name)
+        try:
+            await db_conn.execute(
+                """
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE pid <> pg_backend_pid()
+                    AND datname = '%s'
+                """ % db_name)
 
-        print("""DROP DATABASE IF EXISTS %s and CREATE DATABASE""" % db_name)
-        await db_conn.execute("""DROP DATABASE IF EXISTS %s""" % db_name)
-        await db_conn.execute("""
-            CREATE DATABASE %s
-                WITH
-                OWNER = test_user
-                ENCODING = 'UTF8'
-                LC_COLLATE = 'en_US.UTF-8'
-                LC_CTYPE = 'en_US.UTF-8'
-                TABLESPACE = pg_default
-                template = template0""" % db_name)
+            print("""DROP DATABASE IF EXISTS %s and CREATE DATABASE""" % db_name)
+            await db_conn.execute("""DROP DATABASE IF EXISTS %s""" % db_name)
+            await db_conn.execute(
+                """
+                CREATE DATABASE %s
+                    WITH
+                    OWNER = %s
+                    ENCODING = 'UTF8'
+                    LC_COLLATE = 'en_US.UTF-8'
+                    LC_CTYPE = 'en_US.UTF-8'
+                    template = template0
+                """ % (db_name, params.test_db_user))
+        except:
+            print(exception_helper(show_traceback=True))
 
     @staticmethod
     async def init_test_env(db_conn, scale=1):
@@ -45,34 +78,34 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
     async def test_01_init(self):
         parser = Context.get_arg_parser()
         args = parser.parse_args([
-            '--db-host=127.0.0.1',
+            '--db-host=%s' % params.test_db_host,
             '--db-name=postgres',
-            '--db-user=postgres',
-            '--db-port=5432',
-            '--db-user-password=yImTVbL3TLxF',
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
             '--mode=init'
         ])
 
         ctx = Context(args)
 
         db_conn = await asyncpg.connect(**ctx.conn_params)
-        await DBOperations.init_db(db_conn, 'sourse_db')
-        await DBOperations.init_db(db_conn, 'target_db')
+        await DBOperations.init_db(db_conn, params.test_source_db)
+        await DBOperations.init_db(db_conn, params.test_target_db)
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
-        sourse_db_params['database'] = 'sourse_db'
+        sourse_db_params['database'] = params.test_source_db
         db_conn = await asyncpg.connect(**sourse_db_params)
 
         await DBOperations.init_test_env(db_conn, 10)
         await db_conn.close()
 
         args = parser.parse_args([
-            '--db-host=127.0.0.1',
-            '--db-name=sourse_db',
-            '--db-user=postgres',
-            '--db-port=5432',
-            '--db-user-password=yImTVbL3TLxF',
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
             '--mode=init'
         ])
 
@@ -87,11 +120,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         parser = Context.get_arg_parser()
         args = parser.parse_args([
-            '--db-host=127.0.0.1',
-            '--db-name=sourse_db',
-            '--db-user=postgres',
-            '--db-port=5432',
-            '--db-user-password=yImTVbL3TLxF',
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
             '--mode=dump',
             '--dict-file=test.py',
             '--threads=1',
@@ -116,11 +149,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         parser = Context.get_arg_parser()
         args = parser.parse_args([
-            '--db-host=127.0.0.1',
-            '--db-name=target_db',
-            '--db-user=postgres',
-            '--db-port=5432',
-            '--db-user-password=yImTVbL3TLxF',
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
             '--mode=restore',
             '--input-dir=test',
             '--drop-custom-check-constr'
