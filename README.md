@@ -1,9 +1,23 @@
 # README #
 
 
-### How to escape/unescape complex names of objects ###
+### Installation ###
+```python
+apt install -y python3-pip
+pip3 install -r requirements.txt
+python3 test/full_test.py -v
+>>
+	Ran N tests in ...
+	OK
+
+# If all tests is OK then application ready to use
 
 ```
+
+
+### How to escape/unescape complex names of objects ###
+
+```python
 python3
 
 import json

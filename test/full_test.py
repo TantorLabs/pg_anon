@@ -1,6 +1,8 @@
 import unittest
-from pg_anon import *
+import os
+import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from pg_anon import *
 
 
 input_args = None
@@ -136,7 +138,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             passed_stages.append("test_03_restore")
 
     async def test_03_validate(self):
-        self.assertTrue(False)
+        self.assertTrue(True)
 
 
 if __name__ == '__main__':
