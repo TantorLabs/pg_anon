@@ -176,7 +176,7 @@ async def make_restore(ctx):
 
     # drop all CHECK constrains containing user-defined procedures to avoid
     # performance degradation at the data loading stage
-    check_constraints = await db_conn.fetchval("""
+    check_constraints = await db_conn.fetch("""
         SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
         -- pc.consrc removed in 12 version
         FROM (

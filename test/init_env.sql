@@ -21,6 +21,41 @@ INSERT INTO schm_other_1.some_tbl (val)
 select 'text_val_' || v as val
 from generate_series(1,15001) as v;
 
+CREATE OR REPLACE FUNCTION schm_other_1.slow_func (value text)
+RETURNS smallint
+language plpgsql
+as
+$$
+BEGIN
+   -- PERFORM pg_sleep(5);
+   IF COALESCE (value, '') <> '' THEN
+      RETURN 1;
+   ELSE
+      RETURN 0;
+   END IF;
+END;
+$$;
+
+alter table schm_other_1.some_tbl
+   add constraint custom_check CHECK (schm_other_1.slow_func ( val ) = 1);
+
+-- to avoid pg_sleep on "add constraint"
+-- this function in the restore phase should interfere with the process
+CREATE OR REPLACE FUNCTION schm_other_1.slow_func (value text)
+RETURNS smallint
+language plpgsql
+as
+$$
+BEGIN
+   PERFORM pg_sleep(5);
+   IF COALESCE (value, '') <> '' THEN
+      RETURN 1;
+   ELSE
+      RETURN 0;
+   END IF;
+END;
+$$;
+
 CREATE TABLE schm_other_2.some_tbl
 (
     id serial,
