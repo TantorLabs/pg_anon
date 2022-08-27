@@ -2,6 +2,7 @@ import sys
 import traceback
 import subprocess
 import re
+from enum import Enum
 from pkg_resources import parse_version as version
 
 
@@ -20,9 +21,20 @@ def exception_helper(show_traceback=True):
     )
 
 
+class BasicEnum():
+    def __str__(self):
+        return self.value
+
+
+class ResultCode(BasicEnum, Enum):
+    DONE = 'done'
+    FAIL = 'fail'
+    UNKNOWN = 'unknown'
+
+
 class PgAnonResult:
     params = None            # JSON
-    result_code = ""         # done, fail
+    result_code = ResultCode.UNKNOWN
     result_data = None
 
 

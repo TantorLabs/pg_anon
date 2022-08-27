@@ -40,6 +40,7 @@ class Context:
         self.dictionary_content = None  # for dump process
         self.metadata = None            # for restore process
         self.task_results = {}          # for dump process (key is hash() of SQL query)
+        self.total_rows = 0
 
         if args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO
@@ -223,11 +224,11 @@ async def make_init(ctx):
             data = f.read()
         await db_conn.execute(data)
         await tr.commit()
-        result.result_code = "done"
+        result.result_code = ResultCode.DONE
     except:
         await tr.rollback()
         ctx.logger.error(exception_helper(show_traceback=True))
-        result.result_code = "fail"
+        result.result_code = ResultCode.FAIL
     finally:
         await db_conn.close()
     ctx.logger.info("<------------- Finished init mode")

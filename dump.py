@@ -285,6 +285,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["files"] = files
 
     total_tables_size = 0
+    total_rows = 0
     for k, v in files.items():
         # print("""select pg_total_relation_size('"%s"."%s"')""" % (v['schema'], v['table']))
         schema = v['schema'].replace("'", "''")
@@ -292,7 +293,9 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         total_tables_size += await db_conn.fetchval(
             """select pg_total_relation_size('"%s"."%s"')""" % (schema, table)
         )
+        total_rows += int(v['rows'])
     metadata["total_tables_size"] = total_tables_size
+    metadata["total_rows"] = total_rows
 
     with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
         out_file.write(json.dumps(metadata, indent=4))
@@ -342,11 +345,11 @@ async def make_dump(ctx):
         ctx.logger.info("<------------- Finished pg_dump")
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
-        result.result_code = 'fail'
+        result.result_code = ResultCode.FAIL
         return result
 
     db_conn = await asyncpg.connect(**ctx.conn_params)
-    result.result_code = 'done'
+    result.result_code = ResultCode.DONE
     tr = db_conn.transaction()
     await tr.start()
     try:
@@ -355,11 +358,11 @@ async def make_dump(ctx):
         await make_dump_impl(ctx, db_conn, sn_id)
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
-        result.result_code = 'fail'
+        result.result_code = ResultCode.FAIL
     finally:
         await tr.rollback()
         await db_conn.close()
 
-    if result.result_code == 'done':
+    if result.result_code == ResultCode.DONE:
         ctx.logger.info("<------------- Finished dump mode")
     return result

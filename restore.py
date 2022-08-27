@@ -67,7 +67,8 @@ async def restore_obj_func(ctx, pool, task, sn_id):
     try:
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        await db_conn.execute(task)
+        res = await db_conn.execute(task)
+        ctx.total_rows += int(re.findall(r"(\d+)", res)[0])
         await db_conn.execute("COMMIT;")
     except Exception as e:
         ctx.logger.error("Exception in restore_obj_func:\n" + exception_helper())
@@ -211,7 +212,7 @@ async def make_restore(ctx):
                 query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
                 await db_conn.execute(query)
 
-    result.result_code = "done"
+    result.result_code = ResultCode.DONE
     tr = db_conn.transaction()
     await tr.start()
     try:
@@ -225,6 +226,14 @@ async def make_restore(ctx):
     finally:
         await tr.commit()
         await db_conn.close()
+
+    if ctx.total_rows != int(ctx.metadata["total_rows"]):
+        ctx.logger.error("The number of restored rows (%s) is different from the metadata (%s)" % (
+                str(ctx.total_rows),
+                ctx.metadata["total_rows"]
+            )
+        )
+        result.result_code = ResultCode.FAIL
 
     await run_pg_restore(ctx, 'post-data')
     ctx.logger.info("<------------- Finished restore")

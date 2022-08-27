@@ -110,9 +110,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         ])
 
         res = await MainRoutine(args).run()
-        if res.result_code == "done":
+        if res.result_code == ResultCode.DONE:
             passed_stages.append("test_01_init")
-        self.assertTrue(res.result_code == "done")
+        self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_02_dump(self):
         if "test_01_init" not in passed_stages:
@@ -139,9 +139,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         await db_conn.close()
 
         res = await MainRoutine(args).run()
-        if res.result_code == "done":
+        if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_dump")
-        self.assertTrue(res.result_code == "done")
+        self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_03_restore(self):
         if "test_02_dump" not in passed_stages:
@@ -166,8 +166,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         await db_conn.close()
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == "done")
-        if res.result_code == "done":
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        if res.result_code == ResultCode.DONE:
             passed_stages.append("test_03_restore")
 
     async def test_03_validate(self):
