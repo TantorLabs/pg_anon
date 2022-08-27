@@ -63,30 +63,27 @@ async def dump_obj_func(ctx, pool, task, sn_id):
     ctx.logger.info('<================ Finished task %s' % str(task))
 
 
+def find_obj_in_dict(dictionary_obj, schema, table):
+    for v in dictionary_obj:
+        schema_matched = False
+        table_matched = False
+
+        if "schema" in v and schema == v["schema"]:
+            schema_matched = True
+        if "schema_mask" in v and re.search(v["schema_mask"], schema) is not None:
+            schema_matched = True
+
+        if "table" in v and table == v["table"]:
+            table_matched = True
+        if "table_mask" in v and re.search(v["table_mask"], table) is not None:
+            table_matched = True
+
+        if schema_matched and table_matched:
+            return True, v
+    return False, None
+
+
 async def generate_dump_queries(ctx, db_conn):
-    def check_obj_exists(dictionary_obj, schema, table):
-        for v in dictionary_obj:
-            if "schema" in v and schema == v["schema"] and table == v["table"]:
-                return v
-            if "schema" not in v and table == v["table"] and schema == 'public':
-                return v
-        return None
-
-    def check_obj_exclude(dictionary_obj, schema, table):
-        for v in dictionary_obj:
-            if "schema" in v and schema == v["schema"] and table == v["table"]:
-                return True
-            if "schema" not in v and table == v["table"] and schema == 'public':
-                return True
-            # regex part
-            if "schema" not in v and schema == 'public' and v["table"].startswith('REGEX:'):
-                if re.search(v["table"][6:].strip(), table):
-                    return True
-            if "schema" in v and schema == v["schema"] and v["table"].startswith('REGEX:'):
-                if re.search(v["table"][6:].strip(), table):
-                    return True
-        return False
-
     db_objs = await db_conn.fetch("""
         SELECT table_schema, table_name
         FROM information_schema.tables
@@ -107,9 +104,16 @@ async def generate_dump_queries(ctx, db_conn):
     queries = []
     files = {}
 
+    included_objs = []      # for debug purposes
+    excluded_objs = []      # for debug purposes
+
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
-        if check_obj_exclude(dictionary_obj['dictionary_exclude'], item[0], item[1]):
+
+        # dictionary_exclude has the highest priority
+        found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
+        if found:
+            excluded_objs.append(exclude_obj)
             ctx.logger.info("Skipping: " + str(table_name))
             continue
 
@@ -117,9 +121,10 @@ async def generate_dump_queries(ctx, db_conn):
         full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
         files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
-        a_obj = check_obj_exists(dictionary_obj['dictionary'], item[0], item[1])
+        found, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
 
-        if a_obj is None:
+        if not found:
+            included_objs.append([item[0], item[1], 'main logic'])
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
                 query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
@@ -135,6 +140,7 @@ async def generate_dump_queries(ctx, db_conn):
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
+            included_objs.append(a_obj)
             # table found in dictionary
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"

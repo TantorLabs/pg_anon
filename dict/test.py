@@ -68,6 +68,27 @@
 					"fld_14_txt": "anon_funcs.random_in(array['a', 'b', 'c'])",
 					"fld_15_txt": "anon_funcs.hex_to_int(fld_15_txt)::text"
 			}
+		},
+		{
+			"schema_mask": "^schm_mask_incl",
+			"table_mask": "^some_t",
+			"fields": {
+				"val": "'text const'"
+			}
+		},
+		{
+			"schema_mask": "^schm_mask_incl",
+			"table": "tbl_123",
+			"fields": {
+				"val": "'text const'"
+			}
+		},
+		{
+			"schema": "schm_mask_include_1",
+			"table_mask": "\w+\_\d+\_\d+",
+			"fields": {
+				"val": "'text const'"
+			}
 		}
 	],
 	"dictionary_exclude": [

@@ -287,3 +287,166 @@ select
 	to_hex(v)::text					-- fld_15_txt
 from generate_series(1,15001) as v;
 --------------------------------------------------------------
+--------------------------------------------------------------
+-- table and schema masks in the dictionary
+
+DROP SCHEMA IF EXISTS schm_mask_include_1 CASCADE;
+DROP SCHEMA IF EXISTS schm_mask_ext_include_2 CASCADE;
+DROP SCHEMA IF EXISTS schm_mask_exclude_1 CASCADE;
+DROP SCHEMA IF EXISTS schm_mask_ext_exclude_2 CASCADE;
+------------
+CREATE SCHEMA IF NOT EXISTS schm_mask_include_1;
+CREATE SCHEMA IF NOT EXISTS schm_mask_ext_include_2;
+CREATE SCHEMA IF NOT EXISTS schm_mask_exclude_1;
+CREATE SCHEMA IF NOT EXISTS schm_mask_ext_exclude_2;
+------------
+CREATE TABLE schm_mask_include_1.some_tbl
+-- should be copied
+-- schema_mask: ^schm_mask_incl (begins with)
+-- table_mask: ^some_t (begins with)
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_1_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_include_1.some_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_include_1.tbl_123
+-- should be copied
+-- schema_mask: ^schm_mask_incl (begins with)
+-- table: tbl_123
+(
+    id serial,
+    val text,
+    CONSTRAINT tbl_123_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_include_1.tbl_123 (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_include_1.tbl_123_456
+-- should be copied
+-- schema: schm_mask_include_1
+-- table_mask: \w+\_\d+\_\d+
+(
+    id serial,
+    val text,
+    CONSTRAINT tbl_123_456_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_include_1.tbl_123_456 (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_include_1.other_tbl
+-- should be copied
+-- schema_mask: ^schm_mask_incl (begins with)
+-- table_mask: er_tbl$ (ends with)
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_2_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_include_1.other_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+------------
+CREATE TABLE schm_mask_ext_include_2.some_ext_tbl
+-- should be copied
+-- schema_mask: ^schm_mask_ext_ (begins with)
+-- table_mask: \w+\_\w+\_ (contains "word_word_")
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_3_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_ext_include_2.some_ext_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_ext_include_2.other_ext_tbl
+-- should be copied
+-- rule above
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_4_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_ext_include_2.other_ext_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+------------
+------------
+------------
+CREATE TABLE schm_mask_exclude_1.some_tbl
+-- should be passed
+
+-- dictionary
+-- schema_mask: mask_exclude_1$ (ends with)
+-- table_mask: \w+\_\w+\_ (contains "word_word_")
+
+-- dictionary_exclude
+-- schema_mask: mask_exclude_1$ (ends with)
+-- table_mask: e_tbl$ (ends with)
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_5_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_exclude_1.some_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_exclude_1.other_tbl
+-- should be copied
+-- table is described in dictionary
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_6_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_exclude_1.other_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+------------
+CREATE TABLE schm_mask_ext_exclude_2.some_ext_tbl
+-- should be passed
+
+-- dictionary
+-- schema_mask: mask_ext_exclude_2$ (ends with)
+-- table_mask: \w+\_\w+\_ (contains "word_word_")
+
+-- dictionary_exclude
+-- schema_mask: ext_exclude_2$
+-- table_mask: e_tbl$
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_7_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_ext_exclude_2.some_ext_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+
+CREATE TABLE schm_mask_ext_exclude_2.other_ext_tbl
+-- should be copied
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_8_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_ext_exclude_2.other_ext_tbl (val)
+select 'text_val_' || v as val
+from generate_series(1,15001) as v;
+--------------------------------------------------------------
