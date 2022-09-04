@@ -18,5 +18,6 @@ setup(
     version="1.0",
     license="BSD",
     packages=["dict", "test"],
-    install_requires=["asyncpg>=0.26.0"]
+    install_requires=["asyncpg>=0.26.0"],
+    options={"bdist_wheel": {"universal": True}}
 )
