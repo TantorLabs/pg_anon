@@ -16,7 +16,7 @@ docker tag $(docker images -q | head -n 1) pg_anon:pg13
 
 docker save -o pg_anon.tar pg_anon
 
-curl --fail -v --user 'tantorlabs-raw-admin:***' --upload-file ./pg_anon.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
+curl --fail -v --user 'user:password' --upload-file pg_anon.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
 ```
 
 ## Run container
