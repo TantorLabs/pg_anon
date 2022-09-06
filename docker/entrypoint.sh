@@ -17,7 +17,7 @@ cat > /usr/bin/pg_anon << EOL
 python3 /usr/share/pg_anon/pg_anon.py \$@
 EOL
 
-chmod +x /usr/bin/dbc
+chmod +x /usr/bin/pg_anon
 
 cd /usr/share/pg_anon
 
