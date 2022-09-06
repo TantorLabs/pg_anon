@@ -1,0 +1,7 @@
+=============================================
+# Documentation
+https://bitbucket.org/awide/pg_anon/src/master/
+=============================================
+# Run tests
+python3 test/full_test.py -v
+=============================================
