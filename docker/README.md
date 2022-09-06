@@ -12,12 +12,21 @@ make PG_VERSION=13
 Push image:
 
 ```bash
-docker tag $(docker images -q | head -n 1) USER/pg_anon:dbc_pg13 && \
-docker push USER/pg_anon:dbc_pg13
+docker tag $(docker images -q | head -n 1) pg_anon:pg13
+
+docker save -o pg_anon.tar pg_anon
+
+curl --fail -v --user 'tantorlabs-raw-admin:***' --upload-file ./pg_anon.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
 ```
 
 ## Run container
 
 ```bash
+# docker rm -f pg_anon
+
+docker run --name pg_anon -d pg_anon:pg13
+docker exec -it pg_anon bash
+python3 test/full_test.py -v
+exit
 
 ```
