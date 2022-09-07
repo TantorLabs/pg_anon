@@ -30,3 +30,10 @@ python3 test/full_test.py -v
 exit
 
 ```
+
+## Load saved image
+
+```bash
+docker load < pg_anon.tar
+
+```
