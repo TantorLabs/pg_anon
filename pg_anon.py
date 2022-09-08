@@ -209,6 +209,13 @@ class Context:
             action='store_true',
             default=False
         )
+        parser.add_argument(
+            "--seq-init-by-max-value",
+            action='store_true',
+            default=False,
+            help="""Initialize sequences based on maximum values. Otherwise, the sequences will be initialized
+                based on the values of the source database."""
+        )
         return parser
 
 

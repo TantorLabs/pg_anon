@@ -31,6 +31,56 @@ async def run_pg_restore(ctx, section):
         ctx.logger.info(v)
 
 
+async def seq_init(ctx):
+    db_conn = await asyncpg.connect(**ctx.conn_params)
+    if ctx.args.seq_init_by_max_value:
+        query = """
+            DO $$
+            DECLARE
+                cmd text;
+                schema text;
+            BEGIN
+                FOR cmd, schema IN (
+                    select
+                       ('SELECT setval(''' || T.seq_name || ''', max("' || T.column_name || '") + 1) FROM "' || T.table_name || '"') as cmd,
+                       T.table_schema as schema
+                    FROM (
+                            select
+                               substring(t.column_default from 10 for length(t.column_default) - 21) as seq_name,
+                               t.table_schema,
+                               t.table_name,
+                               t.column_name
+                               FROM (
+                                   SELECT table_schema, table_name, column_name, column_default
+                                   FROM information_schema.columns
+                                   WHERE column_default LIKE 'nextval%'
+                               ) T
+                    ) T
+                ) LOOP
+                    EXECUTE 'SET search_path = ''' || schema || ''';';
+                    -- EXECUTE cmd;
+                    raise notice '%', cmd;
+                END LOOP;
+                SET search_path = 'public';
+            END$$;"""
+        ctx.logger.debug(query)
+        await db_conn.execute(query)
+    else:
+        for _, v in ctx.metadata['seq_lastvals'].items():
+            query = """
+                SET search_path = '%s';
+                SELECT setval(quote_ident('%s'), %s + 1);
+            """ % (
+                v['schema'].replace("'", "''"),
+                v['seq_name'].replace("'", "''"),
+                v['value']
+            )
+            ctx.logger.info(query)
+            await db_conn.execute(query)
+
+    await db_conn.close()
+
+
 def generate_restore_queries(ctx):
     queries = []
     for file_name, target in ctx.metadata['files'].items():
@@ -236,6 +286,8 @@ async def make_restore(ctx):
         result.result_code = ResultCode.FAIL
 
     await run_pg_restore(ctx, 'post-data')
+    await seq_init(ctx)
+
     ctx.logger.info("<------------- Finished restore")
     return result
 
