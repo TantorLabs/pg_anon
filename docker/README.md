@@ -29,6 +29,9 @@ docker exec -it pg_anon bash
 python3 test/full_test.py -v
 exit
 
+# Run and mount directory from HOST to /usr/share/pg_anon_from_host
+docker rm -f pg_anon
+docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg13
 ```
 
 ## Load saved image
