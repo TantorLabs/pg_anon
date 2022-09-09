@@ -16,6 +16,7 @@ class TestParams:
     test_db_port = '5432'
     test_source_db = 'test_source_db'
     test_target_db = 'test_target_db'
+    test_target_db_2 = 'test_target_db_2'
 
     def __init__(self):
         if os.environ.get('TEST_DB_USER') is not None:
@@ -32,6 +33,7 @@ class TestParams:
             self.test_source_db = os.environ["TEST_SOURCE_DB"]
         if os.environ.get('TEST_TARGET_DB') is not None:
             self.test_target_db = os.environ["TEST_TARGET_DB"]
+            self.test_target_db_2 = self.test_target_db + "_2"
 
 
 params = TestParams()
@@ -91,6 +93,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         db_conn = await asyncpg.connect(**ctx.conn_params)
         await DBOperations.init_db(db_conn, params.test_source_db)
         await DBOperations.init_db(db_conn, params.test_target_db)
+        await DBOperations.init_db(db_conn, params.test_target_db_2)
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -170,8 +173,61 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_03_restore")
 
-    async def test_03_validate(self):
-        self.assertTrue(True)
+    async def test_04_dump(self):
+        if "test_01_init" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=dump',
+            '--dict-file=test_exclude.py',
+            '--threads=1',
+            '--clear-output-dir'
+        ])
+
+        ctx = Context(args)
+
+        sourse_db_params = ctx.conn_params.copy()
+        db_conn = await asyncpg.connect(**sourse_db_params)
+        await DBOperations.init_test_env(db_conn, 10)
+        await db_conn.close()
+
+        res = await MainRoutine(args).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_04_dump")
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+    async def test_05restore(self):
+        if "test_04_dump" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db_2,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=restore',
+            '--input-dir=test',
+            '--drop-custom-check-constr'
+        ])
+
+        ctx = Context(args)
+
+        target_db_params = ctx.conn_params.copy()
+        db_conn = await asyncpg.connect(**target_db_params)
+        await db_conn.close()
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_05restore")
 
 
 if __name__ == '__main__':

@@ -68,6 +68,10 @@ def find_obj_in_dict(dictionary_obj, schema, table):
         schema_matched = False
         table_matched = False
 
+        if "schema_mask" in v and v["schema_mask"] == '*' and \
+            "table_mask" in v and v["table_mask"] == '*':
+            return True, v
+
         if "schema" in v and schema == v["schema"]:
             schema_matched = True
         if "schema_mask" in v and re.search(v["schema_mask"], schema) is not None:
@@ -110,10 +114,12 @@ async def generate_dump_queries(ctx, db_conn):
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
 
+        found_white, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
+
         # dictionary_exclude has the highest priority
         found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
-        if found:
-            excluded_objs.append(exclude_obj)
+        if found and not found_white:
+            excluded_objs.append([exclude_obj, item[0], item[1]])
             ctx.logger.info("Skipping: " + str(table_name))
             continue
 
@@ -121,10 +127,8 @@ async def generate_dump_queries(ctx, db_conn):
         full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
         files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
-        found, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
-
-        if not found:
-            included_objs.append([item[0], item[1], 'main logic'])
+        if not found_white:
+            included_objs.append([a_obj, item[0], item[1], 'main logic: if NOT found rule'])
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
                 query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
@@ -140,7 +144,7 @@ async def generate_dump_queries(ctx, db_conn):
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
-            included_objs.append(a_obj)
+            included_objs.append([a_obj, item[0], item[1], 'main logic: if found rule'])
             # table found in dictionary
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"
