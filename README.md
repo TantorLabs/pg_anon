@@ -52,3 +52,48 @@ print(u['k'])
 
 ```
 
+### Generate dictionary by table rows ###
+
+
+```sql
+select
+	jsonb_pretty(
+		json_agg(json_build_object('schema', T.schm, 'table', T.tbl, 'fields', flds ))::jsonb
+	)
+from (
+    select
+        T.schm,
+        T.tbl,
+        JSON_OBJECT_AGG(fld, mrule) as flds
+    from (
+        select 'schm_1' as schm, 'tbl_a' as tbl, 'fld_1' as fld, 'md5(fld_1)' as mrule
+        union all
+        select 'schm_1', 'tbl_a', 'fld_2', 'md5(fld_2)'
+        union all
+        select 'schm_1','tbl_b', 'fld_1', 'md5(fld_1)'
+        union all
+        select 'schm_1','tbl_b', 'fld_2', 'md5(fld_2)'
+    ) T
+    group by schm, tbl
+) T
+>>
+	[
+	    {
+	        "table": "tbl_b",
+	        "fields": {
+	            "fld_1": "md5(fld_1)",
+	            "fld_2": "md5(fld_2)"
+	        },
+	        "schema": "schm_1"
+	    },
+	    {
+	        "table": "tbl_a",
+	        "fields": {
+	            "fld_1": "md5(fld_1)",
+	            "fld_2": "md5(fld_2)"
+	        },
+	        "schema": "schm_1"
+	    }
+	]
+
+```
