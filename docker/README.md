@@ -6,37 +6,58 @@ Make image:
 
 ```bash
 cd pg_anon/docker
-make PG_VERSION=13
+make PG_VERSION=14
+docker tag $(docker images -q | head -n 1) pg_anon:pg14
 ```
 
 Push image:
 
 ```bash
-docker tag $(docker images -q | head -n 1) pg_anon:pg13
+docker tag $(docker images -q | head -n 1) pg_anon:pg14
 
 docker save -o pg_anon.tar pg_anon
 
-curl --fail -v --user 'user:password' --upload-file pg_anon.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
+curl --fail -v --user 'user:password' --upload-file pg_anon_pg14.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
 ```
 
 ## Run container
 
 ```bash
+# If "The container name "/pg_anon" is already in use"
 # docker rm -f pg_anon
 
-docker run --name pg_anon -d pg_anon:pg13
+docker run --name pg_anon -d pg_anon:pg14
 docker exec -it pg_anon bash
 python3 test/full_test.py -v
 exit
 
 # Run and mount directory from HOST to /usr/share/pg_anon_from_host
 docker rm -f pg_anon
-docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg13
+docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg14
 ```
 
 ## Load saved image
 
 ```bash
-docker load < pg_anon.tar
+docker load < pg_anon_pg14.tar
+```
+
+## How to debug container
+
+```bash
+docker exec -it pg_anon bash
+>>
+	Error response from daemon: Container c876d... is not running
+
+docker logs c876d...
+
+# Fix errors in entrypoint.sh
+# Set "ENTRYPOINT exec /entrypoint_dbg.sh" in Dockerfile
+
+docker rm -f pg_anon
+make PG_VERSION=14
+docker tag $(docker images -q | head -n 1) pg_anon:pg14
+docker run --name pg_anon -d pg_anon:pg14
+docker exec -it pg_anon bash
 
 ```

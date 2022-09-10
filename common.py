@@ -21,6 +21,15 @@ def exception_helper(show_traceback=True):
     )
 
 
+def exception_handler(func):
+    def f(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except:
+            print(exception_helper(show_traceback=True))
+    return f
+
+
 class BasicEnum():
     def __str__(self):
         return self.value

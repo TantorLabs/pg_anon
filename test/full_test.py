@@ -16,7 +16,7 @@ class TestParams:
     test_db_port = '5432'
     test_source_db = 'test_source_db'
     test_target_db = 'test_target_db'
-    test_target_db_2 = 'test_target_db_2'
+    test_target_db_2 = test_target_db + '_2'
 
     def __init__(self):
         if os.environ.get('TEST_DB_USER') is not None:
@@ -131,7 +131,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--mode=dump',
             '--dict-file=test.py',
             '--threads=1',
-            '--clear-output-dir'
+            '--clear-output-dir',
+            '--verbose=debug'
         ])
 
         ctx = Context(args)
@@ -159,7 +160,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=restore',
             '--input-dir=test',
-            '--drop-custom-check-constr'
+            '--drop-custom-check-constr',
+            '--verbose=debug'
         ])
 
         ctx = Context(args)
@@ -187,7 +189,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--mode=dump',
             '--dict-file=test_exclude.py',
             '--threads=1',
-            '--clear-output-dir'
+            '--clear-output-dir',
+            '--verbose=debug'
         ])
 
         ctx = Context(args)
@@ -214,8 +217,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=restore',
-            '--input-dir=test',
-            '--drop-custom-check-constr'
+            '--input-dir=test_exclude',
+            '--drop-custom-check-constr',
+            '--verbose=debug'
         ])
 
         ctx = Context(args)

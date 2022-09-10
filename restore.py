@@ -206,23 +206,23 @@ async def make_restore(ctx):
     metadata_file.close()
     ctx.metadata = eval(metadata_content)
 
-    if get_major_version(ctx.pg_version) < get_major_version(ctx.metadata['pg_version']):
-        raise Exception(
-            "Target PostgreSQL major version %s is below than source %s!" % (
-                ctx.pg_version,
-                ctx.metadata['pg_version']
+    if not ctx.args.disable_checks:
+        if get_major_version(ctx.pg_version) < get_major_version(ctx.metadata['pg_version']):
+            raise Exception(
+                "Target PostgreSQL major version %s is below than source %s!" % (
+                    ctx.pg_version,
+                    ctx.metadata['pg_version']
+                )
             )
-        )
-
-    if get_major_version(get_pg_util_version(ctx.args.pg_restore)) < get_major_version(ctx.metadata['pg_dump_version']):
-        raise Exception(
-            "pg_restore major version %s is below than source pg_dump version %s!" % (
-                get_pg_util_version(ctx.args.pg_restore),
-                ctx.metadata['pg_dump_version']
+        if get_major_version(get_pg_util_version(ctx.args.pg_restore)) < get_major_version(ctx.metadata['pg_dump_version']):
+            raise Exception(
+                "pg_restore major version %s is below than source pg_dump version %s!" % (
+                    get_pg_util_version(ctx.args.pg_restore),
+                    ctx.metadata['pg_dump_version']
+                )
             )
-        )
+        await check_free_disk_space(ctx, db_conn)
 
-    await check_free_disk_space(ctx, db_conn)
     await run_pg_restore(ctx, 'pre-data')
 
     if ctx.args.drop_custom_check_constr:

@@ -1,6 +1,7 @@
 import argparse
 from enum import Enum
 import logging
+from logging.handlers import RotatingFileHandler
 from dump import *
 from restore import *
 
@@ -32,6 +33,7 @@ class VerboseOptions(BasicEnum, Enum):
 
 
 class Context:
+    @exception_handler
     def __init__(self, args):
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.args = args
@@ -49,7 +51,8 @@ class Context:
         if args.verbose == VerboseOptions.ERROR:
             log_level = logging.ERROR
 
-        self.logger = logging.getLogger()
+        self.logger = logging.getLogger(os.path.basename(__file__))
+        self.logger.handlers = []
         if not len(self.logger.handlers):
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
@@ -57,7 +60,30 @@ class Context:
                 fmt="%(asctime)s,%(msecs)03d %(levelname)8s %(lineno)3d - %(message)s"
             )
             handler.setFormatter(formatter)
+
+            if not os.path.exists(os.path.join(self.current_dir, 'log')):
+                os.makedirs(os.path.join(self.current_dir, 'log'))
+
+            if args.mode == AnonMode.INIT:
+                log_file = str(args.mode) + ".log"
+            else:
+                log_file = "%s_%s.log" % (
+                        str(args.mode),
+                        str(
+                            os.path.splitext(os.path.basename(args.dict_file))[0]
+                            if args.dict_file != '' else args.input_dir
+                        )
+                )
+
+            f_handler = RotatingFileHandler(
+                os.path.join(self.current_dir, 'log', log_file),
+                maxBytes=1024 * 1000,
+                backupCount=10
+            )
+            f_handler.setFormatter(formatter)
+
             self.logger.addHandler(handler)
+            self.logger.addHandler(f_handler)
             self.logger.setLevel(log_level)
 
         if args.db_user_password == '' and os.environ.get('PGPASSWORD') is not None:
@@ -215,6 +241,12 @@ class Context:
             default=False,
             help="""Initialize sequences based on maximum values. Otherwise, the sequences will be initialized
                 based on the values of the source database."""
+        )
+        parser.add_argument(
+            "--disable-checks",
+            action='store_true',
+            default=False,
+            help="""Disable checks of disk space and PostgreSQL version"""
         )
         return parser
 
