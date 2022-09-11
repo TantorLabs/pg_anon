@@ -47,7 +47,9 @@ chown postgres:postgres -R /home/pg_anon
 su - postgres
 cd /home/pg_anon
 
+#---------------------------
 # init schema "anon_funcs"
+#---------------------------
 python3 pg_anon.py \
 	--db-host=127.0.0.1 \
 	--db-name=test_source_db \
@@ -56,7 +58,9 @@ python3 pg_anon.py \
 	--db-user-password=mYy5RexGsZ \
 	--mode=init
 
+#---------------------------
 # run dump
+#---------------------------
 python3 pg_anon.py \
 	--db-host=127.0.0.1 \
 	--db-name=test_source_db \
@@ -68,8 +72,13 @@ python3 pg_anon.py \
 	--mode=dump
 # result will be written to "output/some_dict"
 
+# Possible options in mode=dump:
+#   --validate-dict
+# 	--validate-full
 
+#---------------------------
 # run restore
+#---------------------------
 python3 pg_anon.py \
 	--db-host=127.0.0.1 \
 	--db-name=test_target_db \
@@ -79,9 +88,16 @@ python3 pg_anon.py \
 	--input-dir=some_dict \
 	--mode=restore
 
+# Possible options in mode=restore:
+#   --disable-checks
+#   --seq-init-by-max-value (default false)
+#   --drop-custom-check-constr
+
+#---------------------------
 # If "--db-host" is not local then on database server prepare directory:
 # mkdir -p /home/pg_anon/output/some_dict
 # chown postgres:postgres -R /home/pg_anon
+#---------------------------
 ```
 
 #### Usage case: partial dump/restore ####

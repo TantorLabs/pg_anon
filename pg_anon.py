@@ -26,12 +26,6 @@ class AnonMode(BasicEnum, Enum):
     SYNC = 'sync'           # synchronize the contents of one or more tables
 
 
-class VerboseOptions(BasicEnum, Enum):
-    INFO = 'info'
-    DEBUG = 'debug'
-    ERROR = 'error'
-
-
 class Context:
     @exception_handler
     def __init__(self, args):
@@ -218,12 +212,14 @@ class Context:
         parser.add_argument(
             "--validate-dict",
             action='store_true',
-            default=False
+            default=False,
+            help="""Validate dictionary and show the tables that will be processed"""
         )
         parser.add_argument(
             "--validate-full",
             action='store_true',
-            default=False
+            default=False,
+            help="""Validate dictionary, show the tables and run SQL queries without data export"""
         )
         parser.add_argument(
             "--clear-output-dir",

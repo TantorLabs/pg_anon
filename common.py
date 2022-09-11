@@ -47,6 +47,12 @@ class PgAnonResult:
     result_data = None
 
 
+class VerboseOptions(BasicEnum, Enum):
+    INFO = 'info'
+    DEBUG = 'debug'
+    ERROR = 'error'
+
+
 def get_major_version(str_version):
     return version(re.findall(r"(\d+)", str_version)[0])
 

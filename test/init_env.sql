@@ -19,7 +19,7 @@ CREATE TABLE schm_other_1.some_tbl
 
 INSERT INTO schm_other_1.some_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE OR REPLACE FUNCTION schm_other_1.slow_func (value text)
 RETURNS smallint
@@ -65,7 +65,7 @@ CREATE TABLE schm_other_2.some_tbl
 
 INSERT INTO schm_other_2.some_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_other_2.exclude_tbl
 (
@@ -76,7 +76,7 @@ CREATE TABLE schm_other_2.exclude_tbl
 
 INSERT INTO schm_other_2.exclude_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 DROP SCHEMA IF EXISTS schm_customer CASCADE;
 CREATE SCHEMA IF NOT EXISTS schm_customer;
@@ -146,7 +146,7 @@ select
 	79101438060 + v as phone,
 	'company_name_' || v || '.com' as site,
 	10000000 + v * 10 as inn
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 INSERT INTO schm_customer.customer_manager
 (customer_company_id, first_name, last_name, email, phone)
@@ -156,7 +156,7 @@ select
 	'last_name_' || v as last_name,
 	'first_name_' || v || '@' || 'company_name_' || v || '.com' as email,
 	79101538060 + v as phone
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 INSERT INTO public.contracts
 (customer_company_id, customer_manager_id, amount, details, status, contract_expires)
@@ -172,14 +172,14 @@ select
 		ORDER BY random() LIMIT 1
 	),
 	NOW() + (random() * (NOW() + '365 days' - NOW())) + '365 days' as contract_expires
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 INSERT INTO public.inn_info
 (inn, company_info)
 select
 	10000000 + v * 10 as inn,
 	'company_info_' || v as company_info
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 --------------------------------------------------------------
 DROP TABLE IF EXISTS public.key_value CASCADE;
@@ -285,7 +285,7 @@ select
 	'fld_13_txt' || v, 				-- fld_13_txt,
 	'fld_14_txt' || v,				-- fld_14_txt,
 	to_hex(v)::text					-- fld_15_txt
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 --------------------------------------------------------------
 --------------------------------------------------------------
 -- table and schema masks in the dictionary
@@ -312,7 +312,7 @@ CREATE TABLE schm_mask_include_1.some_tbl
 
 INSERT INTO schm_mask_include_1.some_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_include_1.tbl_123
 -- should be copied
@@ -326,7 +326,7 @@ CREATE TABLE schm_mask_include_1.tbl_123
 
 INSERT INTO schm_mask_include_1.tbl_123 (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_include_1.tbl_123_456
 -- should be copied
@@ -340,7 +340,7 @@ CREATE TABLE schm_mask_include_1.tbl_123_456
 
 INSERT INTO schm_mask_include_1.tbl_123_456 (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_include_1.other_tbl
 -- should be copied
@@ -354,7 +354,7 @@ CREATE TABLE schm_mask_include_1.other_tbl
 
 INSERT INTO schm_mask_include_1.other_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 ------------
 CREATE TABLE schm_mask_ext_include_2.some_ext_tbl
 -- should be copied
@@ -368,7 +368,7 @@ CREATE TABLE schm_mask_ext_include_2.some_ext_tbl
 
 INSERT INTO schm_mask_ext_include_2.some_ext_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_ext_include_2.other_ext_tbl
 -- should be copied
@@ -381,7 +381,7 @@ CREATE TABLE schm_mask_ext_include_2.other_ext_tbl
 
 INSERT INTO schm_mask_ext_include_2.other_ext_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 ------------
 ------------
 ------------
@@ -403,7 +403,7 @@ CREATE TABLE schm_mask_exclude_1.some_tbl
 
 INSERT INTO schm_mask_exclude_1.some_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_exclude_1.other_tbl
 -- should be copied
@@ -416,7 +416,7 @@ CREATE TABLE schm_mask_exclude_1.other_tbl
 
 INSERT INTO schm_mask_exclude_1.other_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 ------------
 CREATE TABLE schm_mask_ext_exclude_2.some_ext_tbl
 -- should be passed
@@ -436,7 +436,7 @@ CREATE TABLE schm_mask_ext_exclude_2.some_ext_tbl
 
 INSERT INTO schm_mask_ext_exclude_2.some_ext_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 
 CREATE TABLE schm_mask_ext_exclude_2.other_ext_tbl
 -- should be copied
@@ -448,5 +448,5 @@ CREATE TABLE schm_mask_ext_exclude_2.other_ext_tbl
 
 INSERT INTO schm_mask_ext_exclude_2.other_ext_tbl (val)
 select 'text_val_' || v as val
-from generate_series(1,151) as v;
+from generate_series(1,1512) as v;
 --------------------------------------------------------------

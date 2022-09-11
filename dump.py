@@ -214,8 +214,9 @@ async def generate_dump_queries(ctx, db_conn):
                     ctx.logger.info(str(query))
                     queries.append(query)
 
-    ctx.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
-    ctx.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
+    if ctx.args.verbose == VerboseOptions.DEBUG:
+        ctx.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
+        ctx.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
 
     return queries, files
 

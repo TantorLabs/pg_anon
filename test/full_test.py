@@ -72,7 +72,7 @@ class DBOperations:
         with open(os.path.join(current_dir, 'init_env.sql'), 'r') as f:
             data = f.read()
         if scale != 1:
-            data = data.replace('15001', str(15001 * scale))
+            data = data.replace('1512', str(1512 * scale))
         await db_conn.execute(data)
 
 
