@@ -11,10 +11,17 @@ RUN apt update && \
 ARG PG_VERSION
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN if [ "$PG_VERSION" = "13" ]; then curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg; fi
-RUN if [ "$PG_VERSION" = "13" ]; then echo "deb http://apt.postgresql.org/pub/repos/apt/ `lsb_release -cs`-pgdg main" | tee  /etc/apt/sources.list.d/pgdg.list; fi
-RUN if [ "$PG_VERSION" = "13" ]; then apt update ; fi
+# RUN if [ "$PG_VERSION" = "13" ]; then curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg; fi
+# RUN if [ "$PG_VERSION" = "13" ]; then echo "deb http://apt.postgresql.org/pub/repos/apt/ `lsb_release -cs`-pgdg main" | tee  /etc/apt/sources.list.d/pgdg.list; fi
+# RUN if [ "$PG_VERSION" = "13" ]; then apt update ; fi
 
+
+# =======================================
+# Ubuntu 20.04
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ `lsb_release -cs`-pgdg main" | tee  /etc/apt/sources.list.d/pgdg.list
+RUN apt update
+# =======================================
 
 RUN apt -y install postgresql-${PG_VERSION} postgresql-client-${PG_VERSION}
 

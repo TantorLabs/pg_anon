@@ -114,12 +114,12 @@ async def generate_dump_queries(ctx, db_conn):
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
 
-        found_white, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
+        found_white_list, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
 
         # dictionary_exclude has the highest priority
         found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
-        if found and not found_white:
-            excluded_objs.append([exclude_obj, item[0], item[1]])
+        if found and not found_white_list:
+            excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
             ctx.logger.info("Skipping: " + str(table_name))
             continue
 
@@ -127,8 +127,8 @@ async def generate_dump_queries(ctx, db_conn):
         full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
         files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
-        if not found_white:
-            included_objs.append([a_obj, item[0], item[1], 'main logic: if NOT found rule'])
+        if not found_white_list:
+            included_objs.append([a_obj, item[0], item[1], 'if not found_white_list'])
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
                 query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
@@ -144,7 +144,7 @@ async def generate_dump_queries(ctx, db_conn):
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
-            included_objs.append([a_obj, item[0], item[1], 'main logic: if found rule'])
+            included_objs.append([a_obj, item[0], item[1], 'if found_white_list'])
             # table found in dictionary
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"
@@ -213,6 +213,9 @@ async def generate_dump_queries(ctx, db_conn):
                     query = "SELECT %s FROM %s %s" % (sql_expr, table_name, ctx.validate_limit)
                     ctx.logger.info(str(query))
                     queries.append(query)
+
+    ctx.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
+    ctx.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
 
     return queries, files
 

@@ -33,6 +33,73 @@ python3 test/full_test.py -v
 ```
 
 
+### Usage cases ###
+
+
+#### Usage case: full dump/restore ####
+
+Input: sourse database, empty target database, dictionary
+Task: copy full structe and all data using dictionary
+
+```python
+chown postgres:postgres -R /home/pg_anon
+
+su - postgres
+cd /home/pg_anon
+
+# init schema "anon_funcs"
+python3 pg_anon.py \
+	--db-host=127.0.0.1 \
+	--db-name=test_source_db \
+	--db-user=anon_test_user \
+	--db-port=5432 \
+	--db-user-password=mYy5RexGsZ \
+	--mode=init
+
+# run dump
+python3 pg_anon.py \
+	--db-host=127.0.0.1 \
+	--db-name=test_source_db \
+	--db-user=anon_test_user \
+	--db-port=5432 \
+	--db-user-password=mYy5RexGsZ \
+	--dict-file=some_dict.py \
+	--clear-output-dir \
+	--mode=dump
+# result will be written to "output/some_dict"
+
+
+# run restore
+python3 pg_anon.py \
+	--db-host=127.0.0.1 \
+	--db-name=test_target_db \
+	--db-user=anon_test_user \
+	--db-port=5432 \
+	--db-user-password=mYy5RexGsZ \
+	--input-dir=some_dict \
+	--mode=restore
+
+# If "--db-host" is not local then on database server prepare directory:
+# mkdir -p /home/pg_anon/output/some_dict
+# chown postgres:postgres -R /home/pg_anon
+```
+
+
+#### Usage case: sync specific tables ####
+
+```
+TODO
+```
+
+#### Usage case: dictionary generator ####
+
+
+```
+TODO
+```
+
+
+
 ### How to escape/unescape complex names of objects ###
 
 ```python
