@@ -17,6 +17,8 @@ class TestParams:
     test_source_db = 'test_source_db'
     test_target_db = 'test_target_db'
     test_target_db_2 = test_target_db + '_2'
+    test_scale = '10'
+    test_threads = 4
 
     def __init__(self):
         if os.environ.get('TEST_DB_USER') is not None:
@@ -34,6 +36,10 @@ class TestParams:
         if os.environ.get('TEST_TARGET_DB') is not None:
             self.test_target_db = os.environ["TEST_TARGET_DB"]
             self.test_target_db_2 = self.test_target_db + "_2"
+        if os.environ.get('TEST_SCALE') is not None:
+            self.test_scale = os.environ["TEST_SCALE"]
+        if os.environ.get('TEST_THREADS') is not None:
+            self.test_threads = os.environ["TEST_THREADS"]
 
 
 params = TestParams()
@@ -130,7 +136,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=dump',
             '--dict-file=test.py',
-            '--threads=1',
+            '--threads=%s' % params.test_threads,
             '--clear-output-dir',
             '--verbose=debug'
         ])
@@ -139,7 +145,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         sourse_db_params = ctx.conn_params.copy()
         db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_test_env(db_conn, 10)
+        await DBOperations.init_test_env(db_conn, params.test_scale)
         await db_conn.close()
 
         res = await MainRoutine(args).run()
@@ -158,6 +164,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
             '--mode=restore',
             '--input-dir=test',
             '--drop-custom-check-constr',
@@ -188,7 +195,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=dump',
             '--dict-file=test_exclude.py',
-            '--threads=1',
+            '--threads=%s' % params.test_threads,
             '--clear-output-dir',
             '--verbose=debug'
         ])
@@ -216,6 +223,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
             '--mode=restore',
             '--input-dir=test_exclude',
             '--drop-custom-check-constr',
