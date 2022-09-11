@@ -39,6 +39,7 @@ python3 test/full_test.py -v
 #### Usage case: full dump/restore ####
 
 Input: sourse database, empty target database, dictionary
+
 Task: copy full structe and all data using dictionary
 
 ```bash
@@ -116,6 +117,7 @@ python3 pg_anon.py \
 
 
 Input: sourse database, empty target database, dictionary
+
 Task: copy partial structe and data of specific tables using dictionary
 
 ```
@@ -125,6 +127,7 @@ TODO
 #### Usage case: sync specific tables ####
 
 Input: sourse database, NOT empty target database, dictionary
+
 Task: truncate target tables and copy data using dictionary
 
 ```
@@ -134,6 +137,7 @@ TODO
 #### Usage case: dictionary generator ####
 
 Input: sourse database
+
 Task: anonymizer itself walks through the database and all tables, searches based on some algorithm for tables and fields for anonymization, then writes a dictionary itself with substitution of suitable functions
 
 ```
