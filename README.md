@@ -41,7 +41,7 @@ python3 test/full_test.py -v
 Input: sourse database, empty target database, dictionary
 Task: copy full structe and all data using dictionary
 
-```python
+```bash
 chown postgres:postgres -R /home/pg_anon
 
 su - postgres
