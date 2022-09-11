@@ -173,7 +173,7 @@ class Context:
             "--mode",
             type=AnonMode,
             choices=list(AnonMode),
-            default=AnonMode.DUMP
+            default=AnonMode.INIT
         )
         parser.add_argument(
             "--copy-options",
@@ -301,6 +301,10 @@ class MainRoutine:
             args = Context.get_arg_parser().parse_args()
         ctx = Context(args)
 
+        if args.version:
+            ctx.logger.info("Version %s" % PG_ANON_VERSION)
+            sys.exit(0)
+
         ctx.logger.info("============ %s version %s ============" % (os.path.basename(__file__), PG_ANON_VERSION))
         ctx.logger.info("============> Started MainRoutine.run in mode: %s" % ctx.args.mode)
         if ctx.args.debug:
@@ -310,10 +314,6 @@ class MainRoutine:
                     params_info += "#   %s = %s\n" % (arg, getattr(args, arg))
             params_info += "#-----------------------------------"
             ctx.logger.info(params_info)
-
-        if args.version:
-            ctx.logger.info("Version %s" % PG_ANON_VERSION)
-            sys.exit(0)
 
         db_conn = await asyncpg.connect(**ctx.conn_params)
         ctx.pg_version = await db_conn.fetchval("select version()")
