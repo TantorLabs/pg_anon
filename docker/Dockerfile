@@ -1,8 +1,5 @@
 FROM ubuntu:20.04
 
-ARG PG_VERSION
-ARG DEBIAN_FRONTEND=noninteractive
-
 RUN apt update && \
   apt install -y wget vim nano htop tree sysbench net-tools sysstat iotop && \
   apt -y install curl gpg gnupg2 apt-transport-https lsb-release ca-certificates && \
@@ -11,6 +8,8 @@ RUN apt update && \
   apt install -y locales && locale-gen en_US.UTF-8 && \
   rm -rf /tmp/* && apt purge -y --auto-remove && apt clean -y autoclean
 
+ARG PG_VERSION
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN if [ "$PG_VERSION" = "13" ]; then curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg; fi
 RUN if [ "$PG_VERSION" = "13" ]; then echo "deb http://apt.postgresql.org/pub/repos/apt/ `lsb_release -cs`-pgdg main" | tee  /etc/apt/sources.list.d/pgdg.list; fi
