@@ -10,7 +10,7 @@ default: build
 
 build:
 	if test -d pg_anon; \
-	then echo "pg_anon exists"; \
+	then cd pg_anon && git pull; \
 	else git clone https://bitbucket.org/awide/pg_anon.git; \
 	fi
 

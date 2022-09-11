@@ -20,9 +20,11 @@ python3 /usr/share/pg_anon/pg_anon.py \$@
 EOL
 
 chmod +x /usr/bin/pg_anon
+chown postgres:postgres -R /usr/share/pg_anon
 
-mkdir -p /usr/share/pg_anon/output/test
-chmod 777 -R /usr/share/pg_anon/output
+usermod -d /usr/share/pg_anon postgres
+
+su - postgres
 cd /usr/share/pg_anon
 
 echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc
