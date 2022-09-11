@@ -3,6 +3,7 @@ import asyncpg
 import asyncio
 from common import *
 import shutil
+import json
 
 
 async def run_pg_restore(ctx, section):
@@ -333,3 +334,58 @@ async def run_analyze(ctx):
     await asyncio.wait(tasks)
     await pool.close()
     ctx.logger.info("<------------- Finished analyze")
+
+
+async def validate_restore(ctx):
+    result = PgAnonResult()
+    result.result_code = ResultCode.DONE
+    ctx.logger.info("-------------> Started validate_restore")
+
+    try:
+        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
+        ctx.dictionary_content = dictionary_file.read()
+        dictionary_file.close()
+        dictionary_obj = eval(ctx.dictionary_content)
+    except:
+        ctx.logger.error(exception_helper(show_traceback=True))
+        return [], {}
+
+    if "validate_tables" in dictionary_obj:
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_objs = await db_conn.fetch("""
+            select n.nspname, c.relname --, c.reltuples
+            from pg_class c
+            join pg_namespace n on c.relnamespace = n.oid
+            where
+                c.relkind = 'r' and
+                n.nspname not in ('pg_catalog', 'information_schema') and
+                c.reltuples > 0
+        """)
+        await db_conn.close()
+        tables_in_target_db = []
+        for item in db_objs:
+            tables_in_target_db.append(item[0] + "." + item[1])
+
+        tables_in_dict = []
+        for d in dictionary_obj["validate_tables"]:
+            tables_in_dict.append(d["schema"] + "." + d["table"])
+
+        diff_l = list(set(tables_in_target_db) - set(tables_in_dict))
+        diff_r = list(set(tables_in_dict) - set(tables_in_target_db))
+
+        if len(diff_r) > 0:
+            ctx.logger.error("validate_tables: in target DB not found tables:\n%s" % json.dumps(diff_r, indent=4))
+            result.result_code = ResultCode.FAIL
+
+        if len(diff_l) > 0:
+            ctx.logger.error(
+                """validate_tables: non-empty tables were found in target database that
+                are not described in the dictionary:\n%s""" % json.dumps(diff_l, indent=4)
+            )
+            result.result_code = ResultCode.FAIL
+    else:
+        ctx.logger.error("Section validate_tables is not found in dictionary!")
+        result.result_code = ResultCode.FAIL
+
+    ctx.logger.info("<------------- Finished validate_restore")
+    return result

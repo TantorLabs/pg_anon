@@ -4,6 +4,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from dump import *
 from restore import *
+from sync import *
 
 
 PG_ANON_VERSION = '1.0'
@@ -311,11 +312,28 @@ class MainRoutine:
                 await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
                 result = await make_init(ctx)
+            elif ctx.args.mode == AnonMode.SYNC:
+                result = await make_sync(ctx)
             else:
                 raise Exception("Unknown mode: " + ctx.args.mode)
 
             ctx.logger.info("==============================================================")
             ctx.logger.info("Mode = %s, result_code = %s" % (ctx.args.mode, result.result_code))
+        except:
+            ctx.logger.error(exception_helper(show_traceback=True))
+        finally:
+            return result
+
+    async def validate_target_tables(self) -> PgAnonResult:
+        if self.external_args is not None:
+            args = self.external_args
+        else:
+            args = Context.get_arg_parser().parse_args()
+        ctx = Context(args)
+
+        result = PgAnonResult()
+        try:
+            result = await validate_restore(ctx)
         except:
             ctx.logger.error(exception_helper(show_traceback=True))
         finally:

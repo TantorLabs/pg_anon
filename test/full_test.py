@@ -16,7 +16,6 @@ class TestParams:
     test_db_port = '5432'
     test_source_db = 'test_source_db'
     test_target_db = 'test_target_db'
-    test_target_db_2 = test_target_db + '_2'
     test_scale = '10'
     test_threads = 4
 
@@ -35,7 +34,6 @@ class TestParams:
             self.test_source_db = os.environ["TEST_SOURCE_DB"]
         if os.environ.get('TEST_TARGET_DB') is not None:
             self.test_target_db = os.environ["TEST_TARGET_DB"]
-            self.test_target_db_2 = self.test_target_db + "_2"
         if os.environ.get('TEST_SCALE') is not None:
             self.test_scale = os.environ["TEST_SCALE"]
         if os.environ.get('TEST_THREADS') is not None:
@@ -100,7 +98,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         db_conn = await asyncpg.connect(**ctx.conn_params)
         await DBOperations.init_db(db_conn, params.test_source_db)
         await DBOperations.init_db(db_conn, params.test_target_db)
-        await DBOperations.init_db(db_conn, params.test_target_db_2)
+        await DBOperations.init_db(db_conn, params.test_target_db + "_2")
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -147,11 +145,6 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         ctx = Context(args)
 
-        sourse_db_params = ctx.conn_params.copy()
-        # db_conn = await asyncpg.connect(**sourse_db_params)
-        # await DBOperations.init_test_env(db_conn, params.test_scale)
-        # await db_conn.close()
-
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_dump")
@@ -184,8 +177,22 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         res = await MainRoutine(args).run()
         self.assertTrue(res.result_code == ResultCode.DONE)
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_03_restore")
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--dict-file=test.py',
+            '--verbose=debug',
+            '--debug'
+        ])
+        #res = await MainRoutine(args).validate_target_tables()
+        #self.assertTrue(res.result_code == ResultCode.DONE)
+        #if res.result_code == ResultCode.DONE:
+        #    passed_stages.append("test_03_restore")
 
     async def test_04_dump(self):
         if "test_01_init" not in passed_stages:
@@ -218,7 +225,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         parser = Context.get_arg_parser()
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
-            '--db-name=%s' % params.test_target_db_2,
+            '--db-name=%s' % params.test_target_db + "_2",
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
@@ -230,13 +237,21 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--debug'
         ])
 
-        ctx = Context(args)
-
-        target_db_params = ctx.conn_params.copy()
-        db_conn = await asyncpg.connect(**target_db_params)
-        await db_conn.close()
-
         res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db + "_2",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--dict-file=test_exclude.py',
+            '--verbose=debug',
+            '--debug'
+        ])
+        res = await MainRoutine(args).validate_target_tables()
         self.assertTrue(res.result_code == ResultCode.DONE)
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_05restore")
