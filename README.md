@@ -47,6 +47,12 @@ chown postgres:postgres -R /home/pg_anon
 su - postgres
 cd /home/pg_anon
 
+
+# Common options in any mode:
+#   --debug			(default false)
+# 	--verbose = [info, debug, error]	(default info)
+#   --threads
+
 #---------------------------
 # init schema "anon_funcs"
 #---------------------------
@@ -73,8 +79,13 @@ python3 pg_anon.py \
 # result will be written to "output/some_dict"
 
 # Possible options in mode=dump:
-#   --validate-dict
-# 	--validate-full
+#   --validate-dict			(default false)
+# 	--validate-full			(default false)
+#   --clear_output_dir		(default true)
+#   --pg_dump=...
+#   --format=[binary, text]
+#   --copy_options=...
+
 
 #---------------------------
 # run restore
@@ -89,9 +100,10 @@ python3 pg_anon.py \
 	--mode=restore
 
 # Possible options in mode=restore:
-#   --disable-checks
-#   --seq-init-by-max-value (default false)
-#   --drop-custom-check-constr
+#   --disable-checks 					(default false)
+#   --seq-init-by-max-value 			(default false)
+#   --drop-custom-check-constr 			(default false)
+#   --pg_restore=...
 
 #---------------------------
 # If "--db-host" is not local then on database server prepare directory:

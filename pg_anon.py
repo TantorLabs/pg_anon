@@ -285,16 +285,18 @@ class MainRoutine:
 
         dt = datetime.now().isoformat(' ')
         if ctx.args.debug:
-            ctx.logger.debug('%s %s started' % (dt, os.path.basename(__file__)))
-            ctx.logger.debug("#--------------- Incoming parameters")
+            params_info = '%s %s started\n' % (dt, os.path.basename(__file__))
+            params_info += "#--------------- Incoming parameters\n"
             for arg in vars(args):
-                ctx.logger.debug("#   %s = %s" % (arg, getattr(args, arg)))
-            ctx.logger.debug("#-----------------------------------")
+                params_info += "#   %s = %s\n" % (arg, getattr(args, arg))
+            params_info += "#-----------------------------------"
+            ctx.logger.info(params_info)
 
         if args.version:
-            ctx.logger.debug("Version %s" % PG_ANON_VERSION)
+            ctx.logger.info("Version %s" % PG_ANON_VERSION)
             sys.exit(0)
 
+        ctx.logger.info("%s version %s" % (os.path.basename(__file__), PG_ANON_VERSION))
         db_conn = await asyncpg.connect(**ctx.conn_params)
         ctx.pg_version = await db_conn.fetchval("select version()")
         ctx.pg_version = re.findall(r"(\d+\.\d+)", str(ctx.pg_version))[0]

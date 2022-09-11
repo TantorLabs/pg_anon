@@ -75,10 +75,10 @@ class DBOperations:
     @staticmethod
     async def init_test_env(db_conn, scale=1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        with open(os.path.join(current_dir, 'init_env.sql'), 'r') as f:
+        with open(os.path.join(current_dir, 'init_env.sql'), 'r', encoding="utf-8") as f:
             data = f.read()
-        if scale != 1:
-            data = data.replace('1512', str(1512 * scale))
+        if int(scale) != 1:
+            data = data.replace('1512', str(1512 * int(scale)))
         await db_conn.execute(data)
 
 
@@ -91,7 +91,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
-            '--mode=init'
+            '--mode=init',
+            '--debug'
         ])
 
         ctx = Context(args)
@@ -106,7 +107,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
         sourse_db_params['database'] = params.test_source_db
         db_conn = await asyncpg.connect(**sourse_db_params)
 
-        await DBOperations.init_test_env(db_conn, 10)
+        await DBOperations.init_test_env(db_conn, params.test_scale)
         await db_conn.close()
 
         args = parser.parse_args([
@@ -115,7 +116,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
-            '--mode=init'
+            '--mode=init',
+            '--verbose=debug',
+            '--debug'
         ])
 
         res = await MainRoutine(args).run()
@@ -138,15 +141,16 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--dict-file=test.py',
             '--threads=%s' % params.test_threads,
             '--clear-output-dir',
-            '--verbose=debug'
+            '--verbose=debug',
+            '--debug'
         ])
 
         ctx = Context(args)
 
         sourse_db_params = ctx.conn_params.copy()
-        db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_test_env(db_conn, params.test_scale)
-        await db_conn.close()
+        # db_conn = await asyncpg.connect(**sourse_db_params)
+        # await DBOperations.init_test_env(db_conn, params.test_scale)
+        # await db_conn.close()
 
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
@@ -168,7 +172,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--mode=restore',
             '--input-dir=test',
             '--drop-custom-check-constr',
-            '--verbose=debug'
+            '--verbose=debug',
+            '--debug'
         ])
 
         ctx = Context(args)
@@ -197,15 +202,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--dict-file=test_exclude.py',
             '--threads=%s' % params.test_threads,
             '--clear-output-dir',
-            '--verbose=debug'
+            '--verbose=debug',
+            '--debug'
         ])
-
-        ctx = Context(args)
-
-        sourse_db_params = ctx.conn_params.copy()
-        db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_test_env(db_conn, 10)
-        await db_conn.close()
 
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
@@ -227,7 +226,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--mode=restore',
             '--input-dir=test_exclude',
             '--drop-custom-check-constr',
-            '--verbose=debug'
+            '--verbose=debug',
+            '--debug'
         ])
 
         ctx = Context(args)

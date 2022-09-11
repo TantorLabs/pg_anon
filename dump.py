@@ -46,7 +46,9 @@ async def dump_obj_func(ctx, pool, task, sn_id):
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
         res = await db_conn.execute(task)
-        ctx.task_results[hash(task)] = re.findall(r"(\d+)", res)[0]
+        count_rows = re.findall(r"(\d+)", res)[0]
+        ctx.task_results[hash(task)] = count_rows
+        ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % task)
