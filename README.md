@@ -84,8 +84,20 @@ python3 pg_anon.py \
 # chown postgres:postgres -R /home/pg_anon
 ```
 
+#### Usage case: partial dump/restore ####
+
+
+Input: sourse database, empty target database, dictionary
+Task: copy partial structe and data of specific tables using dictionary
+
+```
+TODO
+```
 
 #### Usage case: sync specific tables ####
+
+Input: sourse database, NOT empty target database, dictionary
+Task: truncate target tables and copy data using dictionary
 
 ```
 TODO
@@ -93,11 +105,12 @@ TODO
 
 #### Usage case: dictionary generator ####
 
+Input: sourse database
+Task: anonymizer itself walks through the database and all tables, searches based on some algorithm for tables and fields for anonymization, then writes a dictionary itself with substitution of suitable functions
 
 ```
 TODO
 ```
-
 
 
 ### How to escape/unescape complex names of objects ###
