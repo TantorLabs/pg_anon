@@ -15,9 +15,9 @@ Push image:
 ```bash
 docker tag $(docker images -q | head -n 1) pg_anon:pg14
 
-docker save -o pg_anon.tar pg_anon
+docker save -o pg_anon_22_9_12.tar pg_anon:pg14
 
-curl --fail -v --user 'user:password' --upload-file pg_anon_pg14.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
+curl --fail -v --user 'user:password' --upload-file pg_anon_22_9_12.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
 ```
 
 ## Run container
@@ -39,7 +39,7 @@ docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg14
 ## Load saved image
 
 ```bash
-docker load < pg_anon_pg14.tar
+docker load < pg_anon_22_9_12.tar
 ```
 
 ## How to debug container
