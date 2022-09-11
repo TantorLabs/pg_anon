@@ -103,10 +103,12 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
 
         sourse_db_params = ctx.conn_params.copy()
         sourse_db_params['database'] = params.test_source_db
-        db_conn = await asyncpg.connect(**sourse_db_params)
 
+        ctx.logger.info("============> Started init_test_env")
+        db_conn = await asyncpg.connect(**sourse_db_params)
         await DBOperations.init_test_env(db_conn, params.test_scale)
         await db_conn.close()
+        ctx.logger.info("<============ Finished init_test_env")
 
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -142,8 +144,6 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase):
             '--verbose=debug',
             '--debug'
         ])
-
-        ctx = Context(args)
 
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:

@@ -2,6 +2,8 @@
 # Documentation
 https://bitbucket.org/awide/pg_anon/src/master/
 =============================================
+python3 pg_anon.py --version
+
 # Run tests
 # Under postgres
 python3 test/full_test.py -v

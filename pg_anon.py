@@ -7,7 +7,7 @@ from restore import *
 from sync import *
 
 
-PG_ANON_VERSION = '1.0'
+PG_ANON_VERSION = '22.9.12'     # year month day
 
 
 class BasicEnum():
@@ -28,6 +28,19 @@ class AnonMode(BasicEnum, Enum):
 
 
 class Context:
+    def close_logger(self):
+        if len(self.logger.handlers) > 0:
+            for handler in self.logger.handlers:
+                try:
+                    handler.acquire()
+                    handler.flush()
+                    handler.close()
+                except (OSError, ValueError):
+                    pass
+                finally:
+                    handler.release()
+                self.logger.removeHandler(handler)
+
     @exception_handler
     def __init__(self, args):
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -47,7 +60,8 @@ class Context:
             log_level = logging.ERROR
 
         self.logger = logging.getLogger(os.path.basename(__file__))
-        self.logger.handlers = []
+        self.close_logger()
+
         if not len(self.logger.handlers):
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
@@ -102,6 +116,9 @@ class Context:
                 "keyfile": args.db_keyfile,
                 "certfile": args.db_certfile
             }
+
+    def __del__(self):
+        self.close_logger()
 
     @staticmethod
     def get_arg_parser():
@@ -284,12 +301,13 @@ class MainRoutine:
             args = Context.get_arg_parser().parse_args()
         ctx = Context(args)
 
-        dt = datetime.now().isoformat(' ')
+        ctx.logger.info("============ %s version %s ============" % (os.path.basename(__file__), PG_ANON_VERSION))
+        ctx.logger.info("============> Started MainRoutine.run in mode: %s" % ctx.args.mode)
         if ctx.args.debug:
-            params_info = '%s %s started\n' % (dt, os.path.basename(__file__))
-            params_info += "#--------------- Incoming parameters\n"
+            params_info = "#--------------- Incoming parameters\n"
             for arg in vars(args):
-                params_info += "#   %s = %s\n" % (arg, getattr(args, arg))
+                if arg not in ("db_user_password"):
+                    params_info += "#   %s = %s\n" % (arg, getattr(args, arg))
             params_info += "#-----------------------------------"
             ctx.logger.info(params_info)
 
@@ -297,7 +315,6 @@ class MainRoutine:
             ctx.logger.info("Version %s" % PG_ANON_VERSION)
             sys.exit(0)
 
-        ctx.logger.info("%s version %s" % (os.path.basename(__file__), PG_ANON_VERSION))
         db_conn = await asyncpg.connect(**ctx.conn_params)
         ctx.pg_version = await db_conn.fetchval("select version()")
         ctx.pg_version = re.findall(r"(\d+\.\d+)", str(ctx.pg_version))[0]
@@ -317,11 +334,11 @@ class MainRoutine:
             else:
                 raise Exception("Unknown mode: " + ctx.args.mode)
 
-            ctx.logger.info("==============================================================")
-            ctx.logger.info("Mode = %s, result_code = %s" % (ctx.args.mode, result.result_code))
+            ctx.logger.info("MainRoutine.run result_code = %s" % result.result_code)
         except:
             ctx.logger.error(exception_helper(show_traceback=True))
         finally:
+            ctx.logger.info("<============ Finished MainRoutine.run in mode: %s" % ctx.args.mode)
             return result
 
     async def validate_target_tables(self) -> PgAnonResult:

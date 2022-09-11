@@ -24,7 +24,6 @@ chown postgres:postgres -R /usr/share/pg_anon
 
 usermod -d /usr/share/pg_anon postgres
 
-su - postgres
 cd /usr/share/pg_anon
 
 echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc
