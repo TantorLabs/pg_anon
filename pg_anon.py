@@ -46,7 +46,7 @@ class Context:
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
         self.args = args
         self.pg_version = None
-        self.validate_limit = " limit 100 "
+        self.validate_limit = "LIMIT 100"
         self.dictionary_content = None  # for dump process
         self.metadata = None            # for restore process
         self.task_results = {}          # for dump process (key is hash() of SQL query)
@@ -231,13 +231,13 @@ class Context:
             "--validate-dict",
             action='store_true',
             default=False,
-            help="""Validate dictionary and show the tables that will be processed"""
+            help="""Validate dictionary, show the tables and run SQL queries without data export"""
         )
         parser.add_argument(
             "--validate-full",
             action='store_true',
             default=False,
-            help="""Validate dictionary, show the tables and run SQL queries without data export"""
+            help="""Same as "--validate-dict" + data export with limit"""
         )
         parser.add_argument(
             "--clear-output-dir",
@@ -261,6 +261,12 @@ class Context:
             action='store_true',
             default=False,
             help="""Disable checks of disk space and PostgreSQL version"""
+        )
+        parser.add_argument(
+            "--skip-data",
+            action='store_true',
+            default=False,
+            help="""Don't copy data. Only the database structure will be dumped"""
         )
         return parser
 

@@ -30,6 +30,8 @@ python3 test/full_test.py -v
 
 # If all tests is OK then application ready to use
 
+# Run specific case
+python3 test/full_test.py -v PGAnonValidateUnitTest
 ```
 
 
@@ -81,11 +83,11 @@ python3 pg_anon.py \
 
 # Possible options in mode=dump:
 #   --validate-dict			(default false)
-# 	--validate-full			(default false)
-#   --clear_output_dir		(default true)
-#   --pg_dump=...
+#   --validate-full			(default false)
+#   --clear-output-dir		(default true)
+#   --pg-dump=...
 #   --format=[binary, text]
-#   --copy_options=...
+#   --copy-options=...
 
 
 #---------------------------
@@ -104,7 +106,7 @@ python3 pg_anon.py \
 #   --disable-checks 					(default false)
 #   --seq-init-by-max-value 			(default false)
 #   --drop-custom-check-constr 			(default false)
-#   --pg_restore=...
+#   --pg-restore=...
 
 #---------------------------
 # If "--db-host" is not local then on database server prepare directory:

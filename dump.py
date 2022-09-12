@@ -160,7 +160,7 @@ async def generate_dump_queries(ctx, db_conn):
                     ctx.logger.info(str(query))
                     queries.append(query)
                 else:
-                    query = a_obj['raw_sql'] + ctx.validate_limit
+                    query = a_obj['raw_sql'] + " " + ctx.validate_limit
                     ctx.logger.info(str(query))
                     queries.append(query)
             else:
@@ -324,12 +324,15 @@ async def make_dump(ctx):
     try:
         if ctx.args.output_dir.find("""/""") != -1 or ctx.args.output_dir.find("""\\""") != -1:
             output_dir = ctx.args.output_dir
+        if len(ctx.args.output_dir) > 1:
+            output_dir = os.path.join(ctx.current_dir, 'output', ctx.args.output_dir)
         else:
             output_dir = os.path.join(ctx.current_dir, 'output', os.path.splitext(ctx.args.dict_file)[0])
-            ctx.args.output_dir = output_dir
-            dir_exists = os.path.exists(output_dir)
-            if not dir_exists:
-                os.makedirs(output_dir)
+
+        ctx.args.output_dir = output_dir
+        dir_exists = os.path.exists(output_dir)
+        if not dir_exists:
+            os.makedirs(output_dir)
 
         if not ctx.args.validate_dict:
             dir_empty = True
@@ -355,10 +358,11 @@ async def make_dump(ctx):
                             ctx.logger.error(msg)
                             raise Exception(msg)
 
-        ctx.logger.info("-------------> Started pg_dump")
-        await run_pg_dump(ctx, 'pre-data')
-        await run_pg_dump(ctx, 'post-data')
-        ctx.logger.info("<------------- Finished pg_dump")
+        if not ctx.args.validate_dict:
+            ctx.logger.info("-------------> Started pg_dump")
+            await run_pg_dump(ctx, 'pre-data')
+            await run_pg_dump(ctx, 'post-data')
+            ctx.logger.info("<------------- Finished pg_dump")
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
