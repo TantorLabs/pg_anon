@@ -1,5 +1,4 @@
 import argparse
-from enum import Enum
 import logging
 from logging.handlers import RotatingFileHandler
 from dump import *
@@ -7,7 +6,7 @@ from restore import *
 from sync import *
 
 
-PG_ANON_VERSION = '22.9.12'     # year month day
+PG_ANON_VERSION = '22.9.16'     # year month day
 
 
 class BasicEnum():
@@ -18,13 +17,6 @@ class BasicEnum():
 class OutputFormat(BasicEnum, Enum):
     BINARY = 'binary'
     TEXT = 'text'
-
-
-class AnonMode(BasicEnum, Enum):
-    DUMP = 'dump'           # dump table contents to files using dictionary
-    RESTORE = 'restore'     # create tables in target database and load data from files
-    INIT = 'init'           # create a schema with anonymization helper functions
-    SYNC = 'sync'           # synchronize the contents of one or more tables
 
 
 class Context:
@@ -328,15 +320,13 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            if ctx.args.mode == AnonMode.DUMP:
+            if ctx.args.mode == AnonMode.DUMP or ctx.args.mode == AnonMode.SYNC_DATA_DUMP:
                 result = await make_dump(ctx)
-            elif ctx.args.mode == AnonMode.RESTORE:
+            elif ctx.args.mode == AnonMode.RESTORE or ctx.args.mode == AnonMode.SYNC_DATA_RESTORE:
                 result = await make_restore(ctx)
                 await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
                 result = await make_init(ctx)
-            elif ctx.args.mode == AnonMode.SYNC:
-                result = await make_sync(ctx)
             else:
                 raise Exception("Unknown mode: " + ctx.args.mode)
 

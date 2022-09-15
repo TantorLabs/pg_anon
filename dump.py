@@ -119,11 +119,12 @@ async def generate_dump_queries(ctx, db_conn):
         found_white_list, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
 
         # dictionary_exclude has the highest priority
-        found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
-        if found and not found_white_list:
-            excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
-            ctx.logger.info("Skipping: " + str(table_name))
-            continue
+        if 'dictionary_exclude' in dictionary_obj:
+            found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
+            if found and not found_white_list:
+                excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
+                ctx.logger.info("Skipping: " + str(table_name))
+                continue
 
         hashed_name = hashlib.md5((item[0] + "_" + item[1]).encode()).hexdigest()
         full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
@@ -358,7 +359,7 @@ async def make_dump(ctx):
                             ctx.logger.error(msg)
                             raise Exception(msg)
 
-        if not ctx.args.validate_dict:
+        if not ctx.args.validate_dict and ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
             ctx.logger.info("-------------> Started pg_dump")
             await run_pg_dump(ctx, 'pre-data')
             await run_pg_dump(ctx, 'post-data')

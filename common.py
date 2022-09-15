@@ -6,6 +6,39 @@ from enum import Enum
 from pkg_resources import parse_version as version
 
 
+class BasicEnum():
+    def __str__(self):
+        return self.value
+
+
+class ResultCode(BasicEnum, Enum):
+    DONE = 'done'
+    FAIL = 'fail'
+    UNKNOWN = 'unknown'
+
+
+class PgAnonResult:
+    params = None            # JSON
+    result_code = ResultCode.UNKNOWN
+    result_data = None
+
+
+class VerboseOptions(BasicEnum, Enum):
+    INFO = 'info'
+    DEBUG = 'debug'
+    ERROR = 'error'
+
+
+class AnonMode(BasicEnum, Enum):
+    DUMP = 'dump'           # dump table contents to files using dictionary
+    RESTORE = 'restore'     # create tables in target database and load data from files
+    INIT = 'init'           # create a schema with anonymization helper functions
+    SYNC_DATA_DUMP = 'sync-data-dump'            # synchronize the contents of one or more tables (dump stage)
+    SYNC_DATA_RESTORE = 'sync-data-restore'      # synchronize the contents of one or more tables (restore stage)
+    SYNC_STRUCT_DUMP = 'sync-struct-dump'        # synchronize the structure of one or more tables (dump stage)
+    SYNC_STRUCT_RESTORE = 'sync-struct-restore'  # synchronize the structure of one or more tables (restore stage)
+
+
 def get_pg_util_version(util_name):
     command = [util_name, "--version"]
     res = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -28,29 +61,6 @@ def exception_handler(func):
         except:
             print(exception_helper(show_traceback=True))
     return f
-
-
-class BasicEnum():
-    def __str__(self):
-        return self.value
-
-
-class ResultCode(BasicEnum, Enum):
-    DONE = 'done'
-    FAIL = 'fail'
-    UNKNOWN = 'unknown'
-
-
-class PgAnonResult:
-    params = None            # JSON
-    result_code = ResultCode.UNKNOWN
-    result_data = None
-
-
-class VerboseOptions(BasicEnum, Enum):
-    INFO = 'info'
-    DEBUG = 'debug'
-    ERROR = 'error'
 
 
 def get_major_version(str_version):

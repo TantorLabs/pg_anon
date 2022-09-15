@@ -262,14 +262,65 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_05restore")
 
+# class PGAnonSyncUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_06sync_data(self):
+        if "test_05restore" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-dump',
+            '--dict-file=test_sync_data.py',
+            '--verbose=debug',
+            '--clear-output-dir',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-restore',
+            '--input-dir=test_sync_data',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        ctx = Context(args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        await db_conn.execute("TRUNCATE TABLE schm_other_1.some_tbl")
+        await db_conn.execute("TRUNCATE TABLE schm_other_2.some_tbl")
+        await db_conn.close()
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_06sync_data")
+
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
+        if "test_06sync_data" not in passed_stages:
+            self.assertTrue(False)
         res = await self.init_env()
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_01_validate(self):
-        if "test_01_init" not in passed_stages:
+        if "test_06sync_data" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -295,7 +346,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_02_validate_full(self):
-        if "test_01_init" not in passed_stages:
+        if "test_01_validate" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()

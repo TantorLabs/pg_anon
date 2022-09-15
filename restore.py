@@ -200,7 +200,7 @@ async def make_restore(ctx):
                 ) AND table_type = 'BASE TABLE'
         )""")
 
-    if not db_is_empty:
+    if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         raise Exception("Target DB is not empty!")
 
     metadata_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.input_dir, 'metadata.json'), 'r')
@@ -225,7 +225,8 @@ async def make_restore(ctx):
             )
         await check_free_disk_space(ctx, db_conn)
 
-    await run_pg_restore(ctx, 'pre-data')
+    if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
+        await run_pg_restore(ctx, 'pre-data')
 
     if ctx.args.drop_custom_check_constr:
         # drop all CHECK constrains containing user-defined procedures to avoid
@@ -287,7 +288,9 @@ async def make_restore(ctx):
         )
         result.result_code = ResultCode.FAIL
 
-    await run_pg_restore(ctx, 'post-data')
+    if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
+        await run_pg_restore(ctx, 'post-data')
+
     await seq_init(ctx)
 
     ctx.logger.info("<------------- Finished restore")
