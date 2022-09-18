@@ -98,15 +98,6 @@ async def generate_dump_queries(ctx, db_conn):
             table_type = 'BASE TABLE'
     """)
 
-    try:
-        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        dictionary_obj = eval(ctx.dictionary_content)
-    except:
-        ctx.logger.error(exception_helper(show_traceback=True))
-        return [], {}
-
     queries = []
     files = {}
 
@@ -116,11 +107,11 @@ async def generate_dump_queries(ctx, db_conn):
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
 
-        found_white_list, a_obj = find_obj_in_dict(dictionary_obj['dictionary'], item[0], item[1])
+        found_white_list, a_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary'], item[0], item[1])
 
         # dictionary_exclude has the highest priority
-        if 'dictionary_exclude' in dictionary_obj:
-            found, exclude_obj = find_obj_in_dict(dictionary_obj['dictionary_exclude'], item[0], item[1])
+        if 'dictionary_exclude' in ctx.dictionary_obj:
+            found, exclude_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary_exclude'], item[0], item[1])
             if found and not found_white_list:
                 excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
                 ctx.logger.info("Skipping: " + str(table_name))
@@ -323,6 +314,16 @@ async def make_dump(ctx):
     ctx.logger.info("-------------> Started dump mode")
 
     try:
+        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
+        ctx.dictionary_content = dictionary_file.read()
+        dictionary_file.close()
+        ctx.dictionary_obj = eval(ctx.dictionary_content)
+    except:
+        ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
+        result.result_code = ResultCode.FAIL
+        return result
+
+    try:
         if ctx.args.output_dir.find("""/""") != -1 or ctx.args.output_dir.find("""\\""") != -1:
             output_dir = ctx.args.output_dir
         if len(ctx.args.output_dir) > 1:
@@ -369,20 +370,35 @@ async def make_dump(ctx):
         result.result_code = ResultCode.FAIL
         return result
 
-    db_conn = await asyncpg.connect(**ctx.conn_params)
     result.result_code = ResultCode.DONE
-    tr = db_conn.transaction()
-    await tr.start()
-    try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-        await make_dump_impl(ctx, db_conn, sn_id)
-    except:
-        ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
-        result.result_code = ResultCode.FAIL
-    finally:
-        await tr.rollback()
-        await db_conn.close()
+
+    if ctx.args.mode != AnonMode.SYNC_STRUCT_DUMP:
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        tr = db_conn.transaction()
+        await tr.start()
+        try:
+            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            sn_id = await db_conn.fetchval("select pg_export_snapshot()")
+            await make_dump_impl(ctx, db_conn, sn_id)
+        except:
+            ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
+            result.result_code = ResultCode.FAIL
+        finally:
+            await tr.rollback()
+            await db_conn.close()
+
+    if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
+        metadata = {}
+        metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        metadata["pg_version"] = ctx.pg_version
+        metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
+        metadata["dictionary_content_hash"] = sha256(ctx.dictionary_content.encode('utf-8')).hexdigest()
+        metadata["dict_file"] = ctx.args.dict_file
+        metadata["total_tables_size"] = 0
+        metadata["total_rows"] = 0
+
+        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
+            out_file.write(json.dumps(metadata, indent=4))
 
     if result.result_code == ResultCode.DONE:
         ctx.logger.info("<------------- Finished dump mode")

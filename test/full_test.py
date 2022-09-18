@@ -99,6 +99,7 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_source_db)
         await DBOperations.init_db(db_conn, params.test_target_db)
         await DBOperations.init_db(db_conn, params.test_target_db + "_2")
+        await DBOperations.init_db(db_conn, params.test_target_db + "_3")
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -311,16 +312,58 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_06sync_data")
 
+    async def test_06sync_struct(self):
+        if "test_06sync_data" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-struct-dump',
+            '--dict-file=test_sync_struct.py',
+            '--verbose=debug',
+            '--clear-output-dir',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db + "_3",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-struct-restore',
+            '--input-dir=test_sync_struct',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_06sync_struct")
+
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
-        if "test_06sync_data" not in passed_stages:
+        if "test_06sync_struct" not in passed_stages:
             self.assertTrue(False)
         res = await self.init_env()
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_01_validate(self):
-        if "test_06sync_data" not in passed_stages:
+        if "test_06sync_struct" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()

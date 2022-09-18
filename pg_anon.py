@@ -40,6 +40,7 @@ class Context:
         self.pg_version = None
         self.validate_limit = "LIMIT 100"
         self.dictionary_content = None  # for dump process
+        self.dictionary_obj = {}
         self.metadata = None            # for restore process
         self.task_results = {}          # for dump process (key is hash() of SQL query)
         self.total_rows = 0
@@ -320,11 +321,12 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            if ctx.args.mode == AnonMode.DUMP or ctx.args.mode == AnonMode.SYNC_DATA_DUMP:
+            if ctx.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
                 result = await make_dump(ctx)
-            elif ctx.args.mode == AnonMode.RESTORE or ctx.args.mode == AnonMode.SYNC_DATA_RESTORE:
+            elif ctx.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
                 result = await make_restore(ctx)
-                await run_analyze(ctx)
+                if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+                    await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
                 result = await make_init(ctx)
             else:

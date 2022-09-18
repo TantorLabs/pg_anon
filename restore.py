@@ -266,32 +266,34 @@ async def make_restore(ctx):
                 await db_conn.execute(query)
 
     result.result_code = ResultCode.DONE
-    tr = db_conn.transaction()
-    await tr.start()
-    try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
-        sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-        await make_restore_impl(ctx, sn_id)
-    except:
-        ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
-        result.result_code = "fail"
-    finally:
-        await tr.commit()
-        await db_conn.close()
+    if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+        tr = db_conn.transaction()
+        await tr.start()
+        try:
+            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
+            sn_id = await db_conn.fetchval("select pg_export_snapshot()")
+            await make_restore_impl(ctx, sn_id)
+        except:
+            ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
+            result.result_code = "fail"
+        finally:
+            await tr.commit()
+            await db_conn.close()
 
-    if ctx.total_rows != int(ctx.metadata["total_rows"]):
-        ctx.logger.error("The number of restored rows (%s) is different from the metadata (%s)" % (
-                str(ctx.total_rows),
-                ctx.metadata["total_rows"]
+        if ctx.total_rows != int(ctx.metadata["total_rows"]):
+            ctx.logger.error("The number of restored rows (%s) is different from the metadata (%s)" % (
+                    str(ctx.total_rows),
+                    ctx.metadata["total_rows"]
+                )
             )
-        )
-        result.result_code = ResultCode.FAIL
+            result.result_code = ResultCode.FAIL
 
-    if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
+    if ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         await run_pg_restore(ctx, 'post-data')
 
-    await seq_init(ctx)
+    if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+        await seq_init(ctx)
 
     ctx.logger.info("<------------- Finished restore")
     return result
