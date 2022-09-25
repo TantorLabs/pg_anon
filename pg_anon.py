@@ -3,7 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from dump import *
 from restore import *
-from sync import *
+from create_dict import *
 
 
 PG_ANON_VERSION = '22.9.16'     # year month day
@@ -329,6 +329,8 @@ class MainRoutine:
                     await run_analyze(ctx)
             elif ctx.args.mode == AnonMode.INIT:
                 result = await make_init(ctx)
+            elif ctx.args.mode == AnonMode.CREATE_DICT:
+                result = await create_dict(ctx)
             else:
                 raise Exception("Unknown mode: " + ctx.args.mode)
 

@@ -260,7 +260,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         JOIN pg_namespace AS pn_t ON pn_t.oid = t.relnamespace
         JOIN pg_namespace AS pn_s ON pn_s.oid = s.relnamespace
         WHERE
-            t.relkind IN ('r', 'P')
+            t.relkind IN ('r', 'p')
             AND s.relkind = 'S'
             AND d.deptype = 'a'
             AND d.classid = 'pg_catalog.pg_class'::regclass

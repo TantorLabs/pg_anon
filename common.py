@@ -37,6 +37,7 @@ class AnonMode(BasicEnum, Enum):
     SYNC_DATA_RESTORE = 'sync-data-restore'      # synchronize the contents of one or more tables (restore stage)
     SYNC_STRUCT_DUMP = 'sync-struct-dump'        # synchronize the structure of one or more tables (dump stage)
     SYNC_STRUCT_RESTORE = 'sync-struct-restore'  # synchronize the structure of one or more tables (restore stage)
+    CREATE_DICT = 'create-dict'   # create dictionary
 
 
 def get_pg_util_version(util_name):

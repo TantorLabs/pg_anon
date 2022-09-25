@@ -415,5 +415,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
 
+class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        if "test_06sync_struct" not in passed_stages:
+            self.assertTrue(False)
+        res = await self.init_env()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+
 if __name__ == '__main__':
     unittest.main(exit=False)
