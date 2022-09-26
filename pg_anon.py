@@ -19,6 +19,11 @@ class OutputFormat(BasicEnum, Enum):
     TEXT = 'text'
 
 
+class ScanMode(BasicEnum, Enum):
+    FULL = 'full'
+    PARTIAL = 'partial'
+
+
 class Context:
     def close_logger(self):
         if len(self.logger.handlers) > 0:
@@ -44,6 +49,7 @@ class Context:
         self.metadata = None            # for restore process
         self.task_results = {}          # for dump process (key is hash() of SQL query)
         self.total_rows = 0
+        self.create_dict_matches = {}   # for create-dict mode
 
         if args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO
@@ -260,6 +266,20 @@ class Context:
             action='store_true',
             default=False,
             help="""Don't copy data. Only the database structure will be dumped"""
+        )
+        parser.add_argument(
+            "--scan-mode",
+            dest="format",
+            type=ScanMode,
+            choices=list(ScanMode),
+            default=ScanMode.PARTIAL.value,
+            help="In '--create-dict' mode defines whether to scan all data or only part of it"
+        )
+        parser.add_argument(
+            "--output-dict-file",
+            type=str,
+            default='output-dict-file.py',
+            help="In '--create-dict' mode output file will be saved to this value"
         )
         return parser
 

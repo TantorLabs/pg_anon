@@ -1,23 +1,21 @@
 {
-	"gen_dictionary": [
-		{
-			"obj_type": "field"
-			"rules": [
-				"^fld_name"
-			]
-		},
-		{
-			"obj_type": "data"
-			"rules": [
-				r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$'			# https://regexr.com/3e48o
-			]
-		},
-		{
-			"obj_type": "data"
-			"constants": [
-				"word1",
-				"word2"
-			]
-		}
-	]
+	"field": {
+		"rules": [
+			"^fld_5_em",
+			"^amount"
+		]
+	},
+	"data_regex": {
+		"rules": [
+			"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+",  # email
+			"7?[\d]{10}"	# phone 7XXXXXXXXXX
+		]
+	},
+	"data_const": {
+		"constants": [
+			"bank",
+			"account",
+			"email"
+		]
+	}
 }

@@ -417,10 +417,32 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
-        if "test_06sync_struct" not in passed_stages:
-            self.assertTrue(False)
         res = await self.init_env()
         self.assertTrue(res.result_code == ResultCode.DONE)
+
+    async def test_02_create_dict(self):
+        if "test_01_init" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=create-dict',
+            '--scan-mode=full',
+            '--dict-file=test_create_dict.py',
+            '--output-dict-file=test_create_dict_result.py',
+            '--threads=%s' % params.test_threads,
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_02_create_dict")
 
 
 if __name__ == '__main__':
