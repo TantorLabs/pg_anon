@@ -187,6 +187,8 @@ async def scan_obj_func(ctx, pool, task):
 
 async def create_dict_impl(ctx):
     result = PgAnonResult()
+    result.result_code = ResultCode.DONE
+
     loop = asyncio.get_event_loop()
     tasks = set()
     pool = await asyncpg.create_pool(
@@ -219,17 +221,22 @@ async def create_dict_impl(ctx):
     objs = {}
 
     for _, v in ctx.create_dict_matches.items():
-        item = v['nspname'] + "." + v['relname']
-        if item not in objs:
-            objs[item] = {
+        hash_func = "anon_funcs.digest(%s, 'salt_word', 'md5')"   # by default use md5 with salt
+        if str(v['type']).find('numeric') > -1:
+            hash_func = "anon_funcs.noise(%s, 10)"
+        if str(v['type']).find('timestamp') > -1:
+            hash_func = "anon_funcs.dnoise(%s,  interval '6 month')"
+
+        if v['obj_id'] not in objs:
+            objs[v['obj_id']] = {
                 "schema": v['nspname'],
                 "table": v['relname'],
                 "fields": {
-                    v["column_name"]: 'md5(%s)' % v["column_name"]
+                    v["column_name"]: hash_func % v["column_name"]
                 }
             }
         else:
-            objs[item]["fields"].update({v["column_name"]: 'md5(%s)' % v["column_name"]})
+            objs[v['obj_id']]["fields"].update({v["column_name"]: hash_func % v["column_name"]})
 
     for _, v in objs.items():
         output_dict["dictionary"].append(v)

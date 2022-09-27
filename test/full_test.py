@@ -100,6 +100,7 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db)
         await DBOperations.init_db(db_conn, params.test_target_db + "_2")
         await DBOperations.init_db(db_conn, params.test_target_db + "_3")
+        await DBOperations.init_db(db_conn, params.test_target_db + "_4")
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -176,30 +177,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--debug'
         ])
 
-        ctx = Context(args)
-
-        target_db_params = ctx.conn_params.copy()
-        db_conn = await asyncpg.connect(**target_db_params)
-        await db_conn.close()
-
         res = await MainRoutine(args).run()
         self.assertTrue(res.result_code == ResultCode.DONE)
-
-        args = parser.parse_args([
-            '--db-host=%s' % params.test_db_host,
-            '--db-name=%s' % params.test_target_db,
-            '--db-user=%s' % params.test_db_user,
-            '--db-port=%s' % params.test_db_port,
-            '--db-user-password=%s' % params.test_db_user_password,
-            '--threads=%s' % params.test_threads,
-            '--dict-file=test.py',
-            '--verbose=debug',
-            '--debug'
-        ])
-        #res = await MainRoutine(args).validate_target_tables()
-        #self.assertTrue(res.result_code == ResultCode.DONE)
-        #if res.result_code == ResultCode.DONE:
-        #    passed_stages.append("test_03_restore")
 
     async def test_04_dump(self):
         if "test_01_init" not in passed_stages:
@@ -263,7 +242,6 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_05restore")
 
-# class PGAnonSyncUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_06sync_data(self):
         if "test_05restore" not in passed_stages:
             self.assertTrue(False)
@@ -416,6 +394,8 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    target_dict = 'test_create_dict_result.py'
+
     async def test_01_init(self):
         res = await self.init_env()
         self.assertTrue(res.result_code == ResultCode.DONE)
@@ -434,7 +414,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--mode=create-dict',
             '--scan-mode=full',
             '--dict-file=test_create_dict.py',
-            '--output-dict-file=test_create_dict_result.py',
+            '--output-dict-file=%s' % self.target_dict,
             '--threads=%s' % params.test_threads,
             '--verbose=debug',
             '--debug'
@@ -443,6 +423,55 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_create_dict")
+
+    async def test_03_dump(self):
+        if "test_02_create_dict" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=dump',
+            '--dict-file=%s' % self.target_dict,
+            '--threads=%s' % params.test_threads,
+            '--clear-output-dir',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_03_dump")
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+    async def test_04_restore(self):
+        if "test_03_dump" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db + "_4",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=restore',
+            '--input-dir=%s' % self.target_dict.split('.')[0],
+            '--drop-custom-check-constr',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_04_restore")
 
 
 if __name__ == '__main__':

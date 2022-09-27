@@ -210,6 +210,7 @@ async def make_restore(ctx):
 
     if not ctx.args.disable_checks:
         if get_major_version(ctx.pg_version) < get_major_version(ctx.metadata['pg_version']):
+            await db_conn.close()
             raise Exception(
                 "Target PostgreSQL major version %s is below than source %s!" % (
                     ctx.pg_version,
@@ -217,6 +218,7 @@ async def make_restore(ctx):
                 )
             )
         if get_major_version(get_pg_util_version(ctx.args.pg_restore)) < get_major_version(ctx.metadata['pg_dump_version']):
+            await db_conn.close()
             raise Exception(
                 "pg_restore major version %s is below than source pg_dump version %s!" % (
                     get_pg_util_version(ctx.args.pg_restore),
@@ -295,6 +297,7 @@ async def make_restore(ctx):
     if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
         await seq_init(ctx)
 
+    await db_conn.close()
     ctx.logger.info("<------------- Finished restore")
     return result
 
