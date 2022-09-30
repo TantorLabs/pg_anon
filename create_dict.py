@@ -159,7 +159,7 @@ async def check_sensitive_data(ctx, task, fld_data):
 
 
 async def scan_obj_func(ctx, pool, task):
-    # ctx.logger.debug('================> Started task %s' % str(task))
+    ctx.logger.debug('================> Started task %s' % str(task))
     db_conn = await pool.acquire()
     try:
         res = await db_conn.fetch(
@@ -171,6 +171,8 @@ async def scan_obj_func(ctx, pool, task):
         )
         fld_values = set()
         for v in res:
+            if v[0] is None:
+                continue
             for word in v[0].split():
                 if len(word) > 3:
                     fld_values.add(word.lower())
@@ -182,7 +184,7 @@ async def scan_obj_func(ctx, pool, task):
         await db_conn.close()
         await pool.release(db_conn)
 
-    # ctx.logger.debug('<================ Finished task %s' % str(task))
+    ctx.logger.debug('<================ Finished task %s' % str(task))
 
 
 async def create_dict_impl(ctx):
@@ -213,7 +215,9 @@ async def create_dict_impl(ctx):
             if exception is not None:
                 await pool.close()
                 raise exception
-        tasks.add(loop.create_task(scan_obj_func(ctx, pool, v)))
+        else:
+            tasks.add(loop.create_task(scan_obj_func(ctx, pool, v)))
+    await asyncio.wait(tasks)
 
     # create output dict
     output_dict = {}
