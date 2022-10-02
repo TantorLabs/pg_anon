@@ -5,6 +5,13 @@
 			"^amount"
 		]
 	},
+	"skip_rules": [
+		{
+			"schema": "schm_mask_ext_exclude_2",
+			"table": "card_numbers",    # Optional. If no "table" then whole schema will be skipped
+			"fields": ["val_skip"]		# Optional. If no "fields" then whole table will be skipped
+		}
+	],
 	"data_regex": {
 		"rules": [
 			"""([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+""",  # email

@@ -1,3 +1,4 @@
+import random
 import time
 from common import *
 import os
@@ -56,7 +57,43 @@ async def generate_scan_objs(ctx):
     """
     query_res = await db_conn.fetch(query)
     await db_conn.close()
-    return query_res
+
+    def check_skip_fields(fld):
+        if "skip_rules" not in ctx.dictionary_obj:
+            return True
+        for v in ctx.dictionary_obj["skip_rules"]:
+            schema_match = False
+            tbl_match = False
+            fld_match = False
+            res = True
+            if "schema" in v and fld["nspname"] == v["schema"]:
+                schema_match = True
+            if "table" in v and fld["relname"] == v["table"]:
+                tbl_match = True
+            if "fields" in v and fld["column_name"] in v["fields"]:
+                fld_match = True
+            if schema_match and tbl_match and fld_match:
+                res = False
+
+            if "fields" not in v and schema_match and tbl_match:
+                res = False
+
+            if "table" not in v and "fields" not in v and schema_match:
+                res = False
+
+            if not res:
+                if ctx.args.debug:
+                    ctx.logger.debug(
+                        '!!! ------> check_skip_fields: filtered fld %s by rule %s' % (
+                            str(dict(fld)),
+                            str(v)
+                        )
+                    )
+                return res
+
+        return True
+
+    return [fld for fld in query_res if check_skip_fields(fld)]
 
 
 async def scan_borders(ctx):
@@ -128,7 +165,7 @@ async def check_sensitive_fld_names(ctx, objs):
                     ctx.logger.debug(
                         '------> check_sensitive_fld_names: match by %s, removed %s' % (
                             str(r),
-                            str(v)
+                            str(dict(v))
                         )
                     )
                 objs.remove(v)
@@ -239,7 +276,7 @@ def process_impl(name, ctx, queue, items):
         )
         tasks = set()
 
-        for item in items:
+        for i, item in enumerate(items):
             if len(tasks) >= ctx.args.threads:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 exception = done.pop().exception()
@@ -250,6 +287,9 @@ def process_impl(name, ctx, queue, items):
             task_res = loop.create_task(scan_obj_func(name, ctx, pool, item))
             tasks_res.append(task_res)
             tasks.add(task_res)
+            if i % 100:
+                progress = str(round(float(i) * 100 / len(items), 2)) + "%"
+                ctx.logger.info('Process [%s] Progress %s' % (name, str(progress)))
         if len(tasks) > 0:
             await asyncio.wait(tasks)
         await pool.close()
@@ -276,7 +316,7 @@ def process_impl(name, ctx, queue, items):
 
 async def init_process(name, ctx, items):
     start_t = time.time()
-    ctx.logger.info('================> Process [%s] started' % name)
+    ctx.logger.info('================> Process [%s] started. Input items: %s' % (name, str(len(items))))
     queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(target=process_impl, args=(name, ctx, queue, items))
@@ -311,6 +351,7 @@ async def create_dict_impl(ctx):
     await check_sensitive_fld_names(ctx, objs)  # fill ctx.create_dict_matches
 
     objs_prepared = recordset_to_list(objs)
+    random.shuffle(objs_prepared)
     part_objs = list(chunkify(objs_prepared,  ctx.args.threads))
 
     tasks = []

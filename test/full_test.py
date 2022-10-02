@@ -415,8 +415,8 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--scan-mode=full',
             '--dict-file=test_create_dict.py',
             '--output-dict-file=%s' % self.target_dict,
-            # '--threads=%s' % params.test_threads,
-            '--threads=8',
+            '--threads=%s' % params.test_threads,
+            # '--threads=8',
             '--scan-partial-rows=10000',
             '--verbose=debug',
             '--debug'

@@ -456,14 +456,15 @@ CREATE TABLE schm_mask_ext_exclude_2.card_numbers
 (
     id serial,
     val text,
+    val_skip text,
     CONSTRAINT some_tbl_9_pkey UNIQUE (id)
 );
 
-INSERT INTO schm_mask_ext_exclude_2.card_numbers (val)
-select 'invalid_val_' || v as val
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
+select 'invalid_val_' || v as val, 'invalid_val_' || v as val_skip
 from generate_series(1,1512) as v;
 
-INSERT INTO schm_mask_ext_exclude_2.card_numbers (val)
-select '1234-7568-5678-4587' as val               -- correct values
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
+select '1234-7568-5678-4587' as val, '1234-7568-5678-4587' as val_skip  -- correct values
 from generate_series(1,1512) as v;
 --------------------------------------------------------------
