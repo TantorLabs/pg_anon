@@ -40,6 +40,11 @@ class AnonMode(BasicEnum, Enum):
     CREATE_DICT = 'create-dict'   # create dictionary
 
 
+class ScanMode(BasicEnum, Enum):
+    FULL = 'full'
+    PARTIAL = 'partial'
+
+
 def get_pg_util_version(util_name):
     command = [util_name, "--version"]
     res = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)

@@ -451,3 +451,19 @@ INSERT INTO schm_mask_ext_exclude_2.other_ext_tbl_2 (val_1, val_2)
 select 'other_ext_tbl_text_val_' || v as val_1, 'other_ext_tbl_text_val_' || v as val_2
 from generate_series(1,1512) as v;
 --------------------------------------------------------------
+CREATE TABLE schm_mask_ext_exclude_2.card_numbers
+-- should be copied
+(
+    id serial,
+    val text,
+    CONSTRAINT some_tbl_9_pkey UNIQUE (id)
+);
+
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val)
+select 'invalid_val_' || v as val
+from generate_series(1,1512) as v;
+
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val)
+select '1234-7568-5678-4587' as val               -- correct values
+from generate_series(1,1512) as v;
+--------------------------------------------------------------

@@ -20,11 +20,6 @@ class OutputFormat(BasicEnum, Enum):
     TEXT = 'text'
 
 
-class ScanMode(BasicEnum, Enum):
-    FULL = 'full'
-    PARTIAL = 'partial'
-
-
 class Context:
     def close_logger(self):
         if len(self.logger.handlers) > 0:
@@ -270,7 +265,6 @@ class Context:
         )
         parser.add_argument(
             "--scan-mode",
-            dest="format",
             type=ScanMode,
             choices=list(ScanMode),
             default=ScanMode.PARTIAL.value,
@@ -281,6 +275,12 @@ class Context:
             type=str,
             default='output-dict-file.py',
             help="In '--create-dict' mode output file will be saved to this value"
+        )
+        parser.add_argument(
+            "--scan-partial-rows",
+            type=int,
+            default=10000,
+            help="In '--create-dict=partial' mode how much rows to scan"
         )
         return parser
 

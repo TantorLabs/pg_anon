@@ -51,7 +51,7 @@ async def generate_scan_objs(ctx):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
-        -- AND c.relname = 'other_ext_tbl_2'  -- debug
+        -- AND c.relname = 'card_numbers'  -- debug
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
@@ -183,14 +183,33 @@ async def scan_obj_func(name, ctx, pool, task):
     db_conn = await pool.acquire()
     res = None
     try:
-        fld_data = await db_conn.fetch(
-            """select distinct(\"%s\")::text from \"%s\".\"%s\" limit 10000""" % (
-                task['column_name'],
-                task['nspname'],
-                task['relname']
+        if ctx.args.scan_mode == ScanMode.PARTIAL:
+            fld_data = await db_conn.fetch(
+                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" LIMIT %s""" % (
+                    task['column_name'],
+                    task['nspname'],
+                    task['relname'],
+                    str(ctx.args.scan_partial_rows)
+                )
             )
-        )
-        res = check_sensitive_data_in_fld(name, ctx, task, setof_to_list(fld_data))
+            res = check_sensitive_data_in_fld(name, ctx, task, setof_to_list(fld_data))
+        if ctx.args.scan_mode == ScanMode.FULL:
+            async with db_conn.transaction():
+                cur = await db_conn.cursor(
+                    """select distinct(\"%s\")::text from \"%s\".\"%s\"""" % (
+                        task['column_name'],
+                        task['nspname'],
+                        task['relname']
+                    )
+                )
+                next_rows = True
+                while next_rows:
+                    fld_data = await cur.fetch(ctx.args.scan_partial_rows)
+                    res = check_sensitive_data_in_fld(name, ctx, task, setof_to_list(fld_data))
+                    if len(fld_data) == 0 or len(res) > 0:
+                        next_rows = False
+                        break
+
     except Exception as e:
         ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % task)
