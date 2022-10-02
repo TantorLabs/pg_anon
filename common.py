@@ -89,3 +89,22 @@ def pretty_size(bytes_v):
         else:
             suffix = multiple
     return str(amount) + suffix
+
+
+def chunkify(lst, n):
+    return [lst[i::n] for i in range(n)]
+
+
+def recordset_to_list(rs):
+    res = []
+    for rec in rs:
+        res.append(dict(rec))
+    return res
+
+
+def setof_to_list(rs):
+    res = []
+    for rec in rs:
+        for _, v in dict(rec).items():
+            res.append(v)
+    return res
