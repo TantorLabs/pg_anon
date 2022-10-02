@@ -1,15 +1,10 @@
 import time
-
 from common import *
 import os
 import asyncpg
 import asyncio
 import json
-import concurrent.futures
-from itertools import islice
-import math
 import aioprocessing
-import concurrent.futures
 import nest_asyncio
 
 
@@ -24,7 +19,8 @@ async def generate_scan_objs(ctx):
         format_type(a.atttypid, a.atttypmod) as type,
         -- a.*
         c.oid, a.attnum,
-        anon_funcs.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id
+        anon_funcs.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
+        anon_funcs.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
     FROM pg_class c
     JOIN pg_namespace n on c.relnamespace = n.oid
     JOIN pg_attribute a ON a.attrelid = c.oid
@@ -55,6 +51,7 @@ async def generate_scan_objs(ctx):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
+        -- AND c.relname = 'other_ext_tbl_2'  -- debug
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
@@ -127,12 +124,13 @@ async def check_sensitive_fld_names(ctx, objs):
     for v in objs:
         for r in ctx.dictionary_obj['field']['rules']:
             if re.search(r, v['column_name']) is not None:
-                ctx.logger.debug(
-                    '------> check_sensitive_fld_names: match by %s, removed %s' % (
-                        str(r),
-                        str(v)
+                if ctx.args.debug:
+                    ctx.logger.debug(
+                        '------> check_sensitive_fld_names: match by %s, removed %s' % (
+                            str(r),
+                            str(v)
+                        )
                     )
-                )
                 objs.remove(v)
                 ctx.create_dict_matches[v['obj_id']] = v
 
@@ -314,13 +312,12 @@ async def create_dict_impl(ctx):
 
     def fill_res_dict(dict_val):
         hash_func = "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"   # by default use md5 with salt
-        if str(dict_val['type']).find('numeric') > -1:
-            hash_func = "anon_funcs.noise(\"%s\", 10)"
-        if str(dict_val['type']).find('timestamp') > -1:
-            hash_func = "anon_funcs.dnoise(\"%s\",  interval '6 month')"
+        for fld_type, func in ctx.dictionary_obj["funcs"].items():
+            if str(dict_val['type']).find(fld_type) > -1:
+                hash_func = func
 
-        if dict_val['obj_id'] not in anon_dict_rules:
-            anon_dict_rules[dict_val['obj_id']] = {
+        if dict_val['tbl_id'] not in anon_dict_rules:
+            anon_dict_rules[dict_val['tbl_id']] = {
                 "schema": dict_val['nspname'],
                 "table": dict_val['relname'],
                 "fields": {
@@ -328,7 +325,7 @@ async def create_dict_impl(ctx):
                 }
             }
         else:
-            anon_dict_rules[dict_val['obj_id']]["fields"].update(
+            anon_dict_rules[dict_val['tbl_id']]["fields"].update(
                 {
                     dict_val["column_name"]: hash_func % dict_val["column_name"]
                 }

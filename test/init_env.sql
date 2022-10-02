@@ -438,15 +438,16 @@ INSERT INTO schm_mask_ext_exclude_2.some_ext_tbl (val)
 select 'text_val_' || v as val
 from generate_series(1,1512) as v;
 
-CREATE TABLE schm_mask_ext_exclude_2.other_ext_tbl
+CREATE TABLE schm_mask_ext_exclude_2.other_ext_tbl_2
 -- should be copied
 (
     id serial,
-    val text,
+    val_1 text,
+    val_2 text,
     CONSTRAINT some_tbl_8_pkey UNIQUE (id)
 );
 
-INSERT INTO schm_mask_ext_exclude_2.other_ext_tbl (val)
-select 'text_val_' || v as val
+INSERT INTO schm_mask_ext_exclude_2.other_ext_tbl_2 (val_1, val_2)
+select 'other_ext_tbl_text_val_' || v as val_1, 'other_ext_tbl_text_val_' || v as val_2
 from generate_series(1,1512) as v;
 --------------------------------------------------------------
