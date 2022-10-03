@@ -1,7 +1,7 @@
 FROM ubuntu:20.04
 
 RUN apt update && \
-  apt install -y wget vim nano htop tree sysbench net-tools sysstat iotop && \
+  apt install -y wget vim nano htop tree sysbench net-tools sysstat less iotop && \
   apt -y install curl gpg gnupg2 apt-transport-https lsb-release ca-certificates && \
   apt -y install software-properties-common && \
   apt -y install python3-pip && \
