@@ -96,51 +96,6 @@ async def generate_scan_objs(ctx):
     return [fld for fld in query_res if check_skip_fields(fld)]
 
 
-async def scan_borders(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params)
-    query = """
-    -- get fld for batches
-    SELECT
-        c.oid,
-        n.nspname,
-        c.relname AS table_name,
-        a.attname AS column_name,
-        format_type(a.atttypid, a.atttypmod) as type,
-        anon_funcs.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id
-        -- s.relname AS sequence_name
-    FROM pg_class AS c
-    JOIN pg_attribute AS a ON a.attrelid = c.oid
-    JOIN pg_depend AS d ON d.refobjid = c.oid AND d.refobjsubid = a.attnum
-    JOIN pg_class AS s ON s.oid = d.objid
-    JOIN pg_namespace AS n ON n.oid = c.relnamespace
-    WHERE
-        c.relkind IN ('r', 'p')
-        AND s.relkind = 'S'
-        AND d.deptype = 'a'
-        AND d.classid = 'pg_catalog.pg_class'::regclass
-        AND d.refclassid = 'pg_catalog.pg_class'::regclass
-    """
-
-    borders_res = await db_conn.fetch(query)
-    borders_res_dict = {}
-    for v in borders_res:
-        max_val = await db_conn.fetchval(
-            """select max(%s) from \"%s\".\"%s\"""" % (
-                v['column_name'],
-                v['nspname'],
-                v['table_name']
-            )
-        )
-        borders_res_dict[v['obj_id']] = {
-            "schema": v['nspname'],
-            "table": v['table_name'],
-            "pk": v['column_name'],
-            "max_val": max_val
-        }
-    await db_conn.close()
-    return borders_res_dict
-
-
 async def prepare_dictionary_obj(ctx):
     ctx.dictionary_obj['data_const']['constants'] = set(ctx.dictionary_obj['data_const']['constants'])
 
@@ -347,7 +302,6 @@ async def create_dict_impl(ctx):
     if not objs:
         raise Exception("No objects for create dictionary!")
 
-    # borders = await scan_borders(ctx)   # currently ignored
     await check_sensitive_fld_names(ctx, objs)  # fill ctx.create_dict_matches
 
     objs_prepared = recordset_to_list(objs)
@@ -360,10 +314,6 @@ async def create_dict_impl(ctx):
             asyncio.ensure_future(init_process(str(i + 1), ctx, part))
         )
     await asyncio.wait(tasks)
-
-    # res_of_each_process = []
-    # for v in tasks:
-    #    res_of_each_process.append(v.result())
 
     # create output dict
     output_dict = {}

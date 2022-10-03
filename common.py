@@ -107,6 +107,16 @@ def recordset_to_list(rs):
     return res
 
 
+def recordset_to_list_flat(rs):
+    res = []
+    for rec in rs:
+        row = []
+        for _, v in dict(rec).items():
+            row.append(v)
+        res.append(row)
+    return res
+
+
 def setof_to_list(rs):
     res = []
     for rec in rs:

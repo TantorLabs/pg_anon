@@ -1,3 +1,4 @@
+import copy
 import unittest
 import os
 import sys
@@ -7,6 +8,7 @@ from pg_anon import *
 
 input_args = None
 passed_stages = []
+rows_in_init_env = 1512
 
 
 class TestParams:
@@ -76,7 +78,7 @@ class DBOperations:
         with open(os.path.join(current_dir, 'init_env.sql'), 'r', encoding="utf-8") as f:
             data = f.read()
         if int(scale) != 1:
-            data = data.replace('1512', str(1512 * int(scale)))
+            data = data.replace(str(rows_in_init_env), str(rows_in_init_env * int(scale)))
         await db_conn.execute(data)
 
 
@@ -127,6 +129,79 @@ class BasicUnitTest:
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_01_init")
         return res
+
+    async def check_rows(self, args, schema, table, rows):
+        ctx = Context(args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_rows = await db_conn.fetch("""select * from "%s"."%s" limit 1000""" % (schema, table))
+        db_rows_prepared = []
+        for db_row in db_rows:
+            db_row_prepared = []
+            for _, v in dict(db_row).items():
+                db_row_prepared.append(v)
+            db_rows_prepared.append(db_row_prepared)
+
+        for v in rows:
+            if v not in db_rows_prepared:
+                print("check_rows: row %s not found" % str(v))
+                await db_conn.close()
+                return False
+
+        await db_conn.close()
+        return True
+
+    async def check_list_tables_and_fields(self, source_args, target_args):
+        query = """
+        SELECT 
+            n.nspname,
+            c.relname,
+            a.attname AS column_name
+        FROM pg_class c
+        JOIN pg_namespace n on c.relnamespace = n.oid
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        JOIN pg_type t ON a.atttypid = t.oid
+        LEFT JOIN pg_index i ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE
+            a.attnum > 0
+            AND c.relkind IN ('r', 'p')
+            AND a.atttypid = t.oid
+            AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+        ORDER BY 1, 2, a.attnum
+        """
+
+        ctx = Context(source_args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
+        await db_conn.close()
+
+        ctx = Context(target_args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
+        await db_conn.close()
+
+        not_found_in_target = [x for x in db_source_rows if x not in db_target_rows]
+        # not_found_in_source = [x for x in db_target_rows if x not in db_source_rows]
+
+        return not_found_in_target
+
+    async def check_rows_count(self, args, objs):
+        failed_objs = []
+        ctx = Context(args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+
+        for obj in objs:
+            try:
+                db_rows = await db_conn.fetch("""select count(1) from "%s"."%s" """ % (obj[0], obj[1]))
+                if db_rows[0][0] != obj[2]:
+                    failed_objs.append(obj)
+                    print("check_rows_count: failed check %s, count is %d" % (str(obj), db_rows[0][0]))
+            except:
+                print(exception_helper(show_traceback=True))
+                failed_objs.append(obj)
+                print("check_rows_count: failed check %s" % (str(obj)))
+
+        await db_conn.close()
+        return len(failed_objs) == 0
 
 
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -395,6 +470,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     target_dict = 'test_create_dict_result.py'
+    args = {}
 
     async def test_01_init(self):
         res = await self.init_env()
@@ -405,7 +481,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
-        args = parser.parse_args([
+        self.args_create_dict = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
             '--db-name=%s' % params.test_source_db,
             '--db-user=%s' % params.test_db_user,
@@ -422,7 +498,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--debug'
         ])
 
-        res = await MainRoutine(args).run()
+        res = await MainRoutine(self.args_create_dict).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_create_dict")
 
@@ -431,7 +507,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
-        args = parser.parse_args([
+        args = copy.deepcopy(parser.parse_args([
             '--db-host=%s' % params.test_db_host,
             '--db-name=%s' % params.test_source_db,
             '--db-user=%s' % params.test_db_user,
@@ -443,8 +519,8 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--clear-output-dir',
             '--verbose=debug',
             '--debug'
-        ])
-
+        ]))
+        self.args["dump"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_03_dump")
@@ -468,9 +544,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--verbose=debug',
             '--debug'
         ])
-
+        self.args["restore"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
         self.assertTrue(res.result_code == ResultCode.DONE)
+
+        rows = [
+            [1, 'ccd778e5850ddf15d7e9a7ad11a8bbd8', 'invalid_val_1'],
+            [2, '555da16355e56e162c12c95403419eea', 'invalid_val_2']
+        ]
+        self.assertTrue(await self.check_rows(args, "schm_mask_ext_exclude_2", "card_numbers", rows))
+
+        objs = [
+            ["schm_mask_ext_exclude_2", "card_numbers", rows_in_init_env * int(params.test_scale) * 2]   # see init_env.sql
+        ]
+        self.assertTrue(await self.check_rows_count(args, objs))
+
+        not_found_in_target = await self.check_list_tables_and_fields(self.args["dump"], self.args["restore"])
+        self.assertTrue(len(not_found_in_target) == 0)
 
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_04_restore")

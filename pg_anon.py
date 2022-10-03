@@ -75,7 +75,7 @@ class Context:
                         str(args.mode),
                         str(
                             os.path.splitext(os.path.basename(args.dict_file))[0]
-                            if args.dict_file != '' else args.input_dir
+                            if args.dict_file != '' else os.path.basename(args.input_dir)
                         )
                 )
 
