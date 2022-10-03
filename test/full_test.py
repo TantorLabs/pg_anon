@@ -184,7 +184,7 @@ class BasicUnitTest:
 
         return not_found_in_target
 
-    async def check_rows_count(self, args, objs):
+    async def check_rows_count(self, args, objs) -> bool:
         failed_objs = []
         ctx = Context(args)
         db_conn = await asyncpg.connect(**ctx.conn_params)
@@ -202,6 +202,32 @@ class BasicUnitTest:
 
         await db_conn.close()
         return len(failed_objs) == 0
+
+    async def check_list_tables(self, args, expected_tables_list) -> bool:
+        query = """
+            SELECT 
+                n.nspname,
+                c.relname
+            FROM pg_class c
+            JOIN pg_namespace n on c.relnamespace = n.oid
+            WHERE
+                c.relkind IN ('r', 'p')
+                AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+            ORDER BY 1, 2
+        """
+
+        ctx = Context(args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_rows = recordset_to_list_flat(await db_conn.fetch(query))
+        await db_conn.close()
+
+        not_found_tables = [x for x in expected_tables_list if x not in db_rows]
+        for v in not_found_tables:
+            print("check_list_tables: Table %s not found!" % str(v))
+        for v in [x for x in db_rows if x not in expected_tables_list]:
+            print("check_list_tables: Found unexpected table %s!" % str(v))
+
+        return len(not_found_tables) == 0 and len(db_rows) == len(expected_tables_list)
 
 
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -317,56 +343,9 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_05restore")
 
-    async def test_06sync_data(self):
-        if "test_05restore" not in passed_stages:
-            self.assertTrue(False)
-
-        parser = Context.get_arg_parser()
-        args = parser.parse_args([
-            '--db-host=%s' % params.test_db_host,
-            '--db-name=%s' % params.test_source_db,
-            '--db-user=%s' % params.test_db_user,
-            '--db-port=%s' % params.test_db_port,
-            '--db-user-password=%s' % params.test_db_user_password,
-            '--threads=%s' % params.test_threads,
-            '--mode=sync-data-dump',
-            '--dict-file=test_sync_data.py',
-            '--verbose=debug',
-            '--clear-output-dir',
-            '--debug'
-        ])
-
-        res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-
-        args = parser.parse_args([
-            '--db-host=%s' % params.test_db_host,
-            '--db-name=%s' % params.test_target_db,
-            '--db-user=%s' % params.test_db_user,
-            '--db-port=%s' % params.test_db_port,
-            '--db-user-password=%s' % params.test_db_user_password,
-            '--threads=%s' % params.test_threads,
-            '--mode=sync-data-restore',
-            '--input-dir=test_sync_data',
-            '--verbose=debug',
-            '--debug'
-        ])
-
-        ctx = Context(args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
-        await db_conn.execute("TRUNCATE TABLE schm_other_1.some_tbl")
-        await db_conn.execute("TRUNCATE TABLE schm_other_2.some_tbl")
-        await db_conn.close()
-
-        res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-
-        self.assertTrue(res.result_code == ResultCode.DONE)
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_06sync_data")
 
     async def test_06sync_struct(self):
-        if "test_06sync_data" not in passed_stages:
+        if "test_05restore" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -389,7 +368,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
-            '--db-name=%s' % params.test_target_db + "_3",
+            '--db-name=%s' % params.test_target_db + "_3",      # here will be created 3 empty tables
             '--db-user=%s' % params.test_db_user,
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
@@ -403,9 +382,131 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await MainRoutine(args).run()
         self.assertTrue(res.result_code == ResultCode.DONE)
 
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertTrue(await self.check_list_tables(args, [    # TODO: get list tables from specific dict
+            ['schm_other_2', 'exclude_tbl'],
+            ['schm_other_2', 'some_tbl'],
+            ['schm_mask_include_1', 'tbl_123']
+        ]))
+
+        objs = [
+            ["schm_other_2", "exclude_tbl", 0],
+            ["schm_other_2", "some_tbl", 0],
+            ["schm_mask_include_1", "tbl_123", 0]
+        ]
+        self.assertTrue(await self.check_rows_count(args, objs))
+
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_06sync_struct")
+
+    async def test_07sync_data(self):
+        # --mode=sync-data-dump ---> --mode=sync-data-restore [3 empty tables already exists]
+        if "test_06sync_struct" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-dump',
+            '--dict-file=test_sync_data.py',    # data will be saved to "output/test_sync_data"
+            '--verbose=debug',
+            '--clear-output-dir',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db + "_3",  # here target DB have 3 empty tables
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-restore',
+            '--input-dir=test_sync_data',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        self.assertTrue(await self.check_list_tables(args, [    # TODO: get list tables from specific dict
+            ['schm_other_2', 'exclude_tbl'],
+            ['schm_other_2', 'some_tbl'],
+            ['schm_mask_include_1', 'tbl_123']
+        ]))
+
+        objs = [
+            ["schm_other_2", "exclude_tbl", rows_in_init_env * int(params.test_scale)],
+            ["schm_other_2", "some_tbl", rows_in_init_env * int(params.test_scale)],
+            ["schm_mask_include_1", "tbl_123", rows_in_init_env * int(params.test_scale)]
+        ]
+        self.assertTrue(await self.check_rows_count(args, objs))
+
+        rows = [
+            [3, 't***l_3'],
+            [4, 't***l_4']
+        ]
+        self.assertTrue(await self.check_rows(args, "schm_mask_include_1", "tbl_123", rows))
+
+    async def test_08sync_data(self):
+        # --mode=sync-data-dump ---> --mode=sync-data-restore [target DB is not empty]
+        if "test_06sync_struct" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-dump',
+            '--dict-file=test_sync_data_2.py',
+            '--verbose=debug',
+            '--clear-output-dir',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db,     # here target DB is NOT empty
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=sync-data-restore',                 # just sync data of specific tables from test_sync_data_2.py
+            '--input-dir=test_sync_data_2',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        ctx = Context(args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        # pg_anon does not clear tables on its own
+        await db_conn.execute("TRUNCATE TABLE schm_other_1.some_tbl")   # manual clean
+        await db_conn.execute("TRUNCATE TABLE schm_other_2.some_tbl")
+        await db_conn.close()
+
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        objs = [
+            ["schm_other_1", "some_tbl", rows_in_init_env * int(params.test_scale)],
+            ["schm_other_2", "some_tbl", rows_in_init_env * int(params.test_scale)]
+        ]
+        self.assertTrue(await self.check_rows_count(args, objs))
 
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):

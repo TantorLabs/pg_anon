@@ -10,12 +10,21 @@ from common import *
 
 async def run_pg_dump(ctx, section):
     os.environ["PGPASSWORD"] = ctx.args.db_user_password
+
+    specific_tables = []
+    if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
+        tmp_list = []
+        for v in ctx.dictionary_obj["dictionary"]:
+            tmp_list.append(["-t", '\"%s\".\"%s\"' % (v["schema"], v["table"])])
+        specific_tables = [item for sublist in tmp_list for item in sublist]
+
     command = [
         ctx.args.pg_dump,
         "-h", ctx.args.db_host,
         "-p", str(ctx.args.db_port), "-v", "-w",
         "-U", ctx.args.db_user,
         "--exclude-schema", "anon_funcs",
+        *specific_tables,
         "--section", section, "-E", "UTF8", "-F", "c", "-s", "-f",
         os.path.join(
             ctx.args.output_dir,
@@ -396,6 +405,11 @@ async def make_dump(ctx):
         metadata["dict_file"] = ctx.args.dict_file
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
+
+        tmp_list = []
+        for v in ctx.dictionary_obj["dictionary"]:
+            tmp_list.append(v["schema"])
+        metadata["schemas"] = list(set(tmp_list))
 
         with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
             out_file.write(json.dumps(metadata, indent=4))

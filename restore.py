@@ -227,6 +227,12 @@ async def make_restore(ctx):
             )
         await check_free_disk_space(ctx, db_conn)
 
+    if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+        for v in ctx.metadata['schemas']:
+            query = "CREATE SCHEMA IF NOT EXISTS \"%s\"" % v
+            ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
+            await db_conn.execute(query)
+
     if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
         await run_pg_restore(ctx, 'pre-data')
 
