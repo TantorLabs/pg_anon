@@ -73,9 +73,29 @@ class DBOperations:
             print(exception_helper(show_traceback=True))
 
     @staticmethod
-    async def init_test_env(db_conn, scale=1):
+    async def init_db_once(db_conn, db_name):
+        try:
+            db_exists = await db_conn.fetch(
+                """select datname from pg_database where datname = '%s'""" % db_name
+            )
+            if len(db_exists) == 0:
+                await db_conn.execute(
+                    """
+                    CREATE DATABASE %s
+                        WITH
+                        OWNER = %s
+                        ENCODING = 'UTF8'
+                        LC_COLLATE = 'en_US.UTF-8'
+                        LC_CTYPE = 'en_US.UTF-8'
+                        template = template0
+                    """ % (db_name, params.test_db_user))
+        except:
+            print(exception_helper(show_traceback=True))
+
+    @staticmethod
+    async def init_env(db_conn, env_sql_file, scale=1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        with open(os.path.join(current_dir, 'init_env.sql'), 'r', encoding="utf-8") as f:
+        with open(os.path.join(current_dir, env_sql_file), 'r', encoding="utf-8") as f:
             data = f.read()
         if int(scale) != 1:
             data = data.replace(str(rows_in_init_env), str(rows_in_init_env * int(scale)))
@@ -108,11 +128,11 @@ class BasicUnitTest:
         sourse_db_params = ctx.conn_params.copy()
         sourse_db_params['database'] = params.test_source_db
 
-        ctx.logger.info("============> Started init_test_env")
+        ctx.logger.info("============> Started init_env")
         db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_test_env(db_conn, params.test_scale)
+        await DBOperations.init_env(db_conn, 'init_env.sql', params.test_scale)
         await db_conn.close()
-        ctx.logger.info("<============ Finished init_test_env")
+        ctx.logger.info("<============ Finished init_env")
 
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -128,6 +148,49 @@ class BasicUnitTest:
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_01_init")
+        return res
+
+    async def init_stress_env(self):
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=postgres',
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=init',
+            '--debug'
+        ])
+
+        ctx = Context(args)
+
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        await DBOperations.init_db_once(db_conn, params.test_source_db + "_stress")
+        await db_conn.close()
+
+        sourse_db_params = ctx.conn_params.copy()
+        sourse_db_params['database'] = params.test_source_db + "_stress"
+
+        ctx.logger.info("============> Started init_stress_env")
+        db_conn = await asyncpg.connect(**sourse_db_params)
+        await DBOperations.init_env(db_conn, 'init_stress_env.sql', params.test_scale)
+        await db_conn.close()
+        ctx.logger.info("<============ Finished init_stress_env")
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db + "_stress",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=init',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("init_stress_env")
         return res
 
     async def check_rows(self, args, schema, table, rows):
@@ -656,7 +719,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(await self.check_rows(args, "schm_mask_ext_exclude_2", "card_numbers", rows))
 
         objs = [
-            ["schm_mask_ext_exclude_2", "card_numbers", rows_in_init_env * int(params.test_scale) * 2]   # see init_env.sql
+            ["schm_mask_ext_exclude_2", "card_numbers", rows_in_init_env * int(params.test_scale) * 3]   # see init_env.sql
         ]
         self.assertTrue(await self.check_rows_count(args, objs))
 
@@ -666,6 +729,41 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_04_restore")
 
+
+class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    target_dict = 'test_create_dict_result.py'
+    args = {}
+
+    async def test_01_stress_init(self):
+        res = await self.init_stress_env()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        passed_stages.append("test_01_stress_init")
+
+    async def test_02_create_dict(self):
+        if "test_01_stress_init" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db + "_stress",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=create-dict',
+            '--scan-mode=full',
+            '--dict-file=test_create_dict.py',
+            '--output-dict-file=stress_%s' % self.target_dict,
+            '--threads=%s' % params.test_threads,
+            # '--threads=8',
+            '--scan-partial-rows=10000',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(self.args_create_dict).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_02_create_dict")
 
 if __name__ == '__main__':
     unittest.main(exit=False)

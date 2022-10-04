@@ -152,7 +152,7 @@ def check_sensitive_data_in_fld(name, ctx, task, fld_data):
     for v in fld_data:
         if task['obj_id'] not in create_dict_matches and task['obj_id'] not in ctx.create_dict_matches:
             for r in ctx.dictionary_obj['data_regex']['rules']:
-                if re.search(r, v) is not None:
+                if v is not None and re.search(r, v) is not None:
                     if ctx.args.debug:
                         ctx.logger.debug(
                             '========> Process[%s]: check_sensitive_data: match by %s, %s, %s' % (

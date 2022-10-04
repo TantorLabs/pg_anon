@@ -467,4 +467,8 @@ from generate_series(1,1512) as v;
 INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
 select '1234-7568-5678-4587' as val, '1234-7568-5678-4587' as val_skip  -- correct values
 from generate_series(1,1512) as v;
+
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
+select NULL as val, NULL as val_skip  -- null values
+from generate_series(1,1512) as v;
 --------------------------------------------------------------
