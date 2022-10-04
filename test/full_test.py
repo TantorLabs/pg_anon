@@ -166,16 +166,9 @@ class BasicUnitTest:
 
         db_conn = await asyncpg.connect(**ctx.conn_params)
         await DBOperations.init_db_once(db_conn, params.test_source_db + "_stress")
-        await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
         sourse_db_params['database'] = params.test_source_db + "_stress"
-
-        ctx.logger.info("============> Started init_stress_env")
-        db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_env(db_conn, 'init_stress_env.sql', params.test_scale)
-        await db_conn.close()
-        ctx.logger.info("<============ Finished init_stress_env")
 
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -189,6 +182,20 @@ class BasicUnitTest:
         ])
 
         res = await MainRoutine(args).run()
+
+        schema_exists = await db_conn.fetch(
+            """select nspname from pg_namespace where nspname = 'stress'"""
+        )
+        await db_conn.close()
+        if len(schema_exists) == 0:
+            ctx.logger.info("============> Started init_stress_env")
+            db_conn = await asyncpg.connect(**sourse_db_params)
+            await DBOperations.init_env(db_conn, 'init_stress_env.sql', params.test_scale)
+            await db_conn.close()
+            ctx.logger.info("<============ Finished init_stress_env")
+        else:
+            ctx.logger.info("============> Schema 'stress' already exists")
+
         if res.result_code == ResultCode.DONE:
             passed_stages.append("init_stress_env")
         return res
@@ -751,19 +758,20 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             '--db-port=%s' % params.test_db_port,
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=create-dict',
-            '--scan-mode=full',
+            '--scan-mode=partial',
             '--dict-file=test_create_dict.py',
             '--output-dict-file=stress_%s' % self.target_dict,
-            '--threads=%s' % params.test_threads,
-            # '--threads=8',
-            '--scan-partial-rows=10000',
-            '--verbose=debug',
-            '--debug'
+            # '--threads=%s' % params.test_threads,
+            '--threads=6',
+            '--scan-partial-rows=10000' #,
+            # '--verbose=debug',
+            # '--debug'
         ])
 
         res = await MainRoutine(self.args_create_dict).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_create_dict")
+
 
 if __name__ == '__main__':
     unittest.main(exit=False)

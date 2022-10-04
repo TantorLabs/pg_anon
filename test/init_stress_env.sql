@@ -8,7 +8,7 @@ declare
 		'    customer_company_id integer NOT NULL,'
 		'    first_name character varying(32),'
 		'    last_name character varying(32),'
-        '    name character varying(32),'
+        '    name text,'
 		'    email character varying(64),'
 		'    phone character varying(32),'
         '    fld_datetime timestamp,'
@@ -20,7 +20,11 @@ declare
 		'	v as customer_company_id,'
 		'	''first_name_'' || v as first_name,'
 		'	''last_name_'' || v as last_name,'
-		'	''name'' || v as name,'
+		'	(select array_to_string(array_agg(t.v::text), '' '')'
+		'	from ('
+		'			select anon_funcs.random_string(10) as v'
+		'		from generate_series(1,100)'
+		'	) t) as name,'
 		'	''first_name_'' || v || ''@'' || ''company_name_'' || v || ''.com'' as email,'
 		'	79101538060 + v as phone,'
 	    '  NOW() + (random() * (NOW() + ''100 days'' - NOW())) + ''100 days'''
@@ -41,3 +45,9 @@ begin
 		end if;
 	END LOOP;
 end$$;
+
+SELECT pg_size_pretty(pg_database_size(datname)), datname, pg_database_size(datname) as v
+from pg_database
+order by v desc;
+-->>
+--	20 GB	test_source_db_stress	21824553763
