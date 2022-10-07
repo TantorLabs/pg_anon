@@ -2,8 +2,9 @@ import copy
 import unittest
 import os
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from pg_anon import *
+from decimal import Decimal
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 
 input_args = None
@@ -203,7 +204,7 @@ class BasicUnitTest:
     async def check_rows(self, args, schema, table, rows):
         ctx = Context(args)
         db_conn = await asyncpg.connect(**ctx.conn_params)
-        db_rows = await db_conn.fetch("""select * from "%s"."%s" limit 1000""" % (schema, table))
+        db_rows = await db_conn.fetch("""select * from "%s"."%s" limit 10000""" % (schema, table))
         db_rows_prepared = []
         for db_row in db_rows:
             db_row_prepared = []
@@ -211,14 +212,35 @@ class BasicUnitTest:
                 db_row_prepared.append(v)
             db_rows_prepared.append(db_row_prepared)
 
+        def cmp_two_rows(row_a, row_b):
+            result = True
+            if len(db_row) == len(v):
+                for i in range(len(db_row)):
+                    if row_a[i] != row_b[i] and row_a[i] != '*':
+                        return False
+            return result
+
+        result = True
         for v in rows:
-            if v not in db_rows_prepared:
+            found = False
+            for db_row in db_rows_prepared:
+                if cmp_two_rows(v, db_row):
+                    found = True
+                    break
+            if not found:
                 print("check_rows: row %s not found" % str(v))
                 await db_conn.close()
-                return False
+                result = False
+
+        if not result:
+            print("========================================")
+            print("Following data exists:")
+            for i, v in enumerate(db_rows_prepared):
+                if i < 10:
+                    print(str(v))
 
         await db_conn.close()
-        return True
+        return result
 
     async def check_list_tables_and_fields(self, source_args, target_args):
         query = """
@@ -640,7 +662,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    target_dict = 'test_create_dict_result.py'
+    target_dict = 'test_meta_dict_result.py'
     args = {}
 
     async def test_01_init(self):
@@ -660,7 +682,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=create-dict',
             '--scan-mode=full',
-            '--dict-file=test_create_dict.py',
+            '--dict-file=test_meta_dict.py',
             '--output-dict-file=%s' % self.target_dict,
             '--threads=%s' % params.test_threads,
             # '--threads=8',
@@ -720,8 +742,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
         rows = [
-            [1, 'ccd778e5850ddf15d7e9a7ad11a8bbd8', 'invalid_val_1'],
-            [2, '555da16355e56e162c12c95403419eea', 'invalid_val_2']
+            [1, 'ccd778e5850ddf15d7e9a7ad11a8bbd8', 'invalid_val_1', '*', round(Decimal(0.1), 2),
+                '8cbd2171ab4a14fc243421cde93a71c2', 'f0b314b0620d1ad1a8af2f56cbdd22ac'],
+            [2, '555da16355e56e162c12c95403419eea', 'invalid_val_2', '*', round(Decimal(0.2), 2),
+                '8cbd2171ab4a14fc243421cde93a71c2', '5385212a24152afd7599bdb3577c7f47']
         ]
         self.assertTrue(await self.check_rows(args, "schm_mask_ext_exclude_2", "card_numbers", rows))
 
@@ -759,7 +783,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             '--db-user-password=%s' % params.test_db_user_password,
             '--mode=create-dict',
             '--scan-mode=partial',
-            '--dict-file=test_create_dict.py',
+            '--dict-file=test_meta_dict.py',
             '--output-dict-file=stress_%s' % self.target_dict,
             # '--threads=%s' % params.test_threads,
             '--threads=6',

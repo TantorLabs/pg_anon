@@ -33,7 +33,7 @@ declare
 begin
 	execute 'DROP SCHEMA IF EXISTS stress CASCADE';
     execute 'CREATE SCHEMA stress';
-	FOR i IN 1..10000 LOOP
+	FOR i IN 1..10 LOOP
 		query = format(q_tbl, i, i);
 		--raise notice '%', query;
 		execute query;

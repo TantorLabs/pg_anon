@@ -114,27 +114,43 @@ async def prepare_dictionary_obj(ctx):
 
 async def check_sensitive_fld_names(ctx, objs):
     for v in objs:
-        for r in ctx.dictionary_obj['field']['rules']:
-            if re.search(r, v['column_name']) is not None:
-                if ctx.args.debug:
-                    ctx.logger.debug(
-                        '------> check_sensitive_fld_names: match by %s, removed %s' % (
-                            str(r),
-                            str(dict(v))
+        if 'rules' in ctx.dictionary_obj['field']:
+            for r in ctx.dictionary_obj['field']['rules']:
+                if re.search(r, v['column_name']) is not None:
+                    if ctx.args.debug:
+                        ctx.logger.debug(
+                            '!!! ------> check_sensitive_fld_names: match by %s, removed %s' % (
+                                str(r),
+                                str(dict(v))
+                            )
                         )
-                    )
-                objs.remove(v)
-                ctx.create_dict_matches[v['obj_id']] = v
+                    objs.remove(v)
+                    ctx.create_dict_matches[v['obj_id']] = v
+
+        if 'constants' in ctx.dictionary_obj['field']:
+            for r in ctx.dictionary_obj['field']['constants']:
+                if r == v['column_name']:
+                    if ctx.args.debug:
+                        ctx.logger.debug(
+                            '!!! ------> check_sensitive_fld_names: match by %s, removed %s' % (
+                                str(r),
+                                str(dict(v))
+                            )
+                        )
+                    objs.remove(v)
+                    ctx.create_dict_matches[v['obj_id']] = v
 
 
 def check_sensitive_data_in_fld(name, ctx, task, fld_data):
+    if task['relname'] == 'card_numbers':
+        x = 1
     fld_data_set = set()
     create_dict_matches = {}
     for v in fld_data:
         if v is None:
             continue
         for word in v.split():
-            if len(word) > 3:
+            if len(word) >= 5:
                 fld_data_set.add(word.lower())
 
     result = set.intersection(ctx.dictionary_obj['data_const']['constants'], fld_data_set)
@@ -172,8 +188,23 @@ def check_sensitive_data_in_fld(name, ctx, task, fld_data):
 async def scan_obj_func(name, ctx, pool, task):
     if ctx.args.debug:
         ctx.logger.debug('====>>> Process[%s]: Started task %s' % (name, str(task)))
+
+    if not(
+            task["type"] in ('text', 'integer', 'bigint') or \
+            task["type"].find("character varying") > -1
+    ):
+        if ctx.args.debug:
+            ctx.logger.debug(
+                '========> Process[%s]: scan_obj_func: task %s skipped by field type [integer, text, bigint, character var]' % (
+                    name,
+                    str(task)
+                )
+            )
+        return None
+
     db_conn = await pool.acquire()
     res = None
+
     try:
         if ctx.args.scan_mode == ScanMode.PARTIAL:
             fld_data = await db_conn.fetch(
@@ -261,7 +292,7 @@ def process_impl(name, ctx, queue, items):
 
     tasks_res_final = []
     for v in tasks_res:
-        if len(v.result()) > 0:
+        if v.result() is not None and len(v.result()) > 0:
             tasks_res_final.append(v.result())
 
     queue.put(tasks_res_final)

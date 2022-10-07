@@ -457,18 +457,36 @@ CREATE TABLE schm_mask_ext_exclude_2.card_numbers
     id serial,
     val text,
     val_skip text,
+    usd numeric(30, 4),
+    num_val numeric(30, 4),
+    "имя_поля" text,
+    "другое_поле" text,
     CONSTRAINT some_tbl_9_pkey UNIQUE (id)
 );
 
-INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
-select 'invalid_val_' || v as val, 'invalid_val_' || v as val_skip
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip, usd, num_val, "имя_поля", "другое_поле")
+select
+    'invalid_val_' || v as val,
+    'invalid_val_' || v as val_skip,
+    v * 0.1,
+    v * 0.1,
+    'abc' as "имя_поля",
+    'некоторое слово ' || v as "другое_поле"
 from generate_series(1,1512) as v;
 
-INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
-select '1234-7568-5678-4587' as val, '1234-7568-5678-4587' as val_skip  -- correct values
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip, usd, num_val)
+select
+    '1234-7568-5678-4587' as val,
+    '1234-7568-5678-4587' as val_skip,
+    v * 0.1,
+    v * 0.1
 from generate_series(1,1512) as v;
 
-INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip)
-select NULL as val, NULL as val_skip  -- null values
+INSERT INTO schm_mask_ext_exclude_2.card_numbers (val, val_skip, usd, num_val)
+select
+    NULL as val,
+    NULL as val_skip,
+    v * 0.1,
+    v * 0.1
 from generate_series(1,1512) as v;
 --------------------------------------------------------------

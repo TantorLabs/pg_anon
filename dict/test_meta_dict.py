@@ -1,8 +1,12 @@
 {
-	"field": {
+	"field": {				# must be anonymized without scanning
 		"rules": [
 			"^fld_5_em",
 			"^amount"
+		],
+		"constants": [
+			"usd",
+			"имя_поля"
 		]
 	},
 	"skip_rules": [
@@ -35,7 +39,8 @@
 		"constants": [
 			"bank",
 			"account",
-			"email"
+			"email",
+			"слово"
 		]
 	},
 	"funcs": {
