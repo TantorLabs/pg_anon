@@ -119,7 +119,7 @@ async def check_sensitive_fld_names(ctx, objs):
                 if re.search(r, v['column_name']) is not None:
                     if ctx.args.debug:
                         ctx.logger.debug(
-                            '!!! ------> check_sensitive_fld_names: match by %s, removed %s' % (
+                            '!!! ------> check_sensitive_fld_names: match by "%s", removed %s' % (
                                 str(r),
                                 str(dict(v))
                             )
@@ -132,7 +132,7 @@ async def check_sensitive_fld_names(ctx, objs):
                 if r == v['column_name']:
                     if ctx.args.debug:
                         ctx.logger.debug(
-                            '!!! ------> check_sensitive_fld_names: match by %s, removed %s' % (
+                            '!!! ------> check_sensitive_fld_names: match by "%s", removed %s' % (
                                 str(r),
                                 str(dict(v))
                             )
@@ -171,7 +171,7 @@ def check_sensitive_data_in_fld(name, ctx, task, fld_data):
                 if v is not None and re.search(r, v) is not None:
                     if ctx.args.debug:
                         ctx.logger.debug(
-                            '========> Process[%s]: check_sensitive_data: match by %s, %s, %s' % (
+                            '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s' % (
                                 name,
                                 str(r),
                                 str(v),
@@ -189,15 +189,17 @@ async def scan_obj_func(name, ctx, pool, task):
     if ctx.args.debug:
         ctx.logger.debug('====>>> Process[%s]: Started task %s' % (name, str(task)))
 
+    start_t = time.time()
     if not(
-            task["type"] in ('text', 'integer', 'bigint') or \
+            task["type"] in ('text', 'integer', 'bigint') or
             task["type"].find("character varying") > -1
     ):
         if ctx.args.debug:
             ctx.logger.debug(
-                '========> Process[%s]: scan_obj_func: task %s skipped by field type [integer, text, bigint, character var]' % (
+                '========> Process[%s]: scan_obj_func: task %s skipped by field type %s' % (
                     name,
-                    str(task)
+                    str(task),
+                    '[integer, text, bigint, character varying(x)]'
                 )
             )
         return None
@@ -208,10 +210,11 @@ async def scan_obj_func(name, ctx, pool, task):
     try:
         if ctx.args.scan_mode == ScanMode.PARTIAL:
             fld_data = await db_conn.fetch(
-                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" LIMIT %s""" % (
+                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s""" % (
                     task['column_name'],
                     task['nspname'],
                     task['relname'],
+                    task['column_name'],
                     str(ctx.args.scan_partial_rows)
                 )
             )
@@ -219,10 +222,11 @@ async def scan_obj_func(name, ctx, pool, task):
         if ctx.args.scan_mode == ScanMode.FULL:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
-                    """select distinct(\"%s\")::text from \"%s\".\"%s\"""" % (
+                    """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null""" % (
                         task['column_name'],
                         task['nspname'],
-                        task['relname']
+                        task['relname'],
+                        task['column_name']
                     )
                 )
                 next_rows = True
@@ -240,6 +244,15 @@ async def scan_obj_func(name, ctx, pool, task):
         await db_conn.close()
         await pool.release(db_conn)
 
+    end_t = time.time()
+    if end_t - start_t > 10:
+        ctx.logger.warning("!!! Process[%s]: scan_obj_func took %s sec. Task %s" % (
+                name,
+                str(round(end_t - start_t, 2)),
+                str(task)
+            )
+        )
+
     if ctx.args.debug:
         ctx.logger.debug(
             '<<<<==== Process[%s]: Found %s items(s) Finished task %s ' % (
@@ -253,6 +266,12 @@ async def scan_obj_func(name, ctx, pool, task):
 
 def process_impl(name, ctx, queue, items):
     tasks_res = []
+
+    status_ratio = 10
+    if len(items) > 1000:
+        status_ratio = 100
+    if len(items) > 50000:
+        status_ratio = 1000
 
     async def run():
         pool = await asyncpg.create_pool(
@@ -273,7 +292,7 @@ def process_impl(name, ctx, queue, items):
             task_res = loop.create_task(scan_obj_func(name, ctx, pool, item))
             tasks_res.append(task_res)
             tasks.add(task_res)
-            if i % 100:
+            if i % status_ratio:
                 progress = str(round(float(i) * 100 / len(items), 2)) + "%"
                 ctx.logger.info('Process [%s] Progress %s' % (name, str(progress)))
         if len(tasks) > 0:
