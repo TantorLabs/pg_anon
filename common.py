@@ -1,3 +1,5 @@
+import decimal
+import json
 import sys
 import traceback
 import subprocess
@@ -123,3 +125,13 @@ def setof_to_list(rs):
         for _, v in dict(rec).items():
             res.append(v)
     return res
+
+
+def to_json(obj, formatted=False):
+    def type_adapter(o):
+        if isinstance(o, decimal.Decimal):
+            return float(o)
+    if formatted:
+        return json.dumps(obj, default=type_adapter, ensure_ascii=False, indent=4, sort_keys=True)
+    else:
+        return json.dumps(obj, default=type_adapter, ensure_ascii=False).encode('utf8')

@@ -14,6 +14,7 @@ async def run_pg_restore(ctx, section):
         "-p", str(ctx.args.db_port), "-v", "-w",
         "-U", ctx.args.db_user,
         "-d", ctx.args.db_name,
+        "-j", str(ctx.args.threads),
         os.path.join(
             ctx.args.input_dir,
             section.replace("-", "_") + ".backup"

@@ -163,7 +163,7 @@ INSERT INTO public.contracts
 select
 	v as customer_company_id,
 	v as customer_manager_id,
-	floor(random() * 1000)::integer as amount,
+	floor(v * 0.7)::integer as amount,
 	'details_' || v as details,
 	(
 		SELECT s.cs FROM (
@@ -490,3 +490,24 @@ select
     v * 0.1
 from generate_series(1,1512) as v;
 --------------------------------------------------------------
+CREATE TABLE public.tbl_100
+(
+    id serial,
+    val text,
+    val_skip text,
+    amount numeric(30, 4),
+    num_val numeric(30, 4),
+    "имя_поля" text,
+    "другое_поле" text,
+    CONSTRAINT tbl_100_pkey UNIQUE (id)
+);
+
+INSERT INTO public.tbl_100 (val, val_skip, amount, num_val, "имя_поля", "другое_поле")
+select
+    'invalid_val_' || v as val,
+    'invalid_val_' || v as val_skip,
+    v * 0.1,
+    v * 0.1,
+    'abc' as "имя_поля",
+    'некоторое слово ' || v as "другое_поле"
+from generate_series(1,1512) as v;

@@ -1,7 +1,5 @@
 import copy
 import unittest
-import os
-import sys
 from pg_anon import *
 from decimal import Decimal
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -105,6 +103,12 @@ class DBOperations:
 
 class BasicUnitTest:
     async def init_env(self):
+        if "init_env" in passed_stages:
+            print("init_env already called")
+            res = PgAnonResult()
+            res.result_code = ResultCode.DONE
+            return res
+
         parser = Context.get_arg_parser()
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -124,6 +128,8 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db + "_2")
         await DBOperations.init_db(db_conn, params.test_target_db + "_3")
         await DBOperations.init_db(db_conn, params.test_target_db + "_4")
+        await DBOperations.init_db(db_conn, params.test_target_db + "_5")
+        await DBOperations.init_db(db_conn, params.test_target_db + "_6")
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -148,10 +154,16 @@ class BasicUnitTest:
 
         res = await MainRoutine(args).run()
         if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_01_init")
+            passed_stages.append("init_env")
         return res
 
     async def init_stress_env(self):
+        if "init_stress_env" in passed_stages:
+            print("init_stress_env already called")
+            res = PgAnonResult()
+            res.result_code = ResultCode.DONE
+            return res
+
         parser = Context.get_arg_parser()
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -201,10 +213,19 @@ class BasicUnitTest:
             passed_stages.append("init_stress_env")
         return res
 
-    async def check_rows(self, args, schema, table, rows):
+    async def check_rows(self, args, schema, table, fields, rows):
         ctx = Context(args)
         db_conn = await asyncpg.connect(**ctx.conn_params)
-        db_rows = await db_conn.fetch("""select * from "%s"."%s" limit 10000""" % (schema, table))
+        if fields is None:
+            db_rows = await db_conn.fetch("""select * from "%s"."%s" limit 10000""" % (schema, table))
+        else:
+            db_rows = await db_conn.fetch(
+                """select %s from "%s"."%s" limit 10000""" % (
+                    ', '.join(fields),
+                    schema,
+                    table
+                )
+            )
         db_rows_prepared = []
         for db_row in db_rows:
             db_row_prepared = []
@@ -321,6 +342,83 @@ class BasicUnitTest:
 
         return len(not_found_tables) == 0 and len(db_rows) == len(expected_tables_list)
 
+    async def get_list_tables_with_diff_data(self, source_args, target_args):
+        query = """
+        SELECT 
+            n.nspname,
+            c.relname,
+            a.attname AS column_name
+        FROM pg_class c
+        JOIN pg_namespace n on c.relnamespace = n.oid
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        JOIN pg_type t ON a.atttypid = t.oid
+        LEFT JOIN pg_index i ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE
+            a.attnum > 0
+            AND c.relkind IN ('r', 'p')
+            AND a.atttypid = t.oid
+            AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+        ORDER BY 1, 2, a.attnum
+        """
+
+        ctx = Context(source_args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
+        for row in db_source_rows:
+            data_query = """SELECT "%s" FROM "%s"."%s" LIMIT 5""" % (row[2], row[0], row[1])
+            vals = recordset_to_list_flat(await db_conn.fetch(data_query))
+            row.append(vals)
+        await db_conn.close()
+
+        ctx = Context(target_args)
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
+        for row in db_target_rows:
+            data_query = """SELECT "%s" FROM "%s"."%s" LIMIT 5""" % (row[2], row[0], row[1])
+            vals = recordset_to_list_flat(await db_conn.fetch(data_query))
+            row.append(vals)
+        await db_conn.close()
+
+        target_tables = [x for x in db_target_rows if x not in db_source_rows]
+        source_tables = [x for x in db_source_rows if x not in db_target_rows]
+        # not_found_in_source = [x for x in db_target_rows if x not in db_source_rows]
+
+        return source_tables, target_tables
+
+    def save_and_compare_result(self, file_name, list_objects):
+        current_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)))
+        to_json(list_objects, formatted=True)
+        with open(os.path.join(current_dir, file_name), "w") as out_file:
+            out_file.write(to_json(list_objects, formatted=True))
+
+        try:
+            orig_data = open(os.path.join(current_dir, file_name + ".result"), 'r')
+            orig_content = orig_data.read()
+            orig_data.close()
+            orig_content_obj = eval(orig_content)
+        except:
+            print("Needs to create %s with content: %s" % (
+                    os.path.join(current_dir, file_name + ".result"),
+                    to_json(list_objects, formatted=True)
+                )
+            )
+
+        try:
+            current_data = open(os.path.join(current_dir, file_name), 'r')
+            current_content = current_data.read()
+            current_data.close()
+            current_content_obj = eval(current_content)
+        except:
+            pass
+
+        cmp = orig_content_obj == current_content_obj
+        if not cmp:
+            print(str(orig_content_obj))
+            print("!=")
+            print(str(current_content_obj))
+
+        return cmp
+
 
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
@@ -328,7 +426,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_02_dump(self):
-        if "test_01_init" not in passed_stages:
+        if "init_env" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -374,7 +472,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_04_dump(self):
-        if "test_01_init" not in passed_stages:
+        if "init_env" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -397,7 +495,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             passed_stages.append("test_04_dump")
         self.assertTrue(res.result_code == ResultCode.DONE)
 
-    async def test_05restore(self):
+    async def test_05_restore(self):
         if "test_04_dump" not in passed_stages:
             self.assertTrue(False)
 
@@ -433,11 +531,10 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await MainRoutine(args).validate_target_tables()
         self.assertTrue(res.result_code == ResultCode.DONE)
         if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_05restore")
+            passed_stages.append("test_05_restore")
 
-
-    async def test_06sync_struct(self):
-        if "test_05restore" not in passed_stages:
+    async def test_06_sync_struct(self):
+        if "test_05_restore" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -488,11 +585,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(await self.check_rows_count(args, objs))
 
         if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_06sync_struct")
+            passed_stages.append("test_06_sync_struct")
 
-    async def test_07sync_data(self):
+    async def test_07_sync_data(self):
         # --mode=sync-data-dump ---> --mode=sync-data-restore [3 empty tables already exists]
-        if "test_06sync_struct" not in passed_stages:
+        if "test_06_sync_struct" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -546,11 +643,14 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             [3, 't***l_3'],
             [4, 't***l_4']
         ]
-        self.assertTrue(await self.check_rows(args, "schm_mask_include_1", "tbl_123", rows))
+        self.assertTrue(await self.check_rows(args, "schm_mask_include_1", "tbl_123", None, rows))
 
-    async def test_08sync_data(self):
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_07_sync_data")
+
+    async def test_08_sync_data(self):
         # --mode=sync-data-dump ---> --mode=sync-data-restore [target DB is not empty]
-        if "test_06sync_struct" not in passed_stages:
+        if "test_07_sync_data" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -600,16 +700,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         ]
         self.assertTrue(await self.check_rows_count(args, objs))
 
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_08_sync_data")
+
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
-        if "test_06sync_struct" not in passed_stages:
-            self.assertTrue(False)
-        res = await self.init_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-
     async def test_01_validate(self):
-        if "test_06sync_struct" not in passed_stages:
+        if "test_06_sync_struct" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -670,7 +767,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(res.result_code == ResultCode.DONE)
 
     async def test_02_create_dict(self):
-        if "test_01_init" not in passed_stages:
+        if "init_env" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -747,7 +844,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             [2, '555da16355e56e162c12c95403419eea', 'invalid_val_2', '*', round(Decimal(0.2), 2),
                 '8cbd2171ab4a14fc243421cde93a71c2', '5385212a24152afd7599bdb3577c7f47']
         ]
-        self.assertTrue(await self.check_rows(args, "schm_mask_ext_exclude_2", "card_numbers", rows))
+        self.assertTrue(await self.check_rows(args, "schm_mask_ext_exclude_2", "card_numbers", None, rows))
 
         objs = [
             ["schm_mask_ext_exclude_2", "card_numbers", rows_in_init_env * int(params.test_scale) * 3]   # see init_env.sql
@@ -768,10 +865,9 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
     async def test_01_stress_init(self):
         res = await self.init_stress_env()
         self.assertTrue(res.result_code == ResultCode.DONE)
-        passed_stages.append("test_01_stress_init")
 
     async def test_02_create_dict(self):
-        if "test_01_stress_init" not in passed_stages:
+        if "init_stress_env" not in passed_stages:
             self.assertTrue(False)
 
         parser = Context.get_arg_parser()
@@ -795,6 +891,78 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         res = await MainRoutine(self.args_create_dict).run()
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_create_dict")
+
+
+class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    args = {}
+
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+    async def test_02_mask_dump(self):
+        if "init_env" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db,
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=dump',
+            '--dict-file=mask_test.py',
+            '--threads=%s' % params.test_threads,
+            '--clear-output-dir',
+            '--verbose=debug',
+            '--debug'   #, '--validate-dict'
+        ])
+
+        self.args["dump"] = copy.deepcopy(args)
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_02_mask_dump")
+
+    async def test_03_mask_restore(self):
+        if "test_02_mask_dump" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_target_db + "_5",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--threads=%s' % params.test_threads,
+            '--mode=restore',
+            '--input-dir=mask_test',
+            '--drop-custom-check-constr',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        self.args["restore"] = copy.deepcopy(args)
+        res = await MainRoutine(args).run()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+        rows = [
+            [1, round(Decimal(101010), 2)],
+            [2, round(Decimal(101010), 2)]
+        ]
+        self.assertTrue(await self.check_rows(args, "public", "contracts", ["id", "amount"], rows))
+
+        rows = [
+            [1, round(Decimal(202020), 2)],
+            [2, round(Decimal(202020), 2)]
+        ]
+        self.assertTrue(await self.check_rows(args, "public", "tbl_100", ["id", "amount"], rows))
+
+        source_tables, target_tables = await self.get_list_tables_with_diff_data(self.args["dump"], self.args["restore"])
+        self.assertTrue(self.save_and_compare_result("PGAnonMaskUnitTest_source_tables", source_tables))
+        self.assertTrue(self.save_and_compare_result("PGAnonMaskUnitTest_target_tables", target_tables))
 
 
 if __name__ == '__main__':

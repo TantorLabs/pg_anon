@@ -1,0 +1,90 @@
+[
+    [
+        "public",
+        "contracts",
+        "amount",
+        [
+            [
+                101010.0
+            ],
+            [
+                101010.0
+            ],
+            [
+                101010.0
+            ],
+            [
+                101010.0
+            ],
+            [
+                101010.0
+            ]
+        ]
+    ],
+    [
+        "public",
+        "tbl_100",
+        "amount",
+        [
+            [
+                202020.0
+            ],
+            [
+                202020.0
+            ],
+            [
+                202020.0
+            ],
+            [
+                202020.0
+            ],
+            [
+                202020.0
+            ]
+        ]
+    ],
+    [
+        "schm_other_1",
+        "some_tbl",
+        "val",
+        [
+            [
+                "text const"
+            ],
+            [
+                "text const"
+            ],
+            [
+                "text const"
+            ],
+            [
+                "text const"
+            ],
+            [
+                "text const"
+            ]
+        ]
+    ],
+    [
+        "schm_other_2",
+        "some_tbl",
+        "val",
+        [
+            [
+                "text_val_1 modified"
+            ],
+            [
+                "text_val_2 modified"
+            ],
+            [
+                "text_val_3 modified"
+            ],
+            [
+                "text_val_4 modified"
+            ],
+            [
+                "text_val_5 modified"
+            ]
+        ]
+    ]
+]

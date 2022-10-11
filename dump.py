@@ -23,7 +23,7 @@ async def run_pg_dump(ctx, section):
         "-h", ctx.args.db_host,
         "-p", str(ctx.args.db_port), "-v", "-w",
         "-U", ctx.args.db_user,
-        "--exclude-schema", "anon_funcs",
+        "--exclude-schema", "anon_funcs", "--exclude-schema", "columnar_internal",
         *specific_tables,
         "--section", section, "-E", "UTF8", "-F", "c", "-s", "-f",
         os.path.join(
@@ -75,27 +75,44 @@ async def dump_obj_func(ctx, pool, task, sn_id):
 
 
 def find_obj_in_dict(dictionary_obj, schema, table):
+    result = None
     for v in dictionary_obj:
         schema_matched = False
         table_matched = False
-
-        if "schema_mask" in v and v["schema_mask"] == '*' and \
-            "table_mask" in v and v["table_mask"] == '*':
-            return True, v
+        schema_mask_matched = False
+        table_mask_matched = False
 
         if "schema" in v and schema == v["schema"]:
-            schema_matched = True
-        if "schema_mask" in v and re.search(v["schema_mask"], schema) is not None:
             schema_matched = True
 
         if "table" in v and table == v["table"]:
             table_matched = True
-        if "table_mask" in v and re.search(v["table_mask"], table) is not None:
-            table_matched = True
 
         if schema_matched and table_matched:
-            return True, v
-    return False, None
+            return v
+
+        if "schema_mask" in v and v["schema_mask"] != "*" and re.search(v["schema_mask"], schema) is not None:
+            schema_mask_matched = True
+
+        if "table_mask" in v and v["table_mask"] != "*" and re.search(v["table_mask"], table) is not None:
+            table_mask_matched = True
+
+        if "schema_mask" in v and v["schema_mask"] == "*":
+            schema_mask_matched = True
+
+        if "table_mask" in v and v["table_mask"] == "*":
+            table_mask_matched = True
+
+        if schema_mask_matched and table_matched:
+            result = v
+
+        if schema_matched and table_mask_matched:
+            result = v
+
+        if schema_mask_matched and table_mask_matched:
+            result = v
+
+    return result
 
 
 async def generate_dump_queries(ctx, db_conn):
@@ -116,11 +133,16 @@ async def generate_dump_queries(ctx, db_conn):
     for item in db_objs:
         table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
 
-        found_white_list, a_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary'], item[0], item[1])
+        if item[0] == 'public' and item[1] == 'tbl_100':
+            x = 1
+
+        a_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary'], item[0], item[1])
+        found_white_list = not(a_obj is None)
 
         # dictionary_exclude has the highest priority
         if 'dictionary_exclude' in ctx.dictionary_obj:
-            found, exclude_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary_exclude'], item[0], item[1])
+            exclude_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary_exclude'], item[0], item[1])
+            found = not(exclude_obj is None)
             if found and not found_white_list:
                 excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
                 ctx.logger.info("Skipping: " + str(table_name))
@@ -198,7 +220,7 @@ async def generate_dump_queries(ctx, db_conn):
                         if (not v[0].islower() and not v[0].isupper()) or v[0].isupper():
                             sql_expr += "\"" + v[0] + "\" as \"" + v[0] + "\""
                         else:
-                            sql_expr += " " + v[0] + " as \"" + v[0] + "\""
+                            sql_expr += " \"" + v[0] + "\" as \"" + v[0] + "\""
                     if cnt != len(fields_list) - 1:
                         sql_expr += ",\n"
 
