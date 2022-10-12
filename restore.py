@@ -125,7 +125,7 @@ async def restore_obj_func(ctx, pool, task, sn_id):
         ctx.logger.debug("COPY %s [rows] Task: %s " % (ctx.total_rows, str(task)))
     except Exception as e:
         ctx.logger.error("Exception in restore_obj_func:\n" + exception_helper())
-        raise Exception("Can't execute task: %s" % task)
+        # raise Exception("Can't execute task: %s" % task)
     finally:
         await pool.release(db_conn)
 
