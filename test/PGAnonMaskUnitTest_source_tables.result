@@ -1,5 +1,23 @@
 [
     [
+        "columnar_internal",
+        "tbl_200",
+        "id",
+        []
+    ],
+    [
+        "columnar_internal",
+        "tbl_200",
+        "val",
+        []
+    ],
+    [
+        "columnar_internal",
+        "tbl_200",
+        "val_skip",
+        []
+    ],
+    [
         "public",
         "contracts",
         "amount",

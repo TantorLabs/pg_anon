@@ -511,3 +511,13 @@ select
     'abc' as "имя_поля",
     'некоторое слово ' || v as "другое_поле"
 from generate_series(1,1512) as v;
+--------------------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS columnar_internal;
+
+CREATE TABLE columnar_internal.tbl_200
+(
+    id integer,
+    val text,
+    val_skip text
+);
+--------------------------------------------------------------

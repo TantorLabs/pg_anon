@@ -18,12 +18,18 @@ async def run_pg_dump(ctx, section):
             tmp_list.append(["-t", '\"%s\".\"%s\"' % (v["schema"], v["table"])])
         specific_tables = [item for sublist in tmp_list for item in sublist]
 
+    exclude_schemas = []
+    tmp_list = []
+    for v in ctx.exclude_schemas:
+        tmp_list.append(["--exclude-schema", v])
+    exclude_schemas = [item for sublist in tmp_list for item in sublist]
+
     command = [
         ctx.args.pg_dump,
         "-h", ctx.args.db_host,
         "-p", str(ctx.args.db_port), "-v", "-w",
         "-U", ctx.args.db_user,
-        "--exclude-schema", "anon_funcs", "--exclude-schema", "columnar_internal",
+        *exclude_schemas,
         *specific_tables,
         "--section", section, "-E", "UTF8", "-F", "c", "-s", "-f",
         os.path.join(
@@ -117,13 +123,13 @@ def find_obj_in_dict(dictionary_obj, schema, table):
 
 async def generate_dump_queries(ctx, db_conn):
     db_objs = await db_conn.fetch("""
-        SELECT table_schema, table_name
-        FROM information_schema.tables
-        WHERE
-            table_schema not in ('pg_catalog', 'information_schema') and
-            table_type = 'BASE TABLE'
-    """)
-
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE
+                table_schema not in (%s) and
+                table_type = 'BASE TABLE'
+        """ % ', '.join(["'" + v + "'" for v in ctx.exclude_schemas + ['pg_catalog', 'information_schema']])
+    )
     queries = []
     files = {}
 

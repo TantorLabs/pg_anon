@@ -45,6 +45,7 @@ class Context:
         self.task_results = {}          # for dump process (key is hash() of SQL query)
         self.total_rows = 0
         self.create_dict_matches = {}   # for create-dict mode
+        self.exclude_schemas = ["anon_funcs", "columnar_internal"]
 
         if args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO

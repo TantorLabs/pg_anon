@@ -852,7 +852,12 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(await self.check_rows_count(args, objs))
 
         not_found_in_target = await self.check_list_tables_and_fields(self.args["dump"], self.args["restore"])
-        self.assertTrue(len(not_found_in_target) == 0)
+        self.assertTrue(len(not_found_in_target) == 3)
+        self.assertTrue(not_found_in_target == [
+             ['columnar_internal', 'tbl_200', 'id'],
+             ['columnar_internal', 'tbl_200', 'val'],
+             ['columnar_internal', 'tbl_200', 'val_skip']
+        ])
 
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_04_restore")
