@@ -81,7 +81,7 @@ class Context:
 
             f_handler = RotatingFileHandler(
                 os.path.join(self.current_dir, 'log', log_file),
-                maxBytes=1024 * 1000,
+                maxBytes=1024 * 10000,
                 backupCount=10
             )
             f_handler.setFormatter(formatter)
