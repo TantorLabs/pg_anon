@@ -1,8 +1,10 @@
 import copy
 import unittest
-from pg_anon import *
+import sys
+import os
 from decimal import Decimal
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from pg_anon import *
 
 
 input_args = None

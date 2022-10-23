@@ -6,18 +6,18 @@ Make image:
 
 ```bash
 cd pg_anon/docker
-make PG_VERSION=14
-docker tag $(docker images -q | head -n 1) pg_anon:pg14
+make PG_VERSION=15
+docker tag $(docker images -q | head -n 1) pg_anon:pg15
 ```
 
 Push image:
 
 ```bash
-docker tag $(docker images -q | head -n 1) pg_anon:pg14
+docker tag $(docker images -q | head -n 1) pg_anon:pg15
 
-docker save -o pg_anon_22_9_12.tar pg_anon:pg14
+docker save -o pg_anon_22_10_23.tar pg_anon:pg15
 
-curl --fail -v --user 'user:password' --upload-file pg_anon_22_9_12.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
+curl --fail -v --user 'user:password' --upload-file pg_anon_22_10_23.tar https://nexus.tantorlabs.ru/repository/tantorlabs-raw/
 ```
 
 ## Run container
@@ -26,14 +26,14 @@ curl --fail -v --user 'user:password' --upload-file pg_anon_22_9_12.tar https://
 # If "The container name "/pg_anon" is already in use"
 # docker rm -f pg_anon
 
-docker run --name pg_anon -d pg_anon:pg14
+docker run --name pg_anon -d pg_anon:pg15
 docker exec -it pg_anon bash
 python3 test/full_test.py -v
 exit
 
 # Run and mount directory from HOST to /usr/share/pg_anon_from_host
 docker rm -f pg_anon
-docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg14
+docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg15
 ```
 
 ## Load saved image
@@ -55,9 +55,8 @@ docker logs c876d...
 # Set "ENTRYPOINT exec /entrypoint_dbg.sh" in Dockerfile
 
 docker rm -f pg_anon
-make PG_VERSION=14
-docker tag $(docker images -q | head -n 1) pg_anon:pg14
-docker run --name pg_anon -d pg_anon:pg14
+make PG_VERSION=15
+docker tag $(docker images -q | head -n 1) pg_anon:pg15
+docker run --name pg_anon -d pg_anon:pg15
 docker exec -it pg_anon bash
-
 ```
