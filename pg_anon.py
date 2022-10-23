@@ -93,24 +93,27 @@ class Context:
         if args.db_user_password == '' and os.environ.get('PGPASSWORD') is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
 
-        if args.db_certfile == '' and args.db_keyfile == '':
-            self.conn_params = {
-                "host": args.db_host,
-                "database": args.db_name,
-                "port": args.db_port,
-                "user": args.db_user,
-                "password": args.db_user_password
-            }
-        if args.db_certfile != '' and args.db_keyfile != '':
-            self.conn_params = {
-                "host": args.db_host,
-                "database": args.db_name,
-                "port": args.db_port,
-                "user": args.db_user,
-                "password": args.db_user_password,
-                "keyfile": args.db_keyfile,
-                "certfile": args.db_certfile
-            }
+        self.conn_params = {
+            "host": args.db_host,
+            "database": args.db_name,
+            "port": args.db_port,
+            "user": args.db_user
+        }
+
+        if args.db_passfile != '':
+            self.conn_params.update({"passfile": args.db_passfile})
+
+        if args.db_user_password != '':
+            self.conn_params.update({"password": args.db_user_password})
+
+        if args.db_ssl_cert_file != '' or args.db_ssl_key_file != '' or args.db_ssl_ca_file != '':
+            self.conn_params.update({
+                'ssl': 'on',
+                'ssl_min_protocol_version': 'TLSv1.2',
+                'ssl_cert_file': args.db_ssl_cert_file,
+                'ssl_key_file': args.db_ssl_key_file,
+                'ssl_ca_file': args.db_ssl_ca_file,
+            })
 
     def __del__(self):
         self.close_logger()
@@ -155,12 +158,22 @@ class Context:
             default=''
         )
         parser.add_argument(
-            "--db-keyfile",
+            "--db-passfile",
             type=str,
             default=''
         )
         parser.add_argument(
-            "--db-certfile",
+            "--db-ssl-key-file",
+            type=str,
+            default=''
+        )
+        parser.add_argument(
+            "--db-ssl-cert-file",
+            type=str,
+            default=''
+        )
+        parser.add_argument(
+            "--db-ssl-ca-file",
             type=str,
             default=''
         )
