@@ -2,27 +2,37 @@
 
 
 ### Installation ###
+
 ```python
 apt install -y python3-pip
+
+git clone https://github.com/TantorLabs/pg_anon.git
+cd pg_anon
 pip3 install -r requirements.txt
+chown -R postgres .
 ```
 
+You must have a local database installed. An example of installing a database in ubuntu:
+```
+echo "deb [arch=amd64] http://apt.postgresql.org/pub/repos/apt focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+apt update && apt --yes remove postgresql\*
+apt -y install postgresql-15 postgresql-client-15
+
+sed -i  '/listen_addresses/s/^#//g' /etc/postgresql/15/main/postgresql.conf
+sed -ie "s/^listen_addresses.*/listen_addresses = '127.0.0.1'/" /etc/postgresql/15/main/postgresql.conf
+
+pg_ctlcluster 15 main restart
+```
+
+Create a test user with superuser rights (required to run `COPY` commands).
 ```sql
 psql -c "CREATE USER anon_test_user WITH PASSWORD 'mYy5RexGsZ' SUPERUSER;" -U postgres
-
 ```
 
-```bash
-set TEST_DB_USER=anon_test_user
-set TEST_DB_USER_PASSWORD=mYy5RexGsZ
-set TEST_DB_HOST=127.0.0.1
-set TEST_DB_PORT=5432
-set TEST_SOURCE_DB=test_source_db
-set TEST_TARGET_DB=test_target_db
-```
-
-
+Check if the application is working, run unit tests:
 ```python
+su - postgres
 python3 test/full_test.py -v
 >>
 	Ran N tests in ...
@@ -32,6 +42,17 @@ python3 test/full_test.py -v
 
 # Run specific case
 python3 test/full_test.py -v PGAnonValidateUnitTest
+```
+
+
+You can override test database connection settings as follows:
+```bash
+set TEST_DB_USER=anon_test_user
+set TEST_DB_USER_PASSWORD=mYy5RexGsZ
+set TEST_DB_HOST=127.0.0.1
+set TEST_DB_PORT=5432
+set TEST_SOURCE_DB=test_source_db
+set TEST_TARGET_DB=test_target_db
 ```
 
 
