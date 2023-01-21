@@ -67,12 +67,6 @@ async def dump_obj_func(ctx, pool, task, sn_id):
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % task)
-        # asyncpg.exceptions.ExternalRoutineError: program "gzip > ... chm_other_1.dat.gz" failed
-        # usermod -a -G current_user_name postgres
-        # chmod -R g+rw /home/current_user_name/Desktop/pg_anon
-        # chmod g+x /home/current_user_name/Desktop/pg_anon/output/test
-        # su - postgres
-        # touch /home/current_user_name/Desktop/pg_anon/test/1.txt
     finally:
         await db_conn.close()
         await pool.release(db_conn)

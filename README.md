@@ -3,17 +3,16 @@
 
 ### Installation ###
 
-```python
-apt install -y python3-pip
-
+```bash
 git clone https://github.com/TantorLabs/pg_anon.git
 cd pg_anon
+
+apt install -y python3-pip
 pip3 install -r requirements.txt
-chown -R postgres .
 ```
 
-You must have a local database installed. An example of installing a database in ubuntu:
-```
+You must have a local database installed to test the functionality of `pg_anon`. Example of installing PostgreSQL on ubuntu:
+```bash
 echo "deb [arch=amd64] http://apt.postgresql.org/pub/repos/apt focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list
 wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
 apt update && apt --yes remove postgresql\*
@@ -30,8 +29,11 @@ Create a test user with superuser rights (required to run `COPY` commands).
 psql -c "CREATE USER anon_test_user WITH PASSWORD 'mYy5RexGsZ' SUPERUSER;" -U postgres
 ```
 
+### Run tests ###
+
 Check if the application is working, run unit tests:
 ```python
+chown -R postgres .
 su - postgres
 python3 test/full_test.py -v
 >>
@@ -40,10 +42,9 @@ python3 test/full_test.py -v
 
 # If all tests is OK then application ready to use
 
-# Run specific case
+# To run specific case
 python3 test/full_test.py -v PGAnonValidateUnitTest
 ```
-
 
 You can override test database connection settings as follows:
 ```bash
@@ -56,22 +57,49 @@ set TEST_TARGET_DB=test_target_db
 ```
 
 
-### Usage cases ###
+### Configure permission ###
 
+If tests raised error like:
+
+```bash
+asyncpg.exceptions.ExternalRoutineError: program "gzip > ... *.dat.gz" failed
+```
+
+in this case needs to configure permissions:
+
+```bash
+usermod -a -G current_user_name postgres
+chmod -R g+rw /home/current_user_name/Desktop/pg_anon
+chmod g+x /home/current_user_name/Desktop/pg_anon/output/test
+su - postgres
+touch /home/current_user_name/Desktop/pg_anon/output/1.txt
+
+id -Gn current_user_name
+>>
+  current_user_name ... postgres
+
+id -Gn postgres
+>>
+  postgres ssl-cert current_user_name
+
+getent group current_user_name
+>>
+  current_user_name:x:1000:postgres
+
+getent group postgres
+>>
+  postgres:x:133:current_user_name
+```
+
+### Usage cases ###
 
 #### Usage case: full dump/restore ####
 
-Input: sourse database, empty target database, dictionary
+Input: source database, empty target database, dictionary
 
-Task: copy full structe and all data using dictionary
+Task: copy full structure of DB and all data using dictionary
 
 ```bash
-chown postgres:postgres -R /home/pg_anon
-
-su - postgres
-cd /home/pg_anon
-
-
 # Common options in any mode:
 #   --debug			(default false)
 # 	--verbose = [info, debug, error]	(default info)
@@ -110,7 +138,6 @@ python3 pg_anon.py \
 #   --format=[binary, text]
 #   --copy-options=...
 
-
 #---------------------------
 # run restore
 #---------------------------
@@ -130,7 +157,7 @@ python3 pg_anon.py \
 #   --pg-restore=...
 
 #---------------------------
-# If "--db-host" is not local then on database server prepare directory:
+# If "--db-host" is not local then on database server prepare same directory:
 # mkdir -p /home/pg_anon/output/some_dict
 # chown postgres:postgres -R /home/pg_anon
 #---------------------------
@@ -138,10 +165,9 @@ python3 pg_anon.py \
 
 #### Usage case: partial dump/restore ####
 
+Input: source database, empty target database, dictionary
 
-Input: sourse database, empty target database, dictionary
-
-Task: copy partial structe and data of specific tables using dictionary
+Task: copy partial structure and data of specific tables using dictionary
 
 ```
 TODO
@@ -149,7 +175,7 @@ TODO
 
 #### Usage case: sync specific tables ####
 
-Input: sourse database, NOT empty target database, dictionary
+Input: source database, NOT empty target database, dictionary
 
 Task: truncate target tables and copy data using dictionary
 
@@ -159,7 +185,7 @@ TODO
 
 #### Usage case: dictionary generator ####
 
-Input: sourse database
+Input: source database
 
 Task: anonymizer itself walks through the database and all tables, searches based on some algorithm for tables and fields for anonymization, then writes a dictionary itself with substitution of suitable functions
 
@@ -168,27 +194,9 @@ TODO
 ```
 
 
-### How to escape/unescape complex names of objects ###
-
-```python
-python3
-
-import json
-j = {"k": "_TBL.$complex#имя;@&* a'2"}
-json.dumps(j)
->>
-	'{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
-
-s = '{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
-u = json.loads(s)
-print(u['k'])
->>
-	_TBL.$complex#имя;@&* a'2
-
-```
-
 ### Generate dictionary by table rows ###
 
+If you have a table that contains objects and fields for anonymization, you can use this SQL query to generate a dictionary in json format:
 
 ```sql
 select
@@ -230,5 +238,22 @@ from (
 	        "schema": "schm_1"
 	    }
 	]
+```
 
+### How to escape/unescape complex names of objects ###
+
+```python
+python3
+
+import json
+j = {"k": "_TBL.$complex#имя;@&* a'2"}
+json.dumps(j)
+>>
+	'{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
+
+s = '{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
+u = json.loads(s)
+print(u['k'])
+>>
+	_TBL.$complex#имя;@&* a'2
 ```
