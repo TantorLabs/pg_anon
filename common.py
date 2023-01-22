@@ -4,6 +4,7 @@ import sys
 import traceback
 import subprocess
 import re
+import os.path
 from enum import Enum
 from pkg_resources import parse_version as version
 
@@ -51,6 +52,20 @@ def get_pg_util_version(util_name):
     command = [util_name, "--version"]
     res = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
+
+
+def check_pg_util(ctx, util_name, output_util_res):
+    if not os.path.isfile(util_name):
+        ctx.logger.error('ERROR: program %s is not exists!' % util_name)
+        return False
+
+    command = [util_name, "--version"]
+    res = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if str(res.stdout).find(output_util_res) == -1:
+        ctx.logger.error('ERROR: program %s is not %s!' % (util_name, output_util_res))
+        return False
+
+    return True
 
 
 def exception_helper(show_traceback=True):

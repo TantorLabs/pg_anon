@@ -6,7 +6,7 @@ from restore import *
 from create_dict import *
 
 
-PG_ANON_VERSION = '22.10.23'     # year month day
+PG_ANON_VERSION = '23.01.23'     # year month day
 
 
 class BasicEnum():
@@ -20,19 +20,6 @@ class OutputFormat(BasicEnum, Enum):
 
 
 class Context:
-    def close_logger(self):
-        if len(self.logger.handlers) > 0:
-            for handler in self.logger.handlers:
-                try:
-                    handler.acquire()
-                    handler.flush()
-                    handler.close()
-                except (OSError, ValueError):
-                    pass
-                finally:
-                    handler.release()
-                self.logger.removeHandler(handler)
-
     @exception_handler
     def __init__(self, args):
         self.current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -46,49 +33,6 @@ class Context:
         self.total_rows = 0
         self.create_dict_matches = {}   # for create-dict mode
         self.exclude_schemas = ["anon_funcs", "columnar_internal"]
-
-        if args.verbose == VerboseOptions.INFO:
-            log_level = logging.INFO
-        if args.verbose == VerboseOptions.DEBUG:
-            log_level = logging.DEBUG
-        if args.verbose == VerboseOptions.ERROR:
-            log_level = logging.ERROR
-
-        self.logger = logging.getLogger(os.path.basename(__file__))
-        self.close_logger()
-
-        if not len(self.logger.handlers):
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                datefmt='%Y-%m-%d %H:%M:%S',
-                fmt="%(asctime)s,%(msecs)03d %(levelname)8s %(lineno)3d - %(message)s"
-            )
-            handler.setFormatter(formatter)
-
-            if not os.path.exists(os.path.join(self.current_dir, 'log')):
-                os.makedirs(os.path.join(self.current_dir, 'log'))
-
-            if args.mode == AnonMode.INIT:
-                log_file = str(args.mode) + ".log"
-            else:
-                log_file = "%s_%s.log" % (
-                        str(args.mode),
-                        str(
-                            os.path.splitext(os.path.basename(args.dict_file))[0]
-                            if args.dict_file != '' else os.path.basename(args.input_dir)
-                        )
-                )
-
-            f_handler = RotatingFileHandler(
-                os.path.join(self.current_dir, 'log', log_file),
-                maxBytes=1024 * 10000,
-                backupCount=10
-            )
-            f_handler.setFormatter(formatter)
-
-            self.logger.addHandler(handler)
-            self.logger.addHandler(f_handler)
-            self.logger.setLevel(log_level)
 
         if args.db_user_password == '' and os.environ.get('PGPASSWORD') is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
@@ -114,9 +58,6 @@ class Context:
                 'ssl_key_file': args.db_ssl_key_file,
                 'ssl_ca_file': args.db_ssl_ca_file,
             })
-
-    def __del__(self):
-        self.close_logger()
 
     @staticmethod
     def get_arg_parser():
@@ -323,70 +264,139 @@ async def make_init(ctx):
 
 class MainRoutine:
     external_args = None
+    logger = None
+    args = None
+
+    def setup_logger(self):
+        if self.args.verbose == VerboseOptions.INFO:
+            log_level = logging.INFO
+        if self.args.verbose == VerboseOptions.DEBUG:
+            log_level = logging.DEBUG
+        if self.args.verbose == VerboseOptions.ERROR:
+            log_level = logging.ERROR
+
+        self.logger = logging.getLogger(os.path.basename(__file__))
+        # if len(self.logger.handlers):
+        #    self.close_previous_logger_handlers()
+
+        if not len(self.logger.handlers):
+            formatter = logging.Formatter(
+                datefmt='%Y-%m-%d %H:%M:%S',
+                fmt="%(asctime)s,%(msecs)03d %(levelname)8s %(lineno)3d - %(message)s"
+            )
+
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+
+            if not os.path.exists(os.path.join(self.current_dir, 'log')):
+                os.makedirs(os.path.join(self.current_dir, 'log'))
+
+            if self.args.mode == AnonMode.INIT:
+                log_file = str(self.args.mode) + ".log"
+            else:
+                log_file = "%s_%s.log" % (
+                        str(self.args.mode),
+                        str(
+                            os.path.splitext(os.path.basename(self.args.dict_file))[0]
+                            if self.args.dict_file != '' else os.path.basename(self.args.input_dir)
+                        )
+                )
+
+            f_handler = RotatingFileHandler(
+                os.path.join(self.current_dir, 'log', log_file),
+                maxBytes=1024 * 10000,
+                backupCount=10
+            )
+            f_handler.setFormatter(formatter)
+
+            self.logger.addHandler(f_handler)
+            self.logger.setLevel(log_level)
+
+    def close_logger_handlers(self):
+        if len(self.logger.handlers) > 0:
+            for handler in self.logger.handlers:
+                try:
+                    handler.acquire()
+                    handler.flush()
+                    handler.close()
+                except (OSError, ValueError):
+                    pass
+                finally:
+                    handler.release()
+                self.logger.removeHandler(handler)
+
+    def __del__(self):
+        self.close_logger_handlers()
 
     def __init__(self, external_args=None):
-        self.external_args = external_args
+        self.current_dir = os.path.dirname(os.path.realpath(__file__))
+        if external_args is not None:
+            self.args = external_args
+        else:
+            self.args = Context.get_arg_parser().parse_args()
+        self.setup_logger()
+        self.ctx = Context(self.args)
+        self.ctx.logger = self.logger
 
     async def run(self) -> PgAnonResult:
-        if self.external_args is not None:
-            args = self.external_args
-        else:
-            args = Context.get_arg_parser().parse_args()
-        ctx = Context(args)
-
-        if args.version:
-            ctx.logger.info("Version %s" % PG_ANON_VERSION)
+        if self.args.version:
+            self.ctx.logger.info("Version %s" % PG_ANON_VERSION)
             sys.exit(0)
 
-        ctx.logger.info("============ %s version %s ============" % (os.path.basename(__file__), PG_ANON_VERSION))
-        ctx.logger.info("============> Started MainRoutine.run in mode: %s" % ctx.args.mode)
-        if ctx.args.debug:
+        self.ctx.logger.info("============ %s version %s ============" % (os.path.basename(__file__), PG_ANON_VERSION))
+        self.ctx.logger.info("============> Started MainRoutine.run in mode: %s" % self.ctx.args.mode)
+        if self.ctx.args.debug:
             params_info = "#--------------- Incoming parameters\n"
-            for arg in vars(args):
+            for arg in vars(self.args):
                 if arg not in ("db_user_password"):
-                    params_info += "#   %s = %s\n" % (arg, getattr(args, arg))
+                    params_info += "#   %s = %s\n" % (arg, getattr(self.args, arg))
             params_info += "#-----------------------------------"
-            ctx.logger.info(params_info)
-
-        db_conn = await asyncpg.connect(**ctx.conn_params)
-        ctx.pg_version = await db_conn.fetchval("select version()")
-        ctx.pg_version = re.findall(r"(\d+\.\d+)", str(ctx.pg_version))[0]
-        await db_conn.close()
+            self.ctx.logger.info(params_info)
 
         result = PgAnonResult()
         try:
-            if ctx.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
-                result = await make_dump(ctx)
-            elif ctx.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
-                result = await make_restore(ctx)
-                if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
-                    await run_analyze(ctx)
-            elif ctx.args.mode == AnonMode.INIT:
-                result = await make_init(ctx)
-            elif ctx.args.mode == AnonMode.CREATE_DICT:
-                result = await create_dict(ctx)
-            else:
-                raise Exception("Unknown mode: " + ctx.args.mode)
-
-            ctx.logger.info("MainRoutine.run result_code = %s" % result.result_code)
+            db_conn = await asyncpg.connect(**self.ctx.conn_params)
+            self.ctx.pg_version = await db_conn.fetchval("select version()")
+            self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
+            await db_conn.close()
         except:
-            ctx.logger.error(exception_helper(show_traceback=True))
+            self.ctx.logger.error(exception_helper(show_traceback=True))
+            result.result_code = ResultCode.FAIL
+            return result
+
+        if not check_pg_util(self.ctx, self.ctx.args.pg_dump, 'pg_dump') or \
+                not check_pg_util(self.ctx, self.ctx.args.pg_restore, 'pg_restore'):
+            result.result_code = ResultCode.FAIL
+            return result
+
+        try:
+            if self.ctx.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
+                result = await make_dump(self.ctx)
+            elif self.ctx.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
+                result = await make_restore(self.ctx)
+                if self.ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+                    await run_analyze(self.ctx)
+            elif self.ctx.args.mode == AnonMode.INIT:
+                result = await make_init(self.ctx)
+            elif self.ctx.args.mode == AnonMode.CREATE_DICT:
+                result = await create_dict(self.ctx)
+            else:
+                raise Exception("Unknown mode: " + self.ctx.args.mode)
+
+            self.ctx.logger.info("MainRoutine.run result_code = %s" % result.result_code)
+        except:
+            self.ctx.logger.error(exception_helper(show_traceback=True))
         finally:
-            ctx.logger.info("<============ Finished MainRoutine.run in mode: %s" % ctx.args.mode)
+            self.ctx.logger.info("<============ Finished MainRoutine.run in mode: %s" % self.ctx.args.mode)
             return result
 
     async def validate_target_tables(self) -> PgAnonResult:
-        if self.external_args is not None:
-            args = self.external_args
-        else:
-            args = Context.get_arg_parser().parse_args()
-        ctx = Context(args)
-
         result = PgAnonResult()
         try:
-            result = await validate_restore(ctx)
+            result = await validate_restore(self.ctx)
         except:
-            ctx.logger.error(exception_helper(show_traceback=True))
+            self.ctx.logger.error(exception_helper(show_traceback=True))
         finally:
             return result
 

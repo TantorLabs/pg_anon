@@ -137,11 +137,11 @@ class BasicUnitTest:
         sourse_db_params = ctx.conn_params.copy()
         sourse_db_params['database'] = params.test_source_db
 
-        ctx.logger.info("============> Started init_env")
+        print("============> Started init_env")
         db_conn = await asyncpg.connect(**sourse_db_params)
         await DBOperations.init_env(db_conn, 'init_env.sql', params.test_scale)
         await db_conn.close()
-        ctx.logger.info("<============ Finished init_env")
+        print("<============ Finished init_env")
 
         args = parser.parse_args([
             '--db-host=%s' % params.test_db_host,
@@ -203,13 +203,13 @@ class BasicUnitTest:
         )
         await db_conn.close()
         if len(schema_exists) == 0:
-            ctx.logger.info("============> Started init_stress_env")
+            print("============> Started init_stress_env")
             db_conn = await asyncpg.connect(**sourse_db_params)
             await DBOperations.init_env(db_conn, 'init_stress_env.sql', params.test_scale)
             await db_conn.close()
-            ctx.logger.info("<============ Finished init_stress_env")
+            print("<============ Finished init_stress_env")
         else:
-            ctx.logger.info("============> Schema 'stress' already exists")
+            print("============> Schema 'stress' already exists")
 
         if res.result_code == ResultCode.DONE:
             passed_stages.append("init_stress_env")
