@@ -124,7 +124,7 @@ async def check_sensitive_fld_names(ctx, objs):
                                 str(dict(v))
                             )
                         )
-                    objs.remove(v)
+                    #objs.remove(v)
                     ctx.create_dict_matches[v['obj_id']] = v
 
         if 'constants' in ctx.dictionary_obj['field']:
