@@ -11,7 +11,7 @@ default: build
 build:
 	if test -d pg_anon; \
 	then cd pg_anon && git pull; \
-	else git clone https://bitbucket.org/awide/pg_anon.git; \
+	else git clone https://github.com/TantorLabs/pg_anon.git; \
 	fi
 
 	docker build -t pg_anon:pg${PG_VERSION} --build-arg PG_VERSION=${PG_VERSION} .

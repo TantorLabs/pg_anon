@@ -1,6 +1,6 @@
 =============================================
 # Documentation
-https://bitbucket.org/awide/pg_anon/src/master/
+https://github.com/TantorLabs/pg_anon/blob/master/README.md
 =============================================
 python3 pg_anon.py --version
 
