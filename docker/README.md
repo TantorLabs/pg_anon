@@ -28,13 +28,19 @@ curl --fail -v --user 'user:password' --upload-file pg_anon_22_10_23.tar https:/
 
 docker run --name pg_anon -d pg_anon:pg15
 docker exec -it pg_anon bash
+chown -R postgres .
+su - postgres
 python3 test/full_test.py -v
-exit
+exit 
 
 # Run and mount directory from HOST to /usr/share/pg_anon_from_host
 docker rm -f pg_anon
 docker run --name pg_anon -v $PWD:/usr/share/pg_anon -d pg_anon:pg15
 ```
+
+If tests raised error like: `asyncpg.exceptions.ExternalRoutineError: program "gzip > ... *.dat.gz" failed`
+
+See: [Configure permission](https://github.com/TantorLabs/pg_anon#configure-permission)
 
 ## Load saved image
 
