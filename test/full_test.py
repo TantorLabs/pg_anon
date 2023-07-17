@@ -791,6 +791,37 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         ])
 
         res = await MainRoutine(self.args_create_dict).run()
+        parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        with open(os.path.join(parent_dir, 'dict', 'test_meta_dict_result.py'), 'r', encoding='utf-8') as file1, \
+                open(os.path.join(parent_dir, 'dict', 'test_meta_dict_result_expected.py'), 'r',
+                     encoding='utf-8') as file2:
+            d1 = json.load(file1)['dictionary']
+            d2 = json.load(file2)['dictionary']
+
+            def iterate_dict_level_2(data):
+                for k, v in data.items():
+                    yield {k: v}
+
+            def iterate_dict_level_1(data):
+                for item in data:
+                    if 'fields' in item:
+                        yield from iterate_dict_level_2(item['fields'])
+                    else:
+                        yield from iterate_dict_level_2(item)
+
+            flag_of_identity = True  # comparing elements of two dictionaries
+            expected_result_list_of_iterate_dict = []
+
+            for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                if line not in expected_result_list_of_iterate_dict:
+                    flag_of_identity = False
+                    break
+
+        self.assertTrue(flag_of_identity)
+
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_02_create_dict")
 
