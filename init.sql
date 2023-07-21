@@ -257,23 +257,23 @@ begin
 			----------------------------------------------------
 			select
 				'test: encode' as test,
-				encode((select encrypt('data', 'password', 'bf')), 'base64') = 'cSMq9gb1vOw=' as res
+				encode((select encrypt('data', 'password', 'aes')), 'base64') = 'jpi7Ar3VWiESPg0luyHzRQ==' as res
 			union all
 			select
 				'test: decode' as test,
 				decode(
 					(
-						select encode((select encrypt('data', 'password', 'bf')), 'base64')
+						select encode((select encrypt('data', 'password', 'aes')), 'base64')
 					),
 					'base64'
-				) = encrypt('data', 'password', 'bf')
+				) = encrypt('data', 'password', 'aes')
 			union all
 			select
 				'test: decrypt' as test,
 				decrypt(
 				(
-					select decode('cSMq9gb1vOw=', 'base64')
-				), 'password', 'bf') = 'data'
+					select decode('jpi7Ar3VWiESPg0luyHzRQ==', 'base64')
+				), 'password', 'aes') = 'data'
 			union all
 			select
 				'test: convert_from' as test,
