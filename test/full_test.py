@@ -812,10 +812,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             flag_of_identity = True  # comparing elements of two dictionaries
             expected_result_list_of_iterate_dict = []
 
-            for line in iterate_dict_level_1(d2):
+            for line in iterate_dict_level_1(d1):
                 expected_result_list_of_iterate_dict.append(line)
 
-            for line in iterate_dict_level_1(d1):
+            for line in iterate_dict_level_1(d2):
                 if line not in expected_result_list_of_iterate_dict:
                     flag_of_identity = False
                     break

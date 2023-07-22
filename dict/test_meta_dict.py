@@ -2,7 +2,9 @@
 	"field": {				# must be anonymized without scanning
 		"rules": [
 			"^fld_5_em",
-			"^amount"
+			"^amount",
+			"details$",
+			"contract_expires$"
 		],
 		"constants": [
 			"usd",
