@@ -376,18 +376,20 @@ async def create_dict_impl(ctx):
             if str(dict_val['type']).find(fld_type) > -1:
                 hash_func = func
 
+        res_hash_func = hash_func if hash_func.find("%s") == -1 else hash_func % dict_val["column_name"]
+
         if dict_val['tbl_id'] not in anon_dict_rules:
             anon_dict_rules[dict_val['tbl_id']] = {
                 "schema": dict_val['nspname'],
                 "table": dict_val['relname'],
                 "fields": {
-                    dict_val["column_name"]: hash_func % dict_val["column_name"]
+                    dict_val["column_name"]: res_hash_func
                 }
             }
         else:
             anon_dict_rules[dict_val['tbl_id']]["fields"].update(
                 {
-                    dict_val["column_name"]: hash_func % dict_val["column_name"]
+                    dict_val["column_name"]: res_hash_func
                 }
             )
 

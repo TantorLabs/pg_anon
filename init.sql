@@ -140,6 +140,22 @@ $$
   PARALLEL RESTRICTED -- because random
   SECURITY INVOKER;
 
+CREATE OR REPLACE FUNCTION anon_funcs.random_inn()
+RETURNS text
+AS $$
+  SELECT array_to_string(
+         array(
+                select substr('0123456789',((random()*(10-1)+1)::integer),1)
+                from generate_series(1,8)
+            ),''
+          );
+$$
+  LANGUAGE SQL
+  VOLATILE
+  RETURNS NULL ON NULL INPUT
+  PARALLEL RESTRICTED -- because random
+  SECURITY INVOKER;
+
 CREATE OR REPLACE FUNCTION anon_funcs.random_date_between(
   date_start timestamp WITH TIME ZONE,
   date_end timestamp WITH TIME ZONE

@@ -4,7 +4,8 @@
 			"^fld_5_em",
 			"^amount",
 			"details$",
-			"contract_expires$"
+			"contract_expires$",
+			"inn$"
 		],
 		"constants": [
 			"usd",
@@ -48,6 +49,7 @@
 	"funcs": {
 		"text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
 		"numeric": "anon_funcs.noise(\"%s\", 10)",
-		"timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')"
+		"timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
+		"bigint": "anon_funcs.random_inn()"
 	}
 }
