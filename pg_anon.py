@@ -6,7 +6,7 @@ from restore import *
 from create_dict import *
 
 
-PG_ANON_VERSION = '23.7.17'     # year month day
+PG_ANON_VERSION = '23.7.28'     # year month day
 
 
 class BasicEnum():

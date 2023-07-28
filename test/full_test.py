@@ -811,14 +811,26 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
             flag_of_identity = True  # comparing elements of two dictionaries
             expected_result_list_of_iterate_dict = []
+            result_list_of_iterate_dict = []
 
-            for line in iterate_dict_level_1(d1):
-                expected_result_list_of_iterate_dict.append(line)
+            print("============> Started comparison of test_meta_dict_result.py and test_meta_dict_result_expected.py")
 
             for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                result_list_of_iterate_dict.append(line)
                 if line not in expected_result_list_of_iterate_dict:
                     flag_of_identity = False
-                    break
+                    print("check_comparison: row %s not found in test_meta_dict_result.py" % str(line))
+
+            if flag_of_identity:
+                for line in iterate_dict_level_1(d2):
+                    if line not in result_list_of_iterate_dict:
+                        flag_of_identity = False
+                        print("check_comparison: row %s not found in test_meta_dict_result_expected.py" % str(line))
+
+            print("<============ Finished comparison of test_meta_dict_result.py and test_meta_dict_result_expected.py")
 
         self.assertTrue(flag_of_identity)
 
