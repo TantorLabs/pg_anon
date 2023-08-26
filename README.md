@@ -32,7 +32,7 @@ psql -c "CREATE USER anon_test_user WITH PASSWORD 'mYy5RexGsZ' SUPERUSER;" -U po
 ### Run tests ###
 
 Check if the application is working, run unit tests:
-```python
+```bash
 chown -R postgres .
 su - postgres
 python3 test/full_test.py -v
@@ -243,17 +243,14 @@ from (
 ### How to escape/unescape complex names of objects ###
 
 ```python
-python3
-
 import json
+
 j = {"k": "_TBL.$complex#имя;@&* a'2"}
 json.dumps(j)
->>
-	'{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
+# >>> '{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
 
 s = '{"k": "_TBL.$complex#\\u0438\\u043c\\u044f;@&* a\'2"}'
 u = json.loads(s)
 print(u['k'])
->>
-	_TBL.$complex#имя;@&* a'2
+# >>> _TBL.$complex#имя;@&* a'2
 ```
