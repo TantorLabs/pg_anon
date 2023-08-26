@@ -1,10 +1,27 @@
 import argparse
+import asyncio
 import logging
+import os
+import re
+import sys
+from enum import Enum
 from logging.handlers import RotatingFileHandler
-from dump import *
-from restore import *
-from create_dict import *
 
+import asyncpg
+
+from common import (
+    AnonMode,
+    PgAnonResult,
+    ResultCode,
+    ScanMode,
+    VerboseOptions,
+    check_pg_util,
+    exception_handler,
+    exception_helper,
+)
+from create_dict import create_dict
+from dump import make_dump
+from restore import make_restore, run_analyze, validate_restore
 
 PG_ANON_VERSION = '23.7.28'     # year month day
 
