@@ -4,7 +4,11 @@ import logging
 import os
 import re
 import sys
-from enum import Enum
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from compatability import StrEnum
 from logging.handlers import RotatingFileHandler
 
 import asyncpg
@@ -26,12 +30,7 @@ from restore import make_restore, run_analyze, validate_restore
 PG_ANON_VERSION = '23.7.28'     # year month day
 
 
-class BasicEnum():
-    def __str__(self):
-        return self.value
-
-
-class OutputFormat(BasicEnum, Enum):
+class OutputFormat(StrEnum):
     BINARY = 'binary'
     TEXT = 'text'
 
