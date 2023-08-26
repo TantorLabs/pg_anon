@@ -1,11 +1,12 @@
 import decimal
 import json
+import os
+import re
+import subprocess
 import sys
 import traceback
-import subprocess
-import re
-import os.path
 from enum import Enum
+
 from pkg_resources import parse_version as version
 
 
