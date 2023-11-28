@@ -5,8 +5,7 @@ from dump import *
 from restore import *
 from create_dict import *
 
-
-PG_ANON_VERSION = '23.7.28'     # year month day
+PG_ANON_VERSION = '23.11.28'  # year month day
 
 
 class BasicEnum():
@@ -28,10 +27,10 @@ class Context:
         self.validate_limit = "LIMIT 100"
         self.dictionary_content = None  # for dump process
         self.dictionary_obj = {}
-        self.metadata = None            # for restore process
-        self.task_results = {}          # for dump process (key is hash() of SQL query)
+        self.metadata = None  # for restore process
+        self.task_results = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
-        self.create_dict_matches = {}   # for create-dict mode
+        self.create_dict_matches = {}  # for create-dict mode
         self.exclude_schemas = ["anon_funcs", "columnar_internal"]
 
         if args.db_user_password == '' and os.environ.get('PGPASSWORD') is not None:
@@ -296,11 +295,11 @@ class MainRoutine:
                 log_file = str(self.args.mode) + ".log"
             else:
                 log_file = "%s_%s.log" % (
-                        str(self.args.mode),
-                        str(
-                            os.path.splitext(os.path.basename(self.args.dict_file))[0]
-                            if self.args.dict_file != '' else os.path.basename(self.args.input_dir)
-                        )
+                    str(self.args.mode),
+                    str(
+                        os.path.splitext(os.path.basename(self.args.dict_file))[0]
+                        if self.args.dict_file != '' else os.path.basename(self.args.input_dir)
+                    )
                 )
 
             f_handler = RotatingFileHandler(
@@ -314,16 +313,15 @@ class MainRoutine:
             self.logger.setLevel(log_level)
 
     def close_logger_handlers(self):
-        if len(self.logger.handlers) > 0:
-            for handler in self.logger.handlers:
-                try:
-                    handler.acquire()
-                    handler.flush()
-                    handler.close()
-                except (OSError, ValueError):
-                    pass
-                finally:
-                    handler.release()
+        for handler in self.logger.handlers[:]:  # iterate over a copy of the handlers list
+            try:
+                handler.acquire()
+                handler.flush()
+                handler.close()
+            except Exception as e:
+                print(f"Error closing log handler: {e}")
+            finally:
+                handler.release()
                 self.logger.removeHandler(handler)
 
     def __del__(self):
@@ -370,6 +368,7 @@ class MainRoutine:
             result.result_code = ResultCode.FAIL
             return result
 
+        start_t = time.time()
         try:
             if self.ctx.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
                 result = await make_dump(self.ctx)
@@ -388,7 +387,18 @@ class MainRoutine:
         except:
             self.ctx.logger.error(exception_helper(show_traceback=True))
         finally:
-            self.ctx.logger.info("<============ Finished MainRoutine.run in mode: %s" % self.ctx.args.mode)
+            end_t = time.time()
+            self.ctx.logger.info(
+                "<============ Finished MainRoutine.run in mode: %s, elapsed: %s sec" % (
+                    self.ctx.args.mode,
+                    str(round(end_t - start_t, 2))
+                )
+            )
+            if result.result_data is None:
+                result.result_data = {"elapsed": str(round(end_t - start_t, 2))}
+            else:
+                result.result_data["elapsed"] = str(round(end_t - start_t, 2))
+
             return result
 
     async def validate_target_tables(self) -> PgAnonResult:

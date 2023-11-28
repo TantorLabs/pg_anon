@@ -908,6 +908,14 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             passed_stages.append("test_04_restore")
 
 
+class TmpResults:
+    res_test_02 = None
+    res_test_03 = None
+
+
+tmp_results = TmpResults()
+
+
 class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     target_dict = 'test_create_dict_result.py'
     args = {}
@@ -933,14 +941,54 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             '--output-dict-file=stress_%s' % self.target_dict,
             # '--threads=%s' % params.test_threads,
             '--threads=6',
-            '--scan-partial-rows=10000' #,
+            '--scan-partial-rows=100' #,
             # '--verbose=debug',
             # '--debug'
         ])
 
         res = await MainRoutine(self.args_create_dict).run()
         if res.result_code == ResultCode.DONE:
+            tmp_results.res_test_02 = res.result_data["elapsed"]
             passed_stages.append("test_02_create_dict")
+
+    async def test_03_create_dict(self):
+        if "init_stress_env" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db + "_stress",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=create-dict',
+            '--scan-mode=full',
+            '--dict-file=test_meta_dict.py',
+            '--output-dict-file=stress_%s' % self.target_dict,
+            # '--threads=%s' % params.test_threads,
+            '--threads=6',
+            # '--verbose=debug',
+            # '--debug'
+        ])
+
+        res = await MainRoutine(self.args_create_dict).run()
+        if res.result_code == ResultCode.DONE:
+            tmp_results.res_test_03 = res.result_data["elapsed"]
+            passed_stages.append("test_03_create_dict")
+
+    async def test_04_create_dict(self):
+        if "test_02_create_dict" not in passed_stages or "test_03_create_dict" not in passed_stages:
+            self.assertTrue(False)
+
+        print(f"Comparing values: %s < (%s / 5)" % (
+                tmp_results.res_test_02,
+                tmp_results.res_test_03
+            )
+        )
+        # Warning: this test will be failed if you use debugger
+        # We are testing performance of test_02_create_dict vs test_03_create_dict
+        self.assertTrue(float(tmp_results.res_test_02) < float(tmp_results.res_test_03) / 5)
 
 
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
