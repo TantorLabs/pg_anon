@@ -159,6 +159,55 @@ class BasicUnitTest:
             passed_stages.append("init_env")
         return res
 
+    async def init_env_tag(self):
+        if "init_env" in passed_stages:
+            print("init_env_tag already called")
+            res = PgAnonResult()
+            res.result_code = ResultCode.DONE
+            return res
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=postgres',
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=init',
+            '--debug'
+        ])
+
+        ctx = Context(args)
+
+        db_conn = await asyncpg.connect(**ctx.conn_params)
+        await DBOperations.init_db(db_conn, params.test_source_db + "_tag")
+        await db_conn.close()
+
+        sourse_db_params = ctx.conn_params.copy()
+        sourse_db_params['database'] = params.test_source_db + "_tag"
+
+        print("============> Started init_env_tag")
+        db_conn = await asyncpg.connect(**sourse_db_params)
+        await DBOperations.init_env(db_conn, 'init_env_tag.sql', params.test_scale)
+        await db_conn.close()
+        print("<============ Finished init_env_tag")
+
+        args = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db + "_tag",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=init',
+            '--verbose=debug',
+            '--debug'
+        ])
+
+        res = await MainRoutine(args).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("init_env_tag")
+        return res
+
     async def init_stress_env(self):
         if "init_stress_env" in passed_stages:
             print("init_stress_env already called")
@@ -989,6 +1038,62 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         # Warning: this test will be failed if you use debugger
         # We are testing performance of test_02_create_dict vs test_03_create_dict
         self.assertTrue(float(tmp_results.res_test_02) < float(tmp_results.res_test_03) / 5)
+
+
+class PGAnonDictGenTagUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    target_dict = 'test_create_dict_tag_result.py'
+    args = {}
+
+    async def test_01_init(self):
+        res = await self.init_env_tag()
+        self.assertTrue(res.result_code == ResultCode.DONE)
+
+    async def test_02_create_dict_tag(self):
+        if "init_env_tag" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args([
+            '--db-host=%s' % params.test_db_host,
+            '--db-name=%s' % params.test_source_db + "_tag",
+            '--db-user=%s' % params.test_db_user,
+            '--db-port=%s' % params.test_db_port,
+            '--db-user-password=%s' % params.test_db_user_password,
+            '--mode=create-dict',
+            '--scan-mode=partial',
+            '--dict-file=test_empty_meta_dict.py',
+            '--output-dict-file=%s' % self.target_dict,
+            '--threads=6',
+            '--scan-partial-rows=100'
+        ])
+
+        res = await MainRoutine(self.args_create_dict).run()
+        if res.result_code == ResultCode.DONE:
+            passed_stages.append("test_02_create_dict_tag")
+
+    async def test_03_comparison_dict_tag(self):
+        if "test_02_create_dict_tag" not in passed_stages:
+            self.assertTrue(False)
+
+        test_create_dict_tag_result_expected = {
+            "dictionary": [
+                {
+                    "schema": "public",
+                    "table": "tbl1",
+                    "fields": {
+                        "a": "anon_funcs.digest(\"a\", 'salt_word', 'md5')",
+                        "b": "anon_funcs.digest(\"b\", 'salt_word', 'md5')"
+                    }
+                }]}
+
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'dict',
+                               'test_create_dict_tag_result.py'), 'r', encoding='utf-8') as file1:
+            test_create_dict_tag_result = json.load(file1)
+
+        if test_create_dict_tag_result == test_create_dict_tag_result_expected:
+            passed_stages.append("test_03_comparison_dict_tag")
+        else:
+            self.assertTrue(False)
 
 
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):

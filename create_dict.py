@@ -9,6 +9,36 @@ import aioprocessing
 import nest_asyncio
 
 
+async def list_tagged_fields(ctx):
+    db_conn = await asyncpg.connect(**ctx.conn_params)
+    query = """
+    SELECT
+        nspname AS schema_name,
+        relname AS table_name,
+        attname AS column_name,
+        description AS column_comment
+    FROM
+        pg_description
+        JOIN pg_attribute ON pg_description.objoid = pg_attribute.attrelid
+                           AND pg_description.objsubid = pg_attribute.attnum
+        JOIN pg_class ON pg_class.oid = pg_attribute.attrelid
+        JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+    WHERE
+        pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
+        and description like '%:sens%'
+    ORDER BY
+        nspname,
+        relname,
+        attname;
+    """
+    query_res = await db_conn.fetch(query)
+    await db_conn.close()
+    return [{'nspname': record['schema_name'],
+             'relname': record['table_name'],
+             'column_name': record['column_name'],
+             'column_comment': record['column_comment']} for record in query_res]
+
+
 async def generate_scan_objs(ctx):
     db_conn = await asyncpg.connect(**ctx.conn_params)
     query = """
@@ -185,7 +215,7 @@ def check_sensitive_data_in_fld(name, ctx, task, fld_data):
     return create_dict_matches
 
 
-async def scan_obj_func(name, ctx, pool, task):
+async def scan_obj_func(name, ctx, pool, task, tagged_fields):
     if ctx.args.debug:
         ctx.logger.debug('====>>> Process[%s]: Started task %s' % (name, str(task)))
 
@@ -205,10 +235,19 @@ async def scan_obj_func(name, ctx, pool, task):
         return None
 
     db_conn = await pool.acquire()
-    res = None
-
+    res = {}
+    scanning_flag = True
     try:
-        if ctx.args.scan_mode == ScanMode.PARTIAL:
+        for field in tagged_fields:
+            if (
+                    field['nspname'] == task['nspname'] and
+                    field['relname'] == task['relname'] and
+                    field['column_name'] == task['column_name']):
+                res[task['obj_id']] = task
+                scanning_flag = False
+                break
+
+        if ctx.args.scan_mode == ScanMode.PARTIAL and scanning_flag:
             fld_data = await db_conn.fetch(
                 """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s""" % (
                     task['column_name'],
@@ -219,7 +258,7 @@ async def scan_obj_func(name, ctx, pool, task):
                 )
             )
             res = check_sensitive_data_in_fld(name, ctx, task, setof_to_list(fld_data))
-        if ctx.args.scan_mode == ScanMode.FULL:
+        if ctx.args.scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
                     """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null""" % (
@@ -281,6 +320,10 @@ def process_impl(name, ctx, queue, items):
         )
         tasks = set()
 
+        ctx.logger.info('============> Started collecting list_tagged_fields in mode: create-dict')
+        tagged_fields = await list_tagged_fields(ctx)
+        ctx.logger.info('<============ Finished collecting list_tagged_fields in mode: create-dict')
+
         for i, item in enumerate(items):
             if len(tasks) >= ctx.args.threads:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -289,7 +332,7 @@ def process_impl(name, ctx, queue, items):
                     await pool.close()
                     raise exception
 
-            task_res = loop.create_task(scan_obj_func(name, ctx, pool, item))
+            task_res = loop.create_task(scan_obj_func(name, ctx, pool, item, tagged_fields))
             tasks_res.append(task_res)
             tasks.add(task_res)
             if i % status_ratio:
