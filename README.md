@@ -257,3 +257,35 @@ print(u['k'])
 >>
 	_TBL.$complex#имя;@&* a'2
 ```
+## Contributing
+
+### Dependencies
+
+The pg_anon uses [Poetry](https://python-poetry.org/)
+dependency management tool for managing dependencies and creating packages.  
+For [adding new dependencies](https://python-poetry.org/docs/managing-dependencies/)
+install Poetry and run command:
+
+```bash
+poetry add <package_name>
+```
+For locking the dependencies use command:
+
+```bash
+poetry lock --no-update
+```
+
+Additionally, [export](https://python-poetry.org/docs/cli/#export)
+the latest packages to *requirements.txt* using poetry export plugin:
+
+```bash
+poetry export -f requirements.txt --output requirements.txt
+```
+
+### Build package
+
+For [building](https://python-poetry.org/docs/libraries/#packaging) the package use command:
+
+```bash
+poetry build
+```
