@@ -26,7 +26,7 @@ async def list_tagged_fields(ctx) -> List[Dict[str, str]]:
         JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
     WHERE
         pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
-        and description like '%:sens%'
+        and (description like '%:sens%' OR description like '%:nosens%')
     ORDER BY
         nspname,
         relname,
