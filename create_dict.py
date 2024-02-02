@@ -1,5 +1,6 @@
 import random
 import time
+from logging import getLogger
 from typing import List, Dict, Optional
 
 from common import *
@@ -9,6 +10,8 @@ import asyncio
 import json
 import aioprocessing
 import nest_asyncio
+
+logger = getLogger(__name__)
 
 
 class TaggedFields:
@@ -54,7 +57,7 @@ class FieldInfo:
         )
 
 
-async def get_tagged_fields(ctx) -> List[TaggedFields]:
+async def get_tagged_fields(conn_params) -> List[TaggedFields]:
     query = """
     SELECT
         nspname AS schema_name,
@@ -75,7 +78,7 @@ async def get_tagged_fields(ctx) -> List[TaggedFields]:
         relname,
         attname;
     """
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_conn = await asyncpg.connect(**conn_params)
     try:
         query_res = await db_conn.fetch(query)
     finally:
@@ -92,10 +95,10 @@ async def get_tagged_fields(ctx) -> List[TaggedFields]:
     return tagged_fields
 
 
-def check_skip_fields(ctx, fld):
-    if "skip_rules" not in ctx.dictionary_obj:
+def check_skip_fields(dictionary_obj, fld):
+    if "skip_rules" not in dictionary_obj:
         return True
-    for v in ctx.dictionary_obj["skip_rules"]:
+    for v in dictionary_obj["skip_rules"]:
         schema_match = False
         tbl_match = False
         fld_match = False
@@ -116,18 +119,17 @@ def check_skip_fields(ctx, fld):
             res = False
 
         if not res:
-            if ctx.args.debug:
-                ctx.logger.debug(
-                    "!!! ------> check_skip_fields: filtered fld %s by rule %s"
-                    % (str(dict(fld)), str(v))
-                )
+            logger.debug(
+                "!!! ------> check_skip_fields: filtered fld %s by rule %s"
+                % (str(dict(fld)), str(v))
+            )
             return res
 
     return True
 
 
-async def generate_scan_objs(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+async def generate_scan_objs(conn_params, dictionary_obj):
+    db_conn = await asyncpg.connect(**conn_params)
     query = """
     -- generate task queue
     SELECT 
@@ -175,7 +177,9 @@ async def generate_scan_objs(ctx):
     query_res = await db_conn.fetch(query)
     await db_conn.close()
 
-    return [FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)]
+    return [
+        FieldInfo(**fld) for fld in query_res if check_skip_fields(dictionary_obj, fld)
+    ]
 
 
 async def prepare_dictionary_obj(ctx):
@@ -196,31 +200,32 @@ async def prepare_dictionary_obj(ctx):
     ctx.dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
 
-async def check_sensitive_fld_names(ctx, objs: List[FieldInfo]):
-    for obj in objs:
+async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
+    for field_info in fields_info:
         if "rules" in ctx.dictionary_obj["field"]:
             for rule in ctx.dictionary_obj["field"]["rules"]:
-                if re.search(rule, obj.column_name) is not None:
-                    if ctx.args.debug:
-                        ctx.logger.debug(
-                            '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                            % (str(rule), str(obj))
-                        )
+                if re.search(rule, field_info.column_name) is not None:
+                    logger.debug(
+                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
+                        % (str(rule), str(field_info))
+                    )
                     # objs.remove(v)
-                    ctx.create_dict_matches[obj.obj_id] = obj
+                    ctx.create_dict_matches[field_info.obj_id] = field_info
 
         if "constants" in ctx.dictionary_obj["field"]:
             for rule in ctx.dictionary_obj["field"]["constants"]:
-                if rule == obj.column_name:
-                    ctx.logger.debug(
+                if rule == field_info.column_name:
+                    logger.debug(
                         '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                        % (str(rule), str(obj))
+                        % (str(rule), str(field_info))
                     )
-                    objs.remove(obj)
-                    ctx.create_dict_matches[obj.obj_id] = obj
+                    fields_info.remove(field_info)
+                    ctx.create_dict_matches[field_info.obj_id] = field_info
 
 
-def check_sensitive_data_in_fld(name, ctx, field_info: FieldInfo, fld_data):
+def check_sensitive_data_in_fld(
+    name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
+) -> dict:
     if field_info.relname == "card_numbers":
         x = 1
     fld_data_set = set()
@@ -232,29 +237,25 @@ def check_sensitive_data_in_fld(name, ctx, field_info: FieldInfo, fld_data):
             if len(word) >= 5:
                 fld_data_set.add(word.lower())
 
-    result = set.intersection(
-        ctx.dictionary_obj["data_const"]["constants"], fld_data_set
-    )
+    result = set.intersection(dictionary_obj["data_const"]["constants"], fld_data_set)
     if len(result) > 0:
-        if ctx.args.debug:
-            ctx.logger.debug(
-                "========> Process[%s]: check_sensitive_data: match by constant %s , %s"
-                % (name, str(result), str(field_info))
-            )
+        logger.debug(
+            "========> Process[%s]: check_sensitive_data: match by constant %s , %s"
+            % (name, str(result), str(field_info))
+        )
         dict_matches[field_info.obj_id] = field_info
 
     for v in fld_data:
         if (
             field_info.obj_id not in dict_matches
-            and field_info.obj_id not in ctx.create_dict_matches
+            and field_info.obj_id not in create_dict_matches
         ):
-            for r in ctx.dictionary_obj["data_regex"]["rules"]:
+            for r in dictionary_obj["data_regex"]["rules"]:
                 if v is not None and re.search(r, v) is not None:
-                    if ctx.args.debug:
-                        ctx.logger.debug(
-                            '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s'
-                            % (name, str(r), str(v), str(field_info))
-                        )
+                    logger.debug(
+                        '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s'
+                        % (name, str(r), str(v), str(field_info))
+                    )
                     dict_matches[field_info.obj_id] = field_info
         else:
             break
@@ -280,17 +281,14 @@ async def scan_obj_func(
     name, ctx, pool, field_info: FieldInfo, tagged_fields: List[Optional[TaggedFields]]
 ):
 
-    if ctx.args.debug:
-        ctx.logger.debug(
-            "====>>> Process[%s]: Started task %s" % (name, str(field_info))
-        )
+    logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
 
     start_t = time.time()
     if not (
         field_info.type in ("text", "integer", "bigint")
         or field_info.type.find("character varying") > -1
     ):
-        ctx.logger.debug(
+        logger.debug(
             "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
             % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
         )
@@ -322,7 +320,11 @@ async def scan_obj_func(
                 )
             )
             res = check_sensitive_data_in_fld(
-                name, ctx, field_info, setof_to_list(fld_data)
+                name,
+                ctx.dictionary_obj,
+                ctx.create_dict_matches,
+                field_info,
+                setof_to_list(fld_data),
             )
         if ctx.args.scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
@@ -339,14 +341,18 @@ async def scan_obj_func(
                 while next_rows:
                     fld_data = await cur.fetch(ctx.args.scan_partial_rows)
                     res = check_sensitive_data_in_fld(
-                        name, ctx, field_info, setof_to_list(fld_data)
+                        name,
+                        ctx.dictionary_obj,
+                        ctx.create_dict_matches,
+                        field_info,
+                        setof_to_list(fld_data),
                     )
                     if len(fld_data) == 0 or len(res) > 0:
                         next_rows = False
                         break
 
     except Exception as e:
-        ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
+        logger.error("Exception in scan_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % field_info)
     finally:
         await db_conn.close()
@@ -354,16 +360,15 @@ async def scan_obj_func(
 
     end_t = time.time()
     if end_t - start_t > 10:
-        ctx.logger.warning(
+        logger.warning(
             "!!! Process[%s]: scan_obj_func took %s sec. Task %s"
             % (name, str(round(end_t - start_t, 2)), str(field_info))
         )
 
-    if ctx.args.debug:
-        ctx.logger.debug(
-            "<<<<==== Process[%s]: Found %s items(s) Finished task %s "
-            % (name, str(len(res)), str(field_info))
-        )
+    logger.debug(
+        "<<<<==== Process[%s]: Found %s items(s) Finished task %s "
+        % (name, str(len(res)), str(field_info))
+    )
     return res
 
 
@@ -382,11 +387,11 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
         )
         tasks = set()
 
-        ctx.logger.info(
+        logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
-        tagged_fields = await get_tagged_fields(ctx)
-        ctx.logger.info(
+        tagged_fields = await get_tagged_fields(ctx.conn_params)
+        logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
 
@@ -409,7 +414,7 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
                 progress = (
                     str(round(float(idx) * 100 / len(fields_info_chunk), 2)) + "%"
                 )
-                ctx.logger.info("Process [%s] Progress %s" % (name, str(progress)))
+                logger.info("Process [%s] Progress %s" % (name, str(progress)))
         if len(tasks) > 0:
             await asyncio.wait(tasks)
         await pool.close()
@@ -420,7 +425,7 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
     try:
         loop.run_until_complete(run())
     except asyncio.exceptions.TimeoutError:
-        ctx.logger.error(
+        logger.error(
             "================> Process [%s]: asyncio.exceptions.TimeoutError" % name
         )
     finally:
@@ -438,7 +443,7 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
 
 async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     start_t = time.time()
-    ctx.logger.info(
+    logger.info(
         "================> Process [%s] started. Input items: %s"
         % (name, str(len(fields_info_chunk)))
     )
@@ -456,7 +461,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
         res = result
     await p.coro_join()
     end_t = time.time()
-    ctx.logger.info(
+    logger.info(
         "<================ Process [%s] finished, elapsed: %s sec. Result %s item(s)"
         % (
             name,
@@ -498,7 +503,9 @@ async def create_dict_impl(ctx):
     result.result_code = ResultCode.DONE
 
     # TODO: Here we create obj
-    fields_info: List[FieldInfo] = await generate_scan_objs(ctx)
+    fields_info: List[FieldInfo] = await generate_scan_objs(
+        ctx.conn_params, ctx.dictionary_obj
+    )
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 
@@ -555,7 +562,7 @@ async def create_dict_impl(ctx):
 async def create_dict(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
-    ctx.logger.info("-------------> Started create_dict mode")
+    logger.info("-------------> Started create_dict mode")
 
     try:
         dictionary_file = open(
@@ -566,17 +573,17 @@ async def create_dict(ctx):
         ctx.dictionary_obj = eval(ctx.dictionary_content)
         await prepare_dictionary_obj(ctx)
     except:
-        ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
+        logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     try:
         result = await create_dict_impl(ctx)
     except:
-        ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
+        logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     if result.result_code == ResultCode.DONE:
-        ctx.logger.info("<------------- Finished create_dict mode")
+        logger.info("<------------- Finished create_dict mode")
     return result
