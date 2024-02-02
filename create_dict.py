@@ -1,6 +1,6 @@
 import random
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from common import *
 import os
@@ -11,7 +11,50 @@ import aioprocessing
 import nest_asyncio
 
 
-async def list_tagged_fields(ctx) -> List[Dict[str, str]]:
+class TaggedFields:
+    def __init__(
+        self, nspname: str, relname: str, column_name: str, column_comment: str
+    ):
+        self.nspname = nspname
+        self.relname = relname
+        self.column_name = column_name
+        self.column_comment = column_comment
+
+
+class FieldInfo:
+    def __init__(
+        self,
+        nspname: str,
+        relname: str,
+        column_name: str,
+        type: str,
+        oid: int,
+        attnum: int,
+        obj_id: str,
+        tbl_id: str,
+    ):
+        self.nspname = nspname
+        self.relname = relname
+        self.column_name = column_name
+        self.type = type
+        self.oid = oid
+        self.attnum = attnum
+        self.obj_id = obj_id
+        self.tbl_id = tbl_id
+
+    def __str__(self):
+        return (
+            f"nspname={self.nspname}, "
+            f"relname={self.relname}, "
+            f"column_name={self.column_name}, "
+            f"type={self.type}, oid={self.oid}, "
+            f"attnum={self.attnum}, "
+            f"obj_id={self.obj_id}, "
+            f"tbl_id={self.tbl_id}"
+        )
+
+
+async def get_tagged_fields(ctx) -> List[TaggedFields]:
     query = """
     SELECT
         nspname AS schema_name,
@@ -26,7 +69,7 @@ async def list_tagged_fields(ctx) -> List[Dict[str, str]]:
         JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
     WHERE
         pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
-        and (description like '%:sens%' OR description like '%:nosens%')
+        and description like '%:sens%'
     ORDER BY
         nspname,
         relname,
@@ -38,15 +81,49 @@ async def list_tagged_fields(ctx) -> List[Dict[str, str]]:
     finally:
         await db_conn.close()
     tagged_fields = [
-        {
-            "nspname": record["schema_name"],
-            "relname": record["table_name"],
-            "column_name": record["column_name"],
-            "column_comment": record["column_comment"],
-        }
+        TaggedFields(
+            nspname=record["schema_name"],
+            relname=record["table_name"],
+            column_name=record["column_name"],
+            column_comment=record["column_comment"],
+        )
         for record in query_res
     ]
     return tagged_fields
+
+
+def check_skip_fields(ctx, fld):
+    if "skip_rules" not in ctx.dictionary_obj:
+        return True
+    for v in ctx.dictionary_obj["skip_rules"]:
+        schema_match = False
+        tbl_match = False
+        fld_match = False
+        res = True
+        if "schema" in v and fld["nspname"] == v["schema"]:
+            schema_match = True
+        if "table" in v and fld["relname"] == v["table"]:
+            tbl_match = True
+        if "fields" in v and fld["column_name"] in v["fields"]:
+            fld_match = True
+        if schema_match and tbl_match and fld_match:
+            res = False
+
+        if "fields" not in v and schema_match and tbl_match:
+            res = False
+
+        if "table" not in v and "fields" not in v and schema_match:
+            res = False
+
+        if not res:
+            if ctx.args.debug:
+                ctx.logger.debug(
+                    "!!! ------> check_skip_fields: filtered fld %s by rule %s"
+                    % (str(dict(fld)), str(v))
+                )
+            return res
+
+    return True
 
 
 async def generate_scan_objs(ctx):
@@ -98,40 +175,7 @@ async def generate_scan_objs(ctx):
     query_res = await db_conn.fetch(query)
     await db_conn.close()
 
-    def check_skip_fields(fld):
-        if "skip_rules" not in ctx.dictionary_obj:
-            return True
-        for v in ctx.dictionary_obj["skip_rules"]:
-            schema_match = False
-            tbl_match = False
-            fld_match = False
-            res = True
-            if "schema" in v and fld["nspname"] == v["schema"]:
-                schema_match = True
-            if "table" in v and fld["relname"] == v["table"]:
-                tbl_match = True
-            if "fields" in v and fld["column_name"] in v["fields"]:
-                fld_match = True
-            if schema_match and tbl_match and fld_match:
-                res = False
-
-            if "fields" not in v and schema_match and tbl_match:
-                res = False
-
-            if "table" not in v and "fields" not in v and schema_match:
-                res = False
-
-            if not res:
-                if ctx.args.debug:
-                    ctx.logger.debug(
-                        "!!! ------> check_skip_fields: filtered fld %s by rule %s"
-                        % (str(dict(fld)), str(v))
-                    )
-                return res
-
-        return True
-
-    return [fld for fld in query_res if check_skip_fields(fld)]
+    return [FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)]
 
 
 async def prepare_dictionary_obj(ctx):
@@ -152,36 +196,35 @@ async def prepare_dictionary_obj(ctx):
     ctx.dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
 
-async def check_sensitive_fld_names(ctx, objs):
-    for v in objs:
+async def check_sensitive_fld_names(ctx, objs: List[FieldInfo]):
+    for obj in objs:
         if "rules" in ctx.dictionary_obj["field"]:
-            for r in ctx.dictionary_obj["field"]["rules"]:
-                if re.search(r, v["column_name"]) is not None:
+            for rule in ctx.dictionary_obj["field"]["rules"]:
+                if re.search(rule, obj.column_name) is not None:
                     if ctx.args.debug:
                         ctx.logger.debug(
                             '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                            % (str(r), str(dict(v)))
+                            % (str(rule), str(obj))
                         )
                     # objs.remove(v)
-                    ctx.create_dict_matches[v["obj_id"]] = v
+                    ctx.create_dict_matches[obj.obj_id] = obj
 
         if "constants" in ctx.dictionary_obj["field"]:
-            for r in ctx.dictionary_obj["field"]["constants"]:
-                if r == v["column_name"]:
-                    if ctx.args.debug:
-                        ctx.logger.debug(
-                            '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                            % (str(r), str(dict(v)))
-                        )
-                    objs.remove(v)
-                    ctx.create_dict_matches[v["obj_id"]] = v
+            for rule in ctx.dictionary_obj["field"]["constants"]:
+                if rule == obj.column_name:
+                    ctx.logger.debug(
+                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
+                        % (str(rule), str(obj))
+                    )
+                    objs.remove(obj)
+                    ctx.create_dict_matches[obj.obj_id] = obj
 
 
-def check_sensitive_data_in_fld(name, ctx, task, fld_data):
-    if task["relname"] == "card_numbers":
+def check_sensitive_data_in_fld(name, ctx, field_info: FieldInfo, fld_data):
+    if field_info.relname == "card_numbers":
         x = 1
     fld_data_set = set()
-    create_dict_matches = {}
+    dict_matches = {}
     for v in fld_data:
         if v is None:
             continue
@@ -196,43 +239,61 @@ def check_sensitive_data_in_fld(name, ctx, task, fld_data):
         if ctx.args.debug:
             ctx.logger.debug(
                 "========> Process[%s]: check_sensitive_data: match by constant %s , %s"
-                % (name, str(result), str(task))
+                % (name, str(result), str(field_info))
             )
-        create_dict_matches[task["obj_id"]] = task
+        dict_matches[field_info.obj_id] = field_info
 
     for v in fld_data:
         if (
-            task["obj_id"] not in create_dict_matches
-            and task["obj_id"] not in ctx.create_dict_matches
+            field_info.obj_id not in dict_matches
+            and field_info.obj_id not in ctx.create_dict_matches
         ):
             for r in ctx.dictionary_obj["data_regex"]["rules"]:
                 if v is not None and re.search(r, v) is not None:
                     if ctx.args.debug:
                         ctx.logger.debug(
                             '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s'
-                            % (name, str(r), str(v), str(task))
+                            % (name, str(r), str(v), str(field_info))
                         )
-                    create_dict_matches[task["obj_id"]] = task
+                    dict_matches[field_info.obj_id] = field_info
         else:
             break
 
-    return create_dict_matches
+    return dict_matches
 
 
-async def scan_obj_func(name, ctx, pool, task, tagged_fields):
+def exclude_tagged_fields(
+    field_info: FieldInfo, tagged_fields: List[Optional[TaggedFields]]
+):
+    for field in tagged_fields:
+        if (
+            field.nspname == field_info.nspname
+            and field.relname == field_info.relname
+            and field.column_name == field_info.column_name
+        ):
+            # res[task["obj_id"]] = task
+            # scanning_flag = False
+            return {field_info.obj_id: field_info}
+
+
+async def scan_obj_func(
+    name, ctx, pool, field_info: FieldInfo, tagged_fields: List[Optional[TaggedFields]]
+):
+
     if ctx.args.debug:
-        ctx.logger.debug("====>>> Process[%s]: Started task %s" % (name, str(task)))
+        ctx.logger.debug(
+            "====>>> Process[%s]: Started task %s" % (name, str(field_info))
+        )
 
     start_t = time.time()
     if not (
-        task["type"] in ("text", "integer", "bigint")
-        or task["type"].find("character varying") > -1
+        field_info.type in ("text", "integer", "bigint")
+        or field_info.type.find("character varying") > -1
     ):
-        if ctx.args.debug:
-            ctx.logger.debug(
-                "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
-                % (name, str(task), "[integer, text, bigint, character varying(x)]")
-            )
+        ctx.logger.debug(
+            "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
+            % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
+        )
         return None
 
     db_conn = await pool.acquire()
@@ -241,11 +302,11 @@ async def scan_obj_func(name, ctx, pool, task, tagged_fields):
     try:
         for field in tagged_fields:
             if (
-                field["nspname"] == task["nspname"]
-                and field["relname"] == task["relname"]
-                and field["column_name"] == task["column_name"]
+                field.nspname == field_info.nspname
+                and field.relname == field_info.relname
+                and field.column_name == field_info.column_name
             ):
-                res[task["obj_id"]] = task
+                res[field_info.obj_id] = field_info
                 scanning_flag = False
                 break
 
@@ -253,30 +314,32 @@ async def scan_obj_func(name, ctx, pool, task, tagged_fields):
             fld_data = await db_conn.fetch(
                 """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
                 % (
-                    task["column_name"],
-                    task["nspname"],
-                    task["relname"],
-                    task["column_name"],
+                    field_info.column_name,
+                    field_info.nspname,
+                    field_info.relname,
+                    field_info.column_name,
                     str(ctx.args.scan_partial_rows),
                 )
             )
-            res = check_sensitive_data_in_fld(name, ctx, task, setof_to_list(fld_data))
+            res = check_sensitive_data_in_fld(
+                name, ctx, field_info, setof_to_list(fld_data)
+            )
         if ctx.args.scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
                     """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null"""
                     % (
-                        task["column_name"],
-                        task["nspname"],
-                        task["relname"],
-                        task["column_name"],
+                        field_info.column_name,
+                        field_info.nspname,
+                        field_info.relname,
+                        field_info.column_name,
                     )
                 )
                 next_rows = True
                 while next_rows:
                     fld_data = await cur.fetch(ctx.args.scan_partial_rows)
                     res = check_sensitive_data_in_fld(
-                        name, ctx, task, setof_to_list(fld_data)
+                        name, ctx, field_info, setof_to_list(fld_data)
                     )
                     if len(fld_data) == 0 or len(res) > 0:
                         next_rows = False
@@ -284,7 +347,7 @@ async def scan_obj_func(name, ctx, pool, task, tagged_fields):
 
     except Exception as e:
         ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
-        raise Exception("Can't execute task: %s" % task)
+        raise Exception("Can't execute task: %s" % field_info)
     finally:
         await db_conn.close()
         await pool.release(db_conn)
@@ -293,24 +356,24 @@ async def scan_obj_func(name, ctx, pool, task, tagged_fields):
     if end_t - start_t > 10:
         ctx.logger.warning(
             "!!! Process[%s]: scan_obj_func took %s sec. Task %s"
-            % (name, str(round(end_t - start_t, 2)), str(task))
+            % (name, str(round(end_t - start_t, 2)), str(field_info))
         )
 
     if ctx.args.debug:
         ctx.logger.debug(
             "<<<<==== Process[%s]: Found %s items(s) Finished task %s "
-            % (name, str(len(res)), str(task))
+            % (name, str(len(res)), str(field_info))
         )
     return res
 
 
-def process_impl(name, ctx, queue, items):
+def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
     tasks_res = []
 
     status_ratio = 10
-    if len(items) > 1000:
+    if len(fields_info_chunk) > 1000:
         status_ratio = 100
-    if len(items) > 50000:
+    if len(fields_info_chunk) > 50000:
         status_ratio = 1000
 
     async def run():
@@ -322,12 +385,12 @@ def process_impl(name, ctx, queue, items):
         ctx.logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
-        tagged_fields = await list_tagged_fields(ctx)
+        tagged_fields = await get_tagged_fields(ctx)
         ctx.logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
 
-        for i, item in enumerate(items):
+        for idx, field_info in enumerate(fields_info_chunk):
             if len(tasks) >= ctx.args.threads:
                 done, tasks = await asyncio.wait(
                     tasks, return_when=asyncio.FIRST_COMPLETED
@@ -338,12 +401,14 @@ def process_impl(name, ctx, queue, items):
                     raise exception
 
             task_res = loop.create_task(
-                scan_obj_func(name, ctx, pool, item, tagged_fields)
+                scan_obj_func(name, ctx, pool, field_info, tagged_fields)
             )
             tasks_res.append(task_res)
             tasks.add(task_res)
-            if i % status_ratio:
-                progress = str(round(float(i) * 100 / len(items), 2)) + "%"
+            if idx % status_ratio:
+                progress = (
+                    str(round(float(idx) * 100 / len(fields_info_chunk), 2)) + "%"
+                )
                 ctx.logger.info("Process [%s] Progress %s" % (name, str(progress)))
         if len(tasks) > 0:
             await asyncio.wait(tasks)
@@ -371,15 +436,17 @@ def process_impl(name, ctx, queue, items):
     queue.close()
 
 
-async def init_process(name, ctx, items):
+async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     start_t = time.time()
     ctx.logger.info(
         "================> Process [%s] started. Input items: %s"
-        % (name, str(len(items)))
+        % (name, str(len(fields_info_chunk)))
     )
     queue = aioprocessing.AioQueue()
 
-    p = aioprocessing.AioProcess(target=process_impl, args=(name, ctx, queue, items))
+    p = aioprocessing.AioProcess(
+        target=process_impl, args=(name, ctx, queue, fields_info_chunk)
+    )
     p.start()
     res = None
     while True:
@@ -400,23 +467,53 @@ async def init_process(name, ctx, items):
     return res
 
 
+def add_metadict_rule(dictionary_obj: dict, field_info: FieldInfo, anon_rules: dict):
+    hash_func = (
+        "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
+    )
+
+    for fld_type, func in dictionary_obj["funcs"].items():
+        if str(field_info.type).find(fld_type) > -1:
+            hash_func = func
+
+    res_hash_func = (
+        hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
+    )
+
+    if field_info.tbl_id not in anon_rules:
+        anon_rules[field_info.tbl_id] = {
+            "schema": field_info.nspname,
+            "table": field_info.relname,
+            "fields": {field_info.column_name: res_hash_func},
+        }
+    else:
+        anon_rules[field_info.tbl_id]["fields"].update(
+            {field_info.column_name: res_hash_func}
+        )
+    return anon_rules
+
+
 async def create_dict_impl(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
 
-    objs = await generate_scan_objs(ctx)
-    if not objs:
+    # TODO: Here we create obj
+    fields_info: List[FieldInfo] = await generate_scan_objs(ctx)
+    if not fields_info:
         raise Exception("No objects for create dictionary!")
 
-    await check_sensitive_fld_names(ctx, objs)  # fill ctx.create_dict_matches
+    await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
 
-    objs_prepared = recordset_to_list(objs)
-    random.shuffle(objs_prepared)
-    part_objs = list(chunkify(objs_prepared, ctx.args.threads))
+    # objs_prepared = recordset_to_list(fields_info)
+    # FIXME: why shuffle?
+    random.shuffle(fields_info)
+    fields_info_chunks = list(chunkify(fields_info, ctx.args.threads))
 
     tasks = []
-    for i, part in enumerate(part_objs):
-        tasks.append(asyncio.ensure_future(init_process(str(i + 1), ctx, part)))
+    for i, fields_info_chunk in enumerate(fields_info_chunks):
+        tasks.append(
+            asyncio.ensure_future(init_process(str(i + 1), ctx, fields_info_chunk))
+        )
     await asyncio.wait(tasks)
 
     # create output dict
@@ -424,41 +521,23 @@ async def create_dict_impl(ctx):
     output_dict["dictionary"] = []
     anon_dict_rules = {}
 
-    def fill_res_dict(dict_val):
-        hash_func = "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
-        for fld_type, func in ctx.dictionary_obj["funcs"].items():
-            if str(dict_val["type"]).find(fld_type) > -1:
-                hash_func = func
-
-        res_hash_func = (
-            hash_func
-            if hash_func.find("%s") == -1
-            else hash_func % dict_val["column_name"]
-        )
-
-        if dict_val["tbl_id"] not in anon_dict_rules:
-            anon_dict_rules[dict_val["tbl_id"]] = {
-                "schema": dict_val["nspname"],
-                "table": dict_val["relname"],
-                "fields": {dict_val["column_name"]: res_hash_func},
-            }
-        else:
-            anon_dict_rules[dict_val["tbl_id"]]["fields"].update(
-                {dict_val["column_name"]: res_hash_func}
-            )
-
     # ============================================================================================
     # Fill results based on processes
     # ============================================================================================
     for v in tasks:
         for res in v.result():
-            for _, val in res.items():
-                fill_res_dict(val)
+            for field_info in res.values():
+                anon_dict_rules = add_metadict_rule(
+                    ctx.dictionary_obj, field_info, anon_dict_rules
+                )
+
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
     # ============================================================================================
-    for _, v in ctx.create_dict_matches.items():
-        fill_res_dict(v)
+    for field_info in ctx.create_dict_matches.values():
+        anon_dict_rules = add_metadict_rule(
+            ctx.dictionary_obj, field_info, anon_dict_rules
+        )
     # ============================================================================================
 
     for _, v in anon_dict_rules.items():
