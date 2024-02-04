@@ -13,6 +13,8 @@ import nest_asyncio
 
 logger = getLogger(__name__)
 
+SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
+
 
 class TaggedFields:
     def __init__(
@@ -264,18 +266,12 @@ def check_sensitive_data_in_fld(
     return dict_matches
 
 
-def exclude_tagged_fields(
-    field_info: FieldInfo, tagged_fields: List[Optional[TaggedFields]]
-):
-    for field in tagged_fields:
-        if (
-            field.nspname == field_info.nspname
-            and field.relname == field_info.relname
-            and field.column_name == field_info.column_name
-        ):
-            # res[task["obj_id"]] = task
-            # scanning_flag = False
-            return {field_info.obj_id: field_info}
+def check_sens_pg_types(field_type: str):
+    """Check if actual field type is sens."""
+    for pg_type in SENS_PG_TYPES:
+        if pg_type in field_type:
+            return True
+    return False
 
 
 async def scan_obj_func(
@@ -292,10 +288,7 @@ async def scan_obj_func(
     logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
 
     start_t = time.time()
-    if not (
-        field_info.type in ("text", "integer", "bigint")
-        or field_info.type.find("character varying") > -1
-    ):
+    if not check_sens_pg_types(field_info.type):
         logger.debug(
             "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
             % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
@@ -312,11 +305,13 @@ async def scan_obj_func(
                 and field.relname == field_info.relname
                 and field.column_name == field_info.column_name
             ):
-                res[field_info.obj_id] = field_info
+                if ":sens" in field.column_comment:
+                    res[field_info.obj_id] = field_info
                 scanning_flag = False
                 break
 
         if scan_mode == ScanMode.PARTIAL and scanning_flag:
+            # TODO: Create check for bigger than 10MB fields
             fld_data = await db_conn.fetch(
                 """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
                 % (

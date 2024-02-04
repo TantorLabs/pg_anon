@@ -1201,7 +1201,7 @@ class PGAnonDictGenTagUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--scan-mode=partial",
                 "--dict-file=test_empty_meta_dict.py",
                 "--output-dict-file=%s" % self.target_dict,
-                "--threads=6",
+                "--threads=1",
                 "--scan-partial-rows=100",
             ]
         )
@@ -1220,9 +1220,11 @@ class PGAnonDictGenTagUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     "schema": "public",
                     "table": "tbl1",
                     "fields": {
-                        "a": "anon_funcs.digest(\"a\", 'salt_word', 'md5')",
-                        "txt": "anon_funcs.digest(\"txt\", 'salt_word', 'md5')",
-                        "b": "anon_funcs.digest(\"b\", 'salt_word', 'md5')",
+                        "description": "anon_funcs.digest(\"description\", 'salt_word', 'md5')",
+                        "extra_info_jsonb": "anon_funcs.digest(\"extra_info_jsonb\", 'salt_word', 'md5')",
+                        "extra_info_json": "anon_funcs.digest(\"extra_info_json\", 'salt_word', 'md5')",
+                        "surname": "anon_funcs.digest(\"surname\", 'salt_word', 'md5')",
+                        "extra_info_charvar": "anon_funcs.digest(\"extra_info_charvar\", 'salt_word', 'md5')",
                     },
                 }
             ]
