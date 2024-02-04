@@ -58,6 +58,7 @@ class FieldInfo:
 
 
 async def get_tagged_fields(conn_params) -> List[TaggedFields]:
+    """Get fields tagged sens and nosens."""
     query = """
     SELECT
         nspname AS schema_name,
@@ -72,7 +73,7 @@ async def get_tagged_fields(conn_params) -> List[TaggedFields]:
         JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
     WHERE
         pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
-        and description like '%:sens%'
+        and (description like '%:sens%' OR description like '%:nosens%')
     ORDER BY
         nspname,
         relname,
@@ -278,7 +279,14 @@ def exclude_tagged_fields(
 
 
 async def scan_obj_func(
-    name, ctx, pool, field_info: FieldInfo, tagged_fields: List[Optional[TaggedFields]]
+    name,
+    ctx,
+    pool,
+    field_info: FieldInfo,
+    tagged_fields: List[Optional[TaggedFields]],
+    scan_mode: ScanMode,
+    dictionary_obj,
+    scan_partial_rows,
 ):
 
     logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
@@ -308,7 +316,7 @@ async def scan_obj_func(
                 scanning_flag = False
                 break
 
-        if ctx.args.scan_mode == ScanMode.PARTIAL and scanning_flag:
+        if scan_mode == ScanMode.PARTIAL and scanning_flag:
             fld_data = await db_conn.fetch(
                 """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
                 % (
@@ -316,17 +324,17 @@ async def scan_obj_func(
                     field_info.nspname,
                     field_info.relname,
                     field_info.column_name,
-                    str(ctx.args.scan_partial_rows),
+                    str(scan_partial_rows),
                 )
             )
             res = check_sensitive_data_in_fld(
                 name,
-                ctx.dictionary_obj,
+                dictionary_obj,
                 ctx.create_dict_matches,
                 field_info,
                 setof_to_list(fld_data),
             )
-        if ctx.args.scan_mode == ScanMode.FULL and scanning_flag:
+        if scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
                     """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null"""
@@ -339,10 +347,10 @@ async def scan_obj_func(
                 )
                 next_rows = True
                 while next_rows:
-                    fld_data = await cur.fetch(ctx.args.scan_partial_rows)
+                    fld_data = await cur.fetch(scan_partial_rows)
                     res = check_sensitive_data_in_fld(
                         name,
-                        ctx.dictionary_obj,
+                        dictionary_obj,
                         ctx.create_dict_matches,
                         field_info,
                         setof_to_list(fld_data),
@@ -372,7 +380,9 @@ async def scan_obj_func(
     return res
 
 
-def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
+def process_impl(
+    name, ctx, queue, fields_info_chunk: List[FieldInfo], conn_params, threads: int
+):
     tasks_res = []
 
     status_ratio = 10
@@ -383,20 +393,20 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
 
     async def run():
         pool = await asyncpg.create_pool(
-            **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
+            **conn_params, min_size=threads, max_size=threads
         )
         tasks = set()
 
         logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
-        tagged_fields = await get_tagged_fields(ctx.conn_params)
+        tagged_fields = await get_tagged_fields(conn_params)
         logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
 
         for idx, field_info in enumerate(fields_info_chunk):
-            if len(tasks) >= ctx.args.threads:
+            if len(tasks) >= threads:
                 done, tasks = await asyncio.wait(
                     tasks, return_when=asyncio.FIRST_COMPLETED
                 )
@@ -406,7 +416,16 @@ def process_impl(name, ctx, queue, fields_info_chunk: List[FieldInfo]):
                     raise exception
 
             task_res = loop.create_task(
-                scan_obj_func(name, ctx, pool, field_info, tagged_fields)
+                scan_obj_func(
+                    name,
+                    ctx,
+                    pool,
+                    field_info,
+                    tagged_fields,
+                    ctx.args.scan_mode,
+                    ctx.dictionary_obj,
+                    ctx.args.scan_partial_rows,
+                )
             )
             tasks_res.append(task_res)
             tasks.add(task_res)
@@ -450,7 +469,8 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(
-        target=process_impl, args=(name, ctx, queue, fields_info_chunk)
+        target=process_impl,
+        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.threads),
     )
     p.start()
     res = None
@@ -517,9 +537,9 @@ async def create_dict_impl(ctx):
     fields_info_chunks = list(chunkify(fields_info, ctx.args.threads))
 
     tasks = []
-    for i, fields_info_chunk in enumerate(fields_info_chunks):
+    for idx, fields_info_chunk in enumerate(fields_info_chunks):
         tasks.append(
-            asyncio.ensure_future(init_process(str(i + 1), ctx, fields_info_chunk))
+            asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
         )
     await asyncio.wait(tasks)
 
