@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "pg-anon"
-version = "0.1.0"
+name = "pg_anon"
+version = "0.1.1"
 description = "PostgreSQL anonymization tool."
 authors = ["Tantor Labs"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.8"
 asyncpg = "0.26.0"
 aioprocessing = "2.0.1"
 nest-asyncio = "1.5.6"

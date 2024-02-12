@@ -5,7 +5,7 @@ from dump import *
 from restore import *
 from create_dict import *
 
-PG_ANON_VERSION = "0.1.0"
+PG_ANON_VERSION = "0.1.1"
 
 
 class BasicEnum:
