@@ -1,30 +1,46 @@
-import os
-import asyncpg
 import asyncio
-from common import *
-import shutil
 import json
+import os
+import re
+import shutil
+import subprocess
+
+import asyncpg
+
+from pg_anon.common import (
+    AnonMode,
+    PgAnonResult,
+    ResultCode,
+    exception_helper,
+    get_major_version,
+    get_pg_util_version,
+    pretty_size,
+)
 
 
 async def run_pg_restore(ctx, section):
     os.environ["PGPASSWORD"] = ctx.args.db_user_password
     command = [
         ctx.args.pg_restore,
-        "-h", ctx.args.db_host,
-        "-p", str(ctx.args.db_port), "-v", "-w",
-        "-U", ctx.args.db_user,
-        "-d", ctx.args.db_name,
-        "-j", str(ctx.args.threads),
-        os.path.join(
-            ctx.args.input_dir,
-            section.replace("-", "_") + ".backup"
-        )
+        "-h",
+        ctx.args.db_host,
+        "-p",
+        str(ctx.args.db_port),
+        "-v",
+        "-w",
+        "-U",
+        ctx.args.db_user,
+        "-d",
+        ctx.args.db_name,
+        "-j",
+        str(ctx.args.threads),
+        os.path.join(ctx.args.input_dir, section.replace("-", "_") + ".backup"),
     ]
     if not ctx.args.db_host:
-        del command[command.index("-h"):command.index("-h") + 2]
+        del command[command.index("-h") : command.index("-h") + 2]
 
     if not ctx.args.db_user:
-        del command[command.index("-U"):command.index("-U") + 2]
+        del command[command.index("-U") : command.index("-U") + 2]
 
     ctx.logger.debug(str(command))
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -68,14 +84,14 @@ async def seq_init(ctx):
         ctx.logger.debug(query)
         await db_conn.execute(query)
     else:
-        for _, v in ctx.metadata['seq_lastvals'].items():
+        for _, v in ctx.metadata["seq_lastvals"].items():
             query = """
                 SET search_path = '%s';
                 SELECT setval(quote_ident('%s'), %s + 1);
             """ % (
-                v['schema'].replace("'", "''"),
-                v['seq_name'].replace("'", "''"),
-                v['value']
+                v["schema"].replace("'", "''"),
+                v["seq_name"].replace("'", "''"),
+                v["value"],
             )
             ctx.logger.info(query)
             await db_conn.execute(query)
@@ -85,15 +101,17 @@ async def seq_init(ctx):
 
 def generate_restore_queries(ctx):
     queries = []
-    for file_name, target in ctx.metadata['files'].items():
-        full_path = os.path.join(ctx.current_dir, 'output', ctx.args.input_dir, file_name)
+    for file_name, target in ctx.metadata["files"].items():
+        full_path = os.path.join(
+            ctx.current_dir, "output", ctx.args.input_dir, file_name
+        )
         schema = target["schema"]
         table = target["table"]
-        query = "COPY \"%s\".\"%s\" FROM PROGRAM 'gunzip -c %s' %s" % (
+        query = 'COPY "%s"."%s" FROM PROGRAM \'gunzip -c %s\' %s' % (
             schema,
             table,
             full_path,
-            ctx.args.copy_options
+            ctx.args.copy_options,
         )
         queries.append(query)
     return queries
@@ -101,19 +119,16 @@ def generate_restore_queries(ctx):
 
 def generate_analyze_queries(ctx):
     analyze_queries = []
-    for file_name, target in ctx.metadata['files'].items():
+    for file_name, target in ctx.metadata["files"].items():
         schema = target["schema"]
         table = target["table"]
-        analyze_query = "analyze \"%s\".\"%s\"" % (
-            schema,
-            table
-        )
+        analyze_query = 'analyze "%s"."%s"' % (schema, table)
         analyze_queries.append(analyze_query)
     return analyze_queries
 
 
 async def restore_obj_func(ctx, pool, task, sn_id):
-    ctx.logger.info('================> Started task %s' % str(task))
+    ctx.logger.info("================> Started task %s" % str(task))
 
     db_conn = await pool.acquire()
     try:
@@ -129,14 +144,12 @@ async def restore_obj_func(ctx, pool, task, sn_id):
     finally:
         await pool.release(db_conn)
 
-    ctx.logger.info('================> Finished task %s' % str(task))
+    ctx.logger.info("================> Finished task %s" % str(task))
 
 
 async def make_restore_impl(ctx, sn_id):
     pool = await asyncpg.create_pool(
-        **ctx.conn_params,
-        min_size=ctx.args.threads,
-        max_size=ctx.args.threads
+        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
     )
 
     queries = generate_restore_queries(ctx)
@@ -167,12 +180,16 @@ async def check_free_disk_space(ctx, db_conn):
     )
     disk_size = shutil.disk_usage(data_directory_location)
     ctx.logger.info("Free disk space: " + pretty_size(disk_size.free))
-    ctx.logger.info("Required disk space: " + pretty_size(int(ctx.metadata['total_tables_size']) * 1.5))
-    if disk_size.free < int(ctx.metadata['total_tables_size']) * 1.5:
+    ctx.logger.info(
+        "Required disk space: "
+        + pretty_size(int(ctx.metadata["total_tables_size"]) * 1.5)
+    )
+    if disk_size.free < int(ctx.metadata["total_tables_size"]) * 1.5:
         raise Exception(
-            "Not enough freed disk space! Free %s, Required %s" % (
+            "Not enough freed disk space! Free %s, Required %s"
+            % (
                 pretty_size(disk_size.free),
-                pretty_size(int(ctx.metadata['total_tables_size']) * 1.5)
+                pretty_size(int(ctx.metadata["total_tables_size"]) * 1.5),
             )
         )
 
@@ -181,16 +198,20 @@ async def make_restore(ctx):
     result = PgAnonResult()
     ctx.logger.info("-------------> Started restore")
 
-    if ctx.args.input_dir.find("""/""") == -1 and ctx.args.input_dir.find("""\\""") == -1:
-        ctx.args.input_dir = os.path.join(ctx.current_dir, 'output', ctx.args.input_dir)
+    if (
+        ctx.args.input_dir.find("""/""") == -1
+        and ctx.args.input_dir.find("""\\""") == -1
+    ):
+        ctx.args.input_dir = os.path.join(ctx.current_dir, "output", ctx.args.input_dir)
 
     if not os.path.exists(ctx.args.input_dir):
-        msg = 'ERROR: input directory %s does not exists' % ctx.args.input_dir
+        msg = "ERROR: input directory %s does not exists" % ctx.args.input_dir
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
     db_conn = await asyncpg.connect(**ctx.conn_params)
-    db_is_empty = await db_conn.fetchval("""
+    db_is_empty = await db_conn.fetchval(
+        """
         SELECT NOT EXISTS(
             SELECT table_schema, table_name
             FROM information_schema.tables
@@ -199,48 +220,55 @@ async def make_restore(ctx):
                     'information_schema',
                     'anon_funcs'
                 ) AND table_type = 'BASE TABLE'
-        )""")
+        )"""
+    )
 
     if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         raise Exception("Target DB is not empty!")
 
-    metadata_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.input_dir, 'metadata.json'), 'r')
+    metadata_file = open(
+        os.path.join(ctx.current_dir, "dict", ctx.args.input_dir, "metadata.json"), "r"
+    )
     metadata_content = metadata_file.read()
     metadata_file.close()
     ctx.metadata = eval(metadata_content)
 
     if not ctx.args.disable_checks:
-        if get_major_version(ctx.pg_version) < get_major_version(ctx.metadata['pg_version']):
+        if get_major_version(ctx.pg_version) < get_major_version(
+            ctx.metadata["pg_version"]
+        ):
             await db_conn.close()
             raise Exception(
-                "Target PostgreSQL major version %s is below than source %s!" % (
-                    ctx.pg_version,
-                    ctx.metadata['pg_version']
-                )
+                "Target PostgreSQL major version %s is below than source %s!"
+                % (ctx.pg_version, ctx.metadata["pg_version"])
             )
-        if get_major_version(get_pg_util_version(ctx.args.pg_restore)) < get_major_version(ctx.metadata['pg_dump_version']):
+        if get_major_version(
+            get_pg_util_version(ctx.args.pg_restore)
+        ) < get_major_version(ctx.metadata["pg_dump_version"]):
             await db_conn.close()
             raise Exception(
-                "pg_restore major version %s is below than source pg_dump version %s!" % (
+                "pg_restore major version %s is below than source pg_dump version %s!"
+                % (
                     get_pg_util_version(ctx.args.pg_restore),
-                    ctx.metadata['pg_dump_version']
+                    ctx.metadata["pg_dump_version"],
                 )
             )
         await check_free_disk_space(ctx, db_conn)
 
     if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
-        for v in ctx.metadata['schemas']:
-            query = "CREATE SCHEMA IF NOT EXISTS \"%s\"" % v
+        for v in ctx.metadata["schemas"]:
+            query = 'CREATE SCHEMA IF NOT EXISTS "%s"' % v
             ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
             await db_conn.execute(query)
 
     if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
-        await run_pg_restore(ctx, 'pre-data')
+        await run_pg_restore(ctx, "pre-data")
 
     if ctx.args.drop_custom_check_constr:
         # drop all CHECK constrains containing user-defined procedures to avoid
         # performance degradation at the data loading stage
-        check_constraints = await db_conn.fetch("""
+        check_constraints = await db_conn.fetch(
+            """
             SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
             -- pc.consrc removed in 12 version
             FROM (
@@ -266,12 +294,15 @@ async def make_restore(ctx):
                 INNER JOIN pg_proc p ON p.pronamespace = n.oid
                 WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
             )
-        """)
+        """
+        )
 
         if check_constraints is not None:
             for conn in check_constraints:
                 ctx.logger.info("Removing constraints: " + conn[2])
-                query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(conn[0], conn[1], conn[2])
+                query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(
+                    conn[0], conn[1], conn[2]
+                )
                 await db_conn.execute(query)
 
     result.result_code = ResultCode.DONE
@@ -284,22 +315,23 @@ async def make_restore(ctx):
             sn_id = await db_conn.fetchval("select pg_export_snapshot()")
             await make_restore_impl(ctx, sn_id)
         except:
-            ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
+            ctx.logger.error(
+                "<------------- make_restore failed\n" + exception_helper()
+            )
             result.result_code = "fail"
         finally:
             await tr.commit()
             await db_conn.close()
 
         if ctx.total_rows != int(ctx.metadata["total_rows"]):
-            ctx.logger.error("The number of restored rows (%s) is different from the metadata (%s)" % (
-                    str(ctx.total_rows),
-                    ctx.metadata["total_rows"]
-                )
+            ctx.logger.error(
+                "The number of restored rows (%s) is different from the metadata (%s)"
+                % (str(ctx.total_rows), ctx.metadata["total_rows"])
             )
             result.result_code = ResultCode.FAIL
 
     if ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
-        await run_pg_restore(ctx, 'post-data')
+        await run_pg_restore(ctx, "post-data")
 
     if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
         await seq_init(ctx)
@@ -311,7 +343,7 @@ async def make_restore(ctx):
 
 async def run_custom_query(ctx, pool, query):
     # in single tx
-    ctx.logger.info('================> Started query %s' % str(query))
+    ctx.logger.info("================> Started query %s" % str(query))
 
     db_conn = await pool.acquire()
     try:
@@ -323,15 +355,13 @@ async def run_custom_query(ctx, pool, query):
         await db_conn.close()
         await pool.release(db_conn)
 
-    ctx.logger.info('<================ Finished query %s' % str(query))
+    ctx.logger.info("<================ Finished query %s" % str(query))
 
 
 async def run_analyze(ctx):
     ctx.logger.info("-------------> Started analyze")
     pool = await asyncpg.create_pool(
-        **ctx.conn_params,
-        min_size=ctx.args.threads,
-        max_size=ctx.args.threads
+        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
     )
 
     queries = generate_analyze_queries(ctx)
@@ -358,7 +388,9 @@ async def validate_restore(ctx):
     ctx.logger.info("-------------> Started validate_restore")
 
     try:
-        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
+        dictionary_file = open(
+            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
+        )
         ctx.dictionary_content = dictionary_file.read()
         dictionary_file.close()
         dictionary_obj = eval(ctx.dictionary_content)
@@ -368,7 +400,8 @@ async def validate_restore(ctx):
 
     if "validate_tables" in dictionary_obj:
         db_conn = await asyncpg.connect(**ctx.conn_params)
-        db_objs = await db_conn.fetch("""
+        db_objs = await db_conn.fetch(
+            """
             select n.nspname, c.relname --, c.reltuples
             from pg_class c
             join pg_namespace n on c.relnamespace = n.oid
@@ -376,7 +409,8 @@ async def validate_restore(ctx):
                 c.relkind = 'r' and
                 n.nspname not in ('pg_catalog', 'information_schema') and
                 c.reltuples > 0
-        """)
+        """
+        )
         await db_conn.close()
         tables_in_target_db = []
         for item in db_objs:
@@ -390,13 +424,17 @@ async def validate_restore(ctx):
         diff_r = list(set(tables_in_dict) - set(tables_in_target_db))
 
         if len(diff_r) > 0:
-            ctx.logger.error("validate_tables: in target DB not found tables:\n%s" % json.dumps(diff_r, indent=4))
+            ctx.logger.error(
+                "validate_tables: in target DB not found tables:\n%s"
+                % json.dumps(diff_r, indent=4)
+            )
             result.result_code = ResultCode.FAIL
 
         if len(diff_l) > 0:
             ctx.logger.error(
                 """validate_tables: non-empty tables were found in target database that
-                are not described in the dictionary:\n%s""" % json.dumps(diff_l, indent=4)
+                are not described in the dictionary:\n%s"""
+                % json.dumps(diff_l, indent=4)
             )
             result.result_code = ResultCode.FAIL
     else:

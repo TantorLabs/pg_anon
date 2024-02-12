@@ -3,7 +3,7 @@
 
 ### Installation ###
 
-```bash
+```commandline
 git clone https://github.com/TantorLabs/pg_anon.git
 cd pg_anon
 
@@ -12,7 +12,7 @@ pip3 install -r requirements.txt
 ```
 
 You must have a local database installed to test the functionality of `pg_anon`. Example of installing PostgreSQL on ubuntu:
-```bash
+```commandline
 echo "deb [arch=amd64] http://apt.postgresql.org/pub/repos/apt focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list
 wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
 apt update && apt --yes remove postgresql\*
@@ -47,7 +47,7 @@ python3 test/full_test.py -v PGAnonValidateUnitTest
 ```
 
 You can override test database connection settings as follows:
-```bash
+```commandline
 set TEST_DB_USER=anon_test_user
 set TEST_DB_USER_PASSWORD=mYy5RexGsZ
 set TEST_DB_HOST=127.0.0.1
@@ -61,13 +61,13 @@ set TEST_TARGET_DB=test_target_db
 
 If tests raised error like:
 
-```bash
+```commandline
 asyncpg.exceptions.ExternalRoutineError: program "gzip > ... *.dat.gz" failed
 ```
 
 in this case needs to configure permissions:
 
-```bash
+```commandline
 usermod -a -G current_user_name postgres
 chmod -R g+rw /home/current_user_name/Desktop/pg_anon
 chmod g+x /home/current_user_name/Desktop/pg_anon/output/test
@@ -99,7 +99,7 @@ Input: source database, empty target database, dictionary
 
 Task: copy full structure of DB and all data using dictionary
 
-```bash
+```commandline
 # Common options in any mode:
 #   --debug			(default false)
 # 	--verbose = [info, debug, error]	(default info)
@@ -266,19 +266,19 @@ dependency management tool for managing dependencies and creating packages.
 For [adding new dependencies](https://python-poetry.org/docs/managing-dependencies/)
 install Poetry and run command:
 
-```bash
+```commandline
 poetry add <package_name>
 ```
 For locking the dependencies use command:
 
-```bash
+```commandline
 poetry lock --no-update
 ```
 
 Additionally, [export](https://python-poetry.org/docs/cli/#export)
 the latest packages to *requirements.txt* using poetry export plugin:
 
-```bash
+```commandline
 poetry export -f requirements.txt --output requirements.txt
 ```
 
@@ -286,6 +286,12 @@ poetry export -f requirements.txt --output requirements.txt
 
 For [building](https://python-poetry.org/docs/libraries/#packaging) the package use command:
 
-```bash
+```commandline
 poetry build
+```
+
+Additionally package could be build package using setuptools:
+
+```commandline
+python3 setup.py sdist
 ```
