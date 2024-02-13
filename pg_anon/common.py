@@ -1,17 +1,23 @@
 import decimal
 import json
+import os.path
+import re
+import subprocess
 import sys
 import traceback
-import subprocess
-import re
-import os.path
 from enum import Enum
+
 from pkg_resources import parse_version as version
 
 
 class BasicEnum:
     def __str__(self):
         return self.value
+
+
+class OutputFormat(BasicEnum, Enum):
+    BINARY = "binary"
+    TEXT = "text"
 
 
 class ResultCode(BasicEnum, Enum):

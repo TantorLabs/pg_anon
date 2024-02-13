@@ -1,11 +1,22 @@
+import asyncio
 import hashlib
-from datetime import datetime
 import json
 import os
-import asyncpg
-import asyncio
+import re
+import subprocess
+from datetime import datetime
 from hashlib import sha256
-from common import *
+
+import asyncpg
+
+from pg_anon.common import (
+    AnonMode,
+    PgAnonResult,
+    ResultCode,
+    VerboseOptions,
+    exception_helper,
+    get_pg_util_version,
+)
 
 
 async def run_pg_dump(ctx, section):
@@ -15,7 +26,7 @@ async def run_pg_dump(ctx, section):
     if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
         tmp_list = []
         for v in ctx.dictionary_obj["dictionary"]:
-            tmp_list.append(["-t", '\"%s\".\"%s\"' % (v["schema"], v["table"])])
+            tmp_list.append(["-t", '"%s"."%s"' % (v["schema"], v["table"])])
         specific_tables = [item for sublist in tmp_list for item in sublist]
 
     exclude_schemas = []
@@ -26,26 +37,35 @@ async def run_pg_dump(ctx, section):
 
     command = [
         ctx.args.pg_dump,
-        "-h", ctx.args.db_host,
-        "-p", str(ctx.args.db_port), "-v", "-w",
-        "-U", ctx.args.db_user,
+        "-h",
+        ctx.args.db_host,
+        "-p",
+        str(ctx.args.db_port),
+        "-v",
+        "-w",
+        "-U",
+        ctx.args.db_user,
         *exclude_schemas,
         *specific_tables,
-        "--section", section, "-E", "UTF8", "-F", "c", "-s", "-f",
-        os.path.join(
-            ctx.args.output_dir,
-            section.replace("-", "_") + ".backup"
-        ),
-        ctx.args.db_name
+        "--section",
+        section,
+        "-E",
+        "UTF8",
+        "-F",
+        "c",
+        "-s",
+        "-f",
+        os.path.join(ctx.args.output_dir, section.replace("-", "_") + ".backup"),
+        ctx.args.db_name,
     ]
     if not ctx.args.db_host:
-        del command[command.index("-h"):command.index("-h") + 2]
+        del command[command.index("-h") : command.index("-h") + 2]
 
     ctx.logger.debug(str(command))
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     err, out = proc.communicate()
     if err.decode("utf-8") != "":
-        msg = 'ERROR: database schema dump has failed! \n%s' % err.decode("utf-8")
+        msg = "ERROR: database schema dump has failed! \n%s" % err.decode("utf-8")
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
@@ -54,7 +74,7 @@ async def run_pg_dump(ctx, section):
 
 
 async def dump_obj_func(ctx, pool, task, sn_id):
-    ctx.logger.info('================> Started task %s' % str(task))
+    ctx.logger.info("================> Started task %s" % str(task))
 
     db_conn = await pool.acquire()
     try:
@@ -71,7 +91,7 @@ async def dump_obj_func(ctx, pool, task, sn_id):
         await db_conn.close()
         await pool.release(db_conn)
 
-    ctx.logger.info('<================ Finished task %s' % str(task))
+    ctx.logger.info("<================ Finished task %s" % str(task))
 
 
 def find_obj_in_dict(dictionary_obj, schema, table):
@@ -91,10 +111,18 @@ def find_obj_in_dict(dictionary_obj, schema, table):
         if schema_matched and table_matched:
             return v
 
-        if "schema_mask" in v and v["schema_mask"] != "*" and re.search(v["schema_mask"], schema) is not None:
+        if (
+            "schema_mask" in v
+            and v["schema_mask"] != "*"
+            and re.search(v["schema_mask"], schema) is not None
+        ):
             schema_mask_matched = True
 
-        if "table_mask" in v and v["table_mask"] != "*" and re.search(v["table_mask"], table) is not None:
+        if (
+            "table_mask" in v
+            and v["table_mask"] != "*"
+            and re.search(v["table_mask"], table) is not None
+        ):
             table_mask_matched = True
 
         if "schema_mask" in v and v["schema_mask"] == "*":
@@ -116,35 +144,46 @@ def find_obj_in_dict(dictionary_obj, schema, table):
 
 
 async def generate_dump_queries(ctx, db_conn):
-    db_objs = await db_conn.fetch("""
+    db_objs = await db_conn.fetch(
+        """
             SELECT table_schema, table_name
             FROM information_schema.tables
             WHERE
                 table_schema not in (%s) and
                 table_type = 'BASE TABLE'
-        """ % ', '.join(["'" + v + "'" for v in ctx.exclude_schemas + ['pg_catalog', 'information_schema']])
+        """
+        % ", ".join(
+            [
+                "'" + v + "'"
+                for v in ctx.exclude_schemas + ["pg_catalog", "information_schema"]
+            ]
+        )
     )
     queries = []
     files = {}
 
-    included_objs = []      # for debug purposes
-    excluded_objs = []      # for debug purposes
+    included_objs = []  # for debug purposes
+    excluded_objs = []  # for debug purposes
 
     for item in db_objs:
-        table_name = "\"" + item[0] + "\".\"" + item[1] + "\""
+        table_name = '"' + item[0] + '"."' + item[1] + '"'
 
-        if item[0] == 'public' and item[1] == 'tbl_100':
+        if item[0] == "public" and item[1] == "tbl_100":
             x = 1
 
-        a_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary'], item[0], item[1])
-        found_white_list = not(a_obj is None)
+        a_obj = find_obj_in_dict(ctx.dictionary_obj["dictionary"], item[0], item[1])
+        found_white_list = not (a_obj is None)
 
         # dictionary_exclude has the highest priority
-        if 'dictionary_exclude' in ctx.dictionary_obj:
-            exclude_obj = find_obj_in_dict(ctx.dictionary_obj['dictionary_exclude'], item[0], item[1])
-            found = not(exclude_obj is None)
+        if "dictionary_exclude" in ctx.dictionary_obj:
+            exclude_obj = find_obj_in_dict(
+                ctx.dictionary_obj["dictionary_exclude"], item[0], item[1]
+            )
+            found = not (exclude_obj is None)
             if found and not found_white_list:
-                excluded_objs.append([exclude_obj, item[0], item[1], 'if found and not found_white_list'])
+                excluded_objs.append(
+                    [exclude_obj, item[0], item[1], "if found and not found_white_list"]
+                )
                 ctx.logger.info("Skipping: " + str(table_name))
                 continue
 
@@ -153,14 +192,14 @@ async def generate_dump_queries(ctx, db_conn):
         files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
         if not found_white_list:
-            included_objs.append([a_obj, item[0], item[1], 'if not found_white_list'])
+            included_objs.append([a_obj, item[0], item[1], "if not found_white_list"])
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
                 query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
                     table_name,
                     (ctx.validate_limit if ctx.args.validate_full else ""),
                     full_file_name,
-                    ctx.args.copy_options
+                    ctx.args.copy_options,
                 )
                 ctx.logger.info(str(query))
                 queries.append(query)
@@ -169,21 +208,21 @@ async def generate_dump_queries(ctx, db_conn):
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
-            included_objs.append([a_obj, item[0], item[1], 'if found_white_list'])
+            included_objs.append([a_obj, item[0], item[1], "if found_white_list"])
             # table found in dictionary
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"
                 if not ctx.args.validate_dict:
                     query = "COPY (%s %s) to PROGRAM 'gzip > %s' %s" % (
-                        a_obj['raw_sql'],
+                        a_obj["raw_sql"],
                         (ctx.validate_limit if ctx.args.validate_full else ""),
                         full_file_name,
-                        ctx.args.copy_options
+                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
                 else:
-                    query = a_obj['raw_sql'] + " " + ctx.validate_limit
+                    query = a_obj["raw_sql"] + " " + ctx.validate_limit
                     ctx.logger.info(str(query))
                     queries.append(query)
             else:
@@ -193,10 +232,8 @@ async def generate_dump_queries(ctx, db_conn):
                         SELECT column_name FROM information_schema.columns
                         WHERE table_schema = '%s' AND table_name='%s'
                         ORDER BY ordinal_position ASC
-                    """ % (
-                        item[0].replace("'", "''"),
-                        item[1].replace("'", "''")
-                    )
+                    """
+                    % (item[0].replace("'", "''"), item[1].replace("'", "''"))
                 )
 
                 sql_expr = ""
@@ -212,15 +249,17 @@ async def generate_dump_queries(ctx, db_conn):
                         fld_name = a_fld[0]
                         fld_val = a_fld[1]
                         if fld_val.find("SQL:") == 0:
-                            sql_expr += "(" + fld_val[4:] + ") as \"" + fld_name + "\""
+                            sql_expr += "(" + fld_val[4:] + ') as "' + fld_name + '"'
                         else:
-                            sql_expr += fld_val + " as \"" + fld_name + "\""
+                            sql_expr += fld_val + ' as "' + fld_name + '"'
                     else:
                         # field "as is"
-                        if (not v[0].islower() and not v[0].isupper()) or v[0].isupper():
-                            sql_expr += "\"" + v[0] + "\" as \"" + v[0] + "\""
+                        if (not v[0].islower() and not v[0].isupper()) or v[
+                            0
+                        ].isupper():
+                            sql_expr += '"' + v[0] + '" as "' + v[0] + '"'
                         else:
-                            sql_expr += " \"" + v[0] + "\" as \"" + v[0] + "\""
+                            sql_expr += ' "' + v[0] + '" as "' + v[0] + '"'
                     if cnt != len(fields_list) - 1:
                         sql_expr += ",\n"
 
@@ -230,12 +269,16 @@ async def generate_dump_queries(ctx, db_conn):
                         table_name,
                         (ctx.validate_limit if ctx.args.validate_full else ""),
                         full_file_name,
-                        ctx.args.copy_options
+                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
                 else:
-                    query = "SELECT %s FROM %s %s" % (sql_expr, table_name, ctx.validate_limit)
+                    query = "SELECT %s FROM %s %s" % (
+                        sql_expr,
+                        table_name,
+                        ctx.validate_limit,
+                    )
                     ctx.logger.info(str(query))
                     queries.append(query)
 
@@ -250,9 +293,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     loop = asyncio.get_event_loop()
     tasks = set()
     pool = await asyncpg.create_pool(
-        **ctx.conn_params,
-        min_size=ctx.args.threads,
-        max_size=ctx.args.threads
+        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
     )
 
     queries, files = await generate_dump_queries(ctx, db_conn)
@@ -303,19 +344,29 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     seq_res_dict = {}
     for v in seq_res:
         seq_name = v[3] + "." + v[4]
-        seq_val = await db_conn.fetchval("""select last_value from \"""" + v[3] + """\".\"""" + v[4] + "\"")
+        seq_val = await db_conn.fetchval(
+            """select last_value from \"""" + v[3] + """\".\"""" + v[4] + '"'
+        )
 
         for _, f in files.items():
             if v[0] == f["schema"] and v[1] == f["table"]:
-                seq_res_dict[seq_name] = {"schema": v[3], "seq_name": v[4], "value": seq_val}
+                seq_res_dict[seq_name] = {
+                    "schema": v[3],
+                    "seq_name": v[4],
+                    "value": seq_val,
+                }
 
     metadata = {}
-    metadata["db_size"] = await db_conn.fetchval("""SELECT pg_database_size('""" + ctx.args.db_name + """')""")
+    metadata["db_size"] = await db_conn.fetchval(
+        """SELECT pg_database_size('""" + ctx.args.db_name + """')"""
+    )
     metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     metadata["seq_lastvals"] = seq_res_dict
     metadata["pg_version"] = ctx.pg_version
     metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-    metadata["dictionary_content_hash"] = sha256(ctx.dictionary_content.encode('utf-8')).hexdigest()
+    metadata["dictionary_content_hash"] = sha256(
+        ctx.dictionary_content.encode("utf-8")
+    ).hexdigest()
     metadata["dict_file"] = ctx.args.dict_file
 
     for v in zipped_list:
@@ -327,12 +378,12 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     total_rows = 0
     for k, v in files.items():
         # print("""select pg_total_relation_size('"%s"."%s"')""" % (v['schema'], v['table']))
-        schema = v['schema'].replace("'", "''")
-        table = v['table'].replace("'", "''")
+        schema = v["schema"].replace("'", "''")
+        table = v["table"].replace("'", "''")
         total_tables_size += await db_conn.fetchval(
             """select pg_total_relation_size('"%s"."%s"')""" % (schema, table)
         )
-        total_rows += int(v['rows'])
+        total_rows += int(v["rows"])
     metadata["total_tables_size"] = total_tables_size
     metadata["total_rows"] = total_rows
 
@@ -345,7 +396,9 @@ async def make_dump(ctx):
     ctx.logger.info("-------------> Started dump mode")
 
     try:
-        dictionary_file = open(os.path.join(ctx.current_dir, 'dict', ctx.args.dict_file), 'r')
+        dictionary_file = open(
+            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
+        )
         ctx.dictionary_content = dictionary_file.read()
         dictionary_file.close()
         ctx.dictionary_obj = eval(ctx.dictionary_content)
@@ -355,12 +408,17 @@ async def make_dump(ctx):
         return result
 
     try:
-        if ctx.args.output_dir.find("""/""") != -1 or ctx.args.output_dir.find("""\\""") != -1:
+        if (
+            ctx.args.output_dir.find("""/""") != -1
+            or ctx.args.output_dir.find("""\\""") != -1
+        ):
             output_dir = ctx.args.output_dir
         if len(ctx.args.output_dir) > 1:
-            output_dir = os.path.join(ctx.current_dir, 'output', ctx.args.output_dir)
+            output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
         else:
-            output_dir = os.path.join(ctx.current_dir, 'output', os.path.splitext(ctx.args.dict_file)[0])
+            output_dir = os.path.join(
+                ctx.current_dir, "output", os.path.splitext(ctx.args.dict_file)[0]
+            )
 
         ctx.args.output_dir = output_dir
         dir_exists = os.path.exists(output_dir)
@@ -382,19 +440,25 @@ async def make_dump(ctx):
             if not dir_empty and ctx.args.clear_output_dir:
                 for root, dirs, files in os.walk(output_dir):
                     for file in files:
-                        if file.endswith('.sql') or file.endswith('.gz') or \
-                                file.endswith('.json') or file.endswith('.backup'):
+                        if (
+                            file.endswith(".sql")
+                            or file.endswith(".gz")
+                            or file.endswith(".json")
+                            or file.endswith(".backup")
+                        ):
                             os.remove(os.path.join(root, file))
                         else:
-                            msg = "Option --clear-output-dir enabled. Unexpected file extension: %s" % \
-                                  os.path.join(root, file)
+                            msg = (
+                                "Option --clear-output-dir enabled. Unexpected file extension: %s"
+                                % os.path.join(root, file)
+                            )
                             ctx.logger.error(msg)
                             raise Exception(msg)
 
         if not ctx.args.validate_dict and ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
             ctx.logger.info("-------------> Started pg_dump")
-            await run_pg_dump(ctx, 'pre-data')
-            await run_pg_dump(ctx, 'post-data')
+            await run_pg_dump(ctx, "pre-data")
+            await run_pg_dump(ctx, "post-data")
             ctx.logger.info("<------------- Finished pg_dump")
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
@@ -423,7 +487,9 @@ async def make_dump(ctx):
         metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         metadata["pg_version"] = ctx.pg_version
         metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-        metadata["dictionary_content_hash"] = sha256(ctx.dictionary_content.encode('utf-8')).hexdigest()
+        metadata["dictionary_content_hash"] = sha256(
+            ctx.dictionary_content.encode("utf-8")
+        ).hexdigest()
         metadata["dict_file"] = ctx.args.dict_file
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
