@@ -6,7 +6,7 @@ import re
 import sys
 import time
 from logging import getLogger
-from typing import List, Optional
+from typing import List, Optional, Any
 
 import aioprocessing
 import asyncpg
@@ -38,6 +38,10 @@ class TaggedFields:
 
 
 class FieldInfo:
+    query: Optional[str] = None
+    sensitive: Optional[bool] = None
+    row_data: List[Any] = None
+
     def __init__(
         self,
         nspname: str,
@@ -48,6 +52,7 @@ class FieldInfo:
         attnum: int,
         obj_id: str,
         tbl_id: str,
+        tagged_fields: Optional[List[TaggedFields]] = None,
     ):
         self.nspname = nspname
         self.relname = relname
@@ -57,6 +62,7 @@ class FieldInfo:
         self.attnum = attnum
         self.obj_id = obj_id
         self.tbl_id = tbl_id
+        self.tagged_fields = tagged_fields
 
     def __str__(self):
         return (
@@ -69,36 +75,44 @@ class FieldInfo:
             f"tbl_id={self.tbl_id}"
         )
 
+    @property
+    def field_comment(self) -> Optional[str]:
+        for field in self.tagged_fields:
+            if (
+                field.nspname == self.nspname
+                and field.relname == self.relname
+                and field.column_name == self.column_name
+            ):
+                if ":sens" in field.column_comment:
+                    self.sensitive = True
+                    return ":sens"
+                elif ":nosens" in field.column_comment:
+                    self.sensitive = False
+                    return ":nosens"
+        return
 
-def create_partial_scan_query(field_info: FieldInfo, scan_partial_rows: int) -> str:
-    query = (
-        f'select distinct("{field_info.column_name}")::text from "{field_info.nspname}"."{field_info.relname}" '
-        f'WHERE "{field_info.column_name}" is not null LIMIT {str(scan_partial_rows)}'
-    )
-    return query
+    def create_query(self, scan_mode: ScanMode, scan_partial_rows: int):
+        query = (
+            f'select distinct("{self.column_name}")::text from "{self.nspname}"."{self.relname}" '
+            f'WHERE "{self.column_name}" is not null'
+        )
 
+        if scan_mode == ScanMode.PARTIAL:
+            query = f"{query} LIMIT {str(scan_partial_rows)}"
+        self.query = query
 
-def create_full_scan_query(field_info: FieldInfo) -> str:
-    query = (
-        f'select distinct("{field_info.column_name}")::text from "{field_info.nspname}"."{field_info.relname}" '
-        f'WHERE "{field_info.column_name}" is not null'
-    )
-    return query
+    def check_sens_pg_types(self):
+        """Check if actual field type is sens."""
+        for pg_type in SENS_PG_TYPES:
+            if pg_type in self.type:
+                return True
+        return False
 
-
-def create_queries(
-    fields_info: List[FieldInfo], scan_mode: ScanMode, scan_partial_rows: int
-) -> List[str]:
-    if scan_mode == ScanMode.FULL:
-        queries = [create_full_scan_query(fields_info) for fields_info in fields_info]
-    elif scan_mode == ScanMode.PARTIAL:
-        queries = [
-            create_partial_scan_query(fields_info, scan_partial_rows)
-            for fields_info in fields_info
-        ]
-    else:
-        raise NotImplementedError
-    return queries
+    async def get_row(self, pool):
+        async with pool.acquire() as db_conn:
+            if self.query:
+                row_data = await db_conn.fetch(self.query)
+                self.row_data = setof_to_list(row_data)
 
 
 async def get_tagged_fields(pool) -> List[TaggedFields]:
@@ -175,8 +189,7 @@ def check_skip_fields(dictionary_obj, fld):
     return True
 
 
-async def generate_scan_objs(conn_params, dictionary_obj):
-    db_conn = await asyncpg.connect(**conn_params)
+async def generate_scan_objs(dictionary_obj, pool):
     query = """
     -- generate task queue
     SELECT 
@@ -221,12 +234,23 @@ async def generate_scan_objs(conn_params, dictionary_obj):
         -- AND c.relname = 'card_numbers'  -- debug
     ORDER BY 1, 2, a.attnum
     """
-    query_res = await db_conn.fetch(query)
-    await db_conn.close()
+    db_conn = await pool.acquire()
+    try:
+        query_res = await db_conn.fetch(query)
+    finally:
+        await db_conn.close()
+    tagged_fields = await get_tagged_fields(pool)
 
-    return [
-        FieldInfo(**fld) for fld in query_res if check_skip_fields(dictionary_obj, fld)
+    sens_fields = [
+        FieldInfo(**fld, tagged_fields=tagged_fields)
+        for fld in query_res
+        if check_skip_fields(dictionary_obj, fld)
     ]
+    sens_fields = [
+        sens_field for sens_field in sens_fields if sens_field.check_sens_pg_types()
+    ]
+
+    return sens_fields
 
 
 async def prepare_dictionary_obj(ctx):
@@ -271,8 +295,9 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
 
 
 def check_sensitive_data_in_fld(
-    dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
+    dictionary_obj, create_dict_matches, field_info: FieldInfo
 ) -> dict:
+    fld_data = field_info.row_data
     if field_info.relname == "card_numbers":
         x = 1
     fld_data_set = set()
@@ -308,150 +333,6 @@ def check_sensitive_data_in_fld(
             break
 
     return dict_matches
-
-
-def check_sens_pg_types(field_type: str):
-    """Check if actual field type is sens."""
-    for pg_type in SENS_PG_TYPES:
-        if pg_type in field_type:
-            return True
-    return False
-
-
-async def scan_obj_func(
-    ctx,
-    field_info: FieldInfo,
-    tagged_fields: List[Optional[TaggedFields]],
-    scan_mode: ScanMode,
-    dictionary_obj,
-    scan_partial_rows,
-    pool,
-):
-
-    logger.debug("====>>> Process: Started task %s" % (str(field_info)))
-    # pool = await asyncpg.create_pool(**conn_params, min_size=threads, max_size=threads)
-    start_t = time.time()
-    if not check_sens_pg_types(field_info.type):
-        logger.debug(
-            "========> Process: scan_obj_func: task %s skipped by field type %s"
-            % (str(field_info), "[integer, text, bigint, character varying(x)]")
-        )
-        return None
-
-    db_conn = await pool.acquire()
-    res = {}
-    scanning_flag = True
-    try:
-        for field in tagged_fields:
-            if (
-                field.nspname == field_info.nspname
-                and field.relname == field_info.relname
-                and field.column_name == field_info.column_name
-            ):
-                if ":sens" in field.column_comment:
-                    res[field_info.obj_id] = field_info
-                scanning_flag = False
-                break
-
-        if scan_mode == ScanMode.PARTIAL and scanning_flag:
-            # TODO: Create check for bigger than 10MB fields
-            fld_data = await db_conn.fetch(
-                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
-                % (
-                    field_info.column_name,
-                    field_info.nspname,
-                    field_info.relname,
-                    field_info.column_name,
-                    str(scan_partial_rows),
-                )
-            )
-            res = check_sensitive_data_in_fld(
-                dictionary_obj,
-                ctx.create_dict_matches,
-                field_info,
-                setof_to_list(fld_data),
-            )
-        if scan_mode == ScanMode.FULL and scanning_flag:
-            async with db_conn.transaction():
-                cur = await db_conn.cursor(
-                    """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null"""
-                    % (
-                        field_info.column_name,
-                        field_info.nspname,
-                        field_info.relname,
-                        field_info.column_name,
-                    )
-                )
-                next_rows = True
-                while next_rows:
-                    fld_data = await cur.fetch(scan_partial_rows)
-                    res = check_sensitive_data_in_fld(
-                        dictionary_obj,
-                        ctx.create_dict_matches,
-                        field_info,
-                        setof_to_list(fld_data),
-                    )
-                    if len(fld_data) == 0 or len(res) > 0:
-                        next_rows = False
-                        break
-
-    except Exception as e:
-        logger.error("Exception in scan_obj_func:\n" + exception_helper())
-        raise Exception("Can't execute task: %s" % field_info)
-    finally:
-        await db_conn.close()
-        await pool.release(db_conn)
-
-    end_t = time.time()
-    if end_t - start_t > 10:
-        logger.warning(
-            "!!! Process: scan_obj_func took %s sec. Task %s"
-            % (str(round(end_t - start_t, 2)), str(field_info))
-        )
-
-    logger.debug(
-        "<<<<==== Process: Found %s items(s) Finished task %s "
-        % (str(len(res)), str(field_info))
-    )
-    # await pool.close()
-    return res
-
-
-async def init_process(ctx, fields_info: List[FieldInfo]):
-    start_t = time.time()
-    logger.info(
-        "================> Process started. Input items: %s" % (str(len(fields_info)))
-    )
-    conn_params = ctx.conn_params
-
-    tasks = []
-    pool = await asyncpg.create_pool(
-        **conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
-    )
-    tagged_fields = await get_tagged_fields(pool)
-    for field_info in fields_info:
-        tasks.append(
-            asyncio.ensure_future(
-                scan_obj_func(
-                    ctx,
-                    field_info,
-                    tagged_fields,
-                    ctx.args.scan_mode,
-                    ctx.dictionary_obj,
-                    ctx.args.scan_partial_rows,
-                    pool,
-                )
-            )
-        )
-    scan_results = await asyncio.gather(*tasks)
-
-    end_t = time.time()
-    logger.info(
-        "<================ Process finished, elapsed: %s sec. Result item(s)"
-        % (str(round(end_t - start_t, 2)),)
-    )
-
-    return [scan_result for scan_result in scan_results if scan_result]
 
 
 #############################################################################################
@@ -517,21 +398,58 @@ def create_output_dict(
     return result
 
 
+async def get_row_data(fields_info: List[FieldInfo], pool):
+    tasks = []
+    # db_conn = await pool.acquire()
+
+    for field_info in fields_info:
+        tasks.append(asyncio.ensure_future(field_info.get_row(pool)))
+    await asyncio.gather(*tasks)
+
+
 async def create_dict_impl(ctx):
+    conn_params = ctx.conn_params
+    pool = await asyncpg.create_pool(
+        **conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
+    )
 
     # TODO: Here we create obj
-    fields_info: List[FieldInfo] = await generate_scan_objs(
-        ctx.conn_params, ctx.dictionary_obj
-    )
+    fields_info: List[FieldInfo] = await generate_scan_objs(ctx.dictionary_obj, pool)
+    await pool.close()
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 
     await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
 
-    tasks = await init_process(ctx, fields_info)
+    # tasks = await init_process(ctx, fields_info, pool)
+
+    for field_info in fields_info:
+        field_info.create_query(
+            scan_mode=ctx.args.scan_mode, scan_partial_rows=ctx.args.scan_partial_rows
+        )
+    pool = await asyncpg.create_pool(
+        **conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
+    )
+    await get_row_data(fields_info, pool)
+    await pool.close()
+
+    fields_info = [field_info for field_info in fields_info if field_info.row_data]
+
+    scan_results = []
+    for field_info in fields_info:
+
+        scan_results.append(
+            check_sensitive_data_in_fld(
+                ctx.dictionary_obj,
+                ctx.create_dict_matches,
+                field_info,
+            )
+        )
+
+    scan_results = [scan_result for scan_result in scan_results if scan_result]
 
     result = create_output_dict(
-        tasks=tasks,
+        tasks=scan_results,
         dictionary_obj=ctx.dictionary_obj,
         create_dict_matches=ctx.create_dict_matches,
         current_dir=ctx.current_dir,
