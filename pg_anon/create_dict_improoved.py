@@ -7,6 +7,7 @@ import sys
 import time
 from logging import getLogger
 from typing import List, Optional, Any
+from multiprocessing import Pool
 
 import aioprocessing
 import asyncpg
@@ -40,6 +41,7 @@ class TaggedFields:
 class FieldInfo:
     query: Optional[str] = None
     sensitive: Optional[bool] = None
+    # Todo: save row data as set() it may be faster, at least will remove duplicated records
     row_data: List[Any] = None
 
     def __init__(
@@ -436,15 +438,25 @@ async def create_dict_impl(ctx):
     fields_info = [field_info for field_info in fields_info if field_info.row_data]
 
     scan_results = []
-    for field_info in fields_info:
 
-        scan_results.append(
-            check_sensitive_data_in_fld(
-                ctx.dictionary_obj,
-                ctx.create_dict_matches,
-                field_info,
-            )
+    with Pool(processes=4) as pool:
+        scan_results = pool.starmap(
+            check_sensitive_data_in_fld,
+            (
+                (ctx.dictionary_obj, ctx.create_dict_matches, field_info)
+                for field_info in fields_info
+            ),
         )
+
+    # for field_info in fields_info:
+    #
+    #     scan_results.append(
+    #         check_sensitive_data_in_fld(
+    #             ctx.dictionary_obj,
+    #             ctx.create_dict_matches,
+    #             field_info,
+    #         )
+    #     )
 
     scan_results = [scan_result for scan_result in scan_results if scan_result]
 
