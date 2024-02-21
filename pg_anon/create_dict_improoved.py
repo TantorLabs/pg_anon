@@ -1,23 +1,17 @@
 import asyncio
 import json
 import os
-import random
+
 import re
-import sys
-import time
 from logging import getLogger
 from typing import List, Optional, Any
 from multiprocessing import Pool
-
-import aioprocessing
 import asyncpg
-import nest_asyncio
 
 from pg_anon.common import (
     PgAnonResult,
     ResultCode,
     ScanMode,
-    chunkify,
     exception_helper,
     setof_to_list,
 )
@@ -409,8 +403,36 @@ async def get_row_data(fields_info: List[FieldInfo], pool):
     await asyncio.gather(*tasks)
 
 
+def check_sens_data(ctx, fields_info, processes):
+    if processes > 1:
+        with Pool(processes=processes) as pool:
+            scan_results = pool.starmap(
+                check_sensitive_data_in_fld,
+                (
+                    (ctx.dictionary_obj, ctx.create_dict_matches, field_info)
+                    for field_info in fields_info
+                ),
+            )
+        scan_results = [scan_result for scan_result in scan_results if scan_result]
+        return scan_results
+
+    scan_results = []
+    for field_info in fields_info:
+
+        scan_results.append(
+            check_sensitive_data_in_fld(
+                ctx.dictionary_obj,
+                ctx.create_dict_matches,
+                field_info,
+            )
+        )
+    scan_results = [scan_result for scan_result in scan_results if scan_result]
+    return scan_results
+
+
 async def create_dict_impl(ctx):
     conn_params = ctx.conn_params
+    processes = ctx.args.threads
     pool = await asyncpg.create_pool(
         **conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
     )
@@ -422,8 +444,6 @@ async def create_dict_impl(ctx):
         raise Exception("No objects for create dictionary!")
 
     await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
-
-    # tasks = await init_process(ctx, fields_info, pool)
 
     for field_info in fields_info:
         field_info.create_query(
@@ -437,28 +457,9 @@ async def create_dict_impl(ctx):
 
     fields_info = [field_info for field_info in fields_info if field_info.row_data]
 
-    scan_results = []
-
-    with Pool(processes=4) as pool:
-        scan_results = pool.starmap(
-            check_sensitive_data_in_fld,
-            (
-                (ctx.dictionary_obj, ctx.create_dict_matches, field_info)
-                for field_info in fields_info
-            ),
-        )
-
-    # for field_info in fields_info:
-    #
-    #     scan_results.append(
-    #         check_sensitive_data_in_fld(
-    #             ctx.dictionary_obj,
-    #             ctx.create_dict_matches,
-    #             field_info,
-    #         )
-    #     )
-
-    scan_results = [scan_result for scan_result in scan_results if scan_result]
+    scan_results = check_sens_data(
+        ctx=ctx, fields_info=fields_info, processes=processes
+    )
 
     result = create_output_dict(
         tasks=scan_results,
