@@ -18,7 +18,7 @@ from pg_anon.common import (
     check_pg_util,
     exception_helper,
 )
-from pg_anon.create_dict import create_dict
+from pg_anon.create_dict import SensFieldScan
 from pg_anon.context import Context
 from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
@@ -184,7 +184,17 @@ class MainRoutine:
             elif self.ctx.args.mode == AnonMode.INIT:
                 result = await make_init(self.ctx)
             elif self.ctx.args.mode == AnonMode.CREATE_DICT:
-                result = await create_dict(self.ctx)
+                sens_field_scan = SensFieldScan(
+                    conn_params=self.ctx.conn_params,
+                    processes=self.ctx.args.threads,  # FIXME: Add processes to argparse
+                    threads=self.ctx.args.threads,
+                    output_dict_file=self.ctx.args.output_dict_file,
+                    current_dir=self.ctx.current_dir,
+                    scan_mode=self.ctx.args.scan_mode,
+                    scan_partial_rows=self.ctx.args.scan_partial_rows,
+                    dict_file_name=self.ctx.args.dict_file,
+                )
+                result = await sens_field_scan.create_dict()
             else:
                 raise Exception("Unknown mode: " + self.ctx.args.mode)
 

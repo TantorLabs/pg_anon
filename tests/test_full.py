@@ -922,8 +922,8 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--scan-mode=full",
                 "--dict-file=test_meta_dict.py",
                 "--output-dict-file=%s" % self.target_dict,
-                "--threads=%s" % params.test_threads,
-                # '--threads=8',
+                # "--threads=%s" % params.test_threads,
+                "--threads=4",
                 "--scan-partial-rows=10000",
                 "--verbose=debug",
                 "--debug",
@@ -1130,7 +1130,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 "--dict-file=test_meta_dict.py",
                 "--output-dict-file=stress_%s" % self.target_dict,
                 # '--threads=%s' % params.test_threads,
-                "--threads=6",
+                "--threads=4",
                 "--scan-partial-rows=100",  # ,
                 # '--verbose=debug',
                 # '--debug'
@@ -1212,7 +1212,7 @@ class PGAnonDictGenTagUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--scan-mode=partial",
                 "--dict-file=test_empty_meta_dict.py",
                 "--output-dict-file=%s" % self.target_dict,
-                "--threads=1",
+                "--threads=4",
                 "--scan-partial-rows=100",
             ]
         )
