@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import hashlib
 import json
 import os
@@ -73,14 +74,30 @@ async def run_pg_dump(ctx, section):
         ctx.logger.info(v)
 
 
-async def dump_obj_func(ctx, pool, task, sn_id):
+async def get_dump_table(query: str, file_name: str, db_conn, output_dir: str):
+    full_file_name = os.path.join(output_dir, file_name.split(".")[0])
+    result = await db_conn.copy_from_query(query, output=f"{full_file_name}.txt")
+    with open(f"{full_file_name}.txt", "rb") as f_in, gzip.open(
+        f"{full_file_name}.dat.gz", "wb"
+    ) as f_out:
+        f_out.writelines(f_in)
+    os.remove(f"{full_file_name}.txt")
+    return result
+
+
+async def dump_obj_func(ctx, pool, task, sn_id, file_name):
     ctx.logger.info("================> Started task %s" % str(task))
 
     db_conn = await pool.acquire()
     try:
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        res = await db_conn.execute(task)
+        res = await get_dump_table(
+            query=task,
+            file_name=file_name,
+            db_conn=db_conn,
+            output_dir=ctx.args.output_dir,
+        )
         count_rows = re.findall(r"(\d+)", res)[0]
         ctx.task_results[hash(task)] = count_rows
         ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
@@ -188,19 +205,14 @@ async def generate_dump_queries(ctx, db_conn):
                 continue
 
         hashed_name = hashlib.md5((item[0] + "_" + item[1]).encode()).hexdigest()
-        full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
+
         files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
 
         if not found_white_list:
             included_objs.append([a_obj, item[0], item[1], "if not found_white_list"])
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
-                query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
-                    table_name,
-                    (ctx.validate_limit if ctx.args.validate_full else ""),
-                    full_file_name,
-                    ctx.args.copy_options,
-                )
+                query = f"SELECT * FROM {table_name} {(ctx.validate_limit if ctx.args.validate_full else '')}"
                 ctx.logger.info(str(query))
                 queries.append(query)
             else:
@@ -213,11 +225,9 @@ async def generate_dump_queries(ctx, db_conn):
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"
                 if not ctx.args.validate_dict:
-                    query = "COPY (%s %s) to PROGRAM 'gzip > %s' %s" % (
+                    query = "%s %s" % (
                         a_obj["raw_sql"],
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        full_file_name,
-                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
@@ -264,12 +274,10 @@ async def generate_dump_queries(ctx, db_conn):
                         sql_expr += ",\n"
 
                 if not ctx.args.validate_dict:
-                    query = "COPY (SELECT %s FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
+                    query = "SELECT %s FROM %s %s" % (
                         sql_expr,
                         table_name,
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        full_file_name,
-                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
@@ -303,7 +311,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
 
     zipped_list = list(zip([hash(v) for v in queries], files))
 
-    for v in queries:
+    for file_name, query in zip(files.keys(), queries):
         if len(tasks) >= ctx.args.threads:
             # Wait for some dump to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -311,7 +319,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
             if exception is not None:
                 await pool.close()
                 raise exception
-        tasks.add(loop.create_task(dump_obj_func(ctx, pool, v, sn_id)))
+        tasks.add(loop.create_task(dump_obj_func(ctx, pool, query, sn_id, file_name)))
 
     # Wait for the remaining dumps to finish
     await asyncio.wait(tasks)
