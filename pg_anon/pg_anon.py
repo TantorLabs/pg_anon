@@ -21,7 +21,7 @@ from pg_anon.common import (
 from pg_anon.create_dict import create_dict
 from pg_anon.context import Context
 from pg_anon.dump import make_dump
-from pg_anon.restore import make_restore, run_analyze, validate_restore
+from pg_anon.restore import Restore, validate_restore
 from pg_anon.version import __version__
 
 
@@ -180,9 +180,10 @@ class MainRoutine:
                 AnonMode.SYNC_DATA_RESTORE,
                 AnonMode.SYNC_STRUCT_RESTORE,
             ):
-                result = await make_restore(self.ctx)
+                restore = Restore(self.ctx)
+                result = await restore.make_restore()
                 if self.ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
-                    await run_analyze(self.ctx)
+                    await restore.run_analyze()
             elif self.ctx.args.mode == AnonMode.INIT:
                 result = await make_init(self.ctx)
             elif self.ctx.args.mode == AnonMode.CREATE_DICT:

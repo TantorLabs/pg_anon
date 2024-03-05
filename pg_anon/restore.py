@@ -2,10 +2,12 @@ import asyncio
 import gzip
 import json
 import os
-import re
 import shutil
 import subprocess
 
+import re
+from logging import getLogger
+from multiprocessing import Pool
 import asyncpg
 
 from pg_anon.common import (
@@ -19,86 +21,96 @@ from pg_anon.common import (
 )
 from pg_anon.context import Context
 
-
-async def run_pg_restore(ctx, section):
-    os.environ["PGPASSWORD"] = ctx.args.db_user_password
-    command = [
-        ctx.args.pg_restore,
-        "-h",
-        ctx.args.db_host,
-        "-p",
-        str(ctx.args.db_port),
-        "-v",
-        "-w",
-        "-U",
-        ctx.args.db_user,
-        "-d",
-        ctx.args.db_name,
-        "-j",
-        str(ctx.args.threads),
-        os.path.join(ctx.args.input_dir, section.replace("-", "_") + ".backup"),
-    ]
-    if not ctx.args.db_host:
-        del command[command.index("-h") : command.index("-h") + 2]
-
-    if not ctx.args.db_user:
-        del command[command.index("-U") : command.index("-U") + 2]
-
-    ctx.logger.debug(str(command))
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    err, out = proc.communicate()
-    for v in out.decode("utf-8").split("\n"):
-        ctx.logger.info(v)
+logger = getLogger(__name__)
 
 
-async def seq_init(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params)
-    if ctx.args.seq_init_by_max_value:
-        query = """
-            DO $$
-            DECLARE
-                cmd text;
-                schema text;
-            BEGIN
-                FOR cmd, schema IN (
-                    select
-                       ('SELECT setval(''' || T.seq_name || ''', max("' || T.column_name || '") + 1) FROM "' || T.table_name || '"') as cmd,
-                       T.table_schema as schema
-                    FROM (
-                            select
-                               substring(t.column_default from 10 for length(t.column_default) - 21) as seq_name,
-                               t.table_schema,
-                               t.table_name,
-                               t.column_name
-                               FROM (
-                                   SELECT table_schema, table_name, column_name, column_default
-                                   FROM information_schema.columns
-                                   WHERE column_default LIKE 'nextval%'
-                               ) T
-                    ) T
-                ) LOOP
-                    EXECUTE 'SET search_path = ''' || schema || ''';';
-                    -- EXECUTE cmd;
-                    raise notice '%', cmd;
-                END LOOP;
-                SET search_path = 'public';
-            END$$;"""
-        ctx.logger.debug(query)
-        await db_conn.execute(query)
-    else:
-        for _, v in ctx.metadata["seq_lastvals"].items():
+class Restore:
+    result: PgAnonResult = PgAnonResult()
+
+    def __init__(self, ctx):
+        self.result.result_code = ResultCode.DONE
+        self.ctx = ctx
+
+    async def run_pg_restore(self, section):
+        os.environ["PGPASSWORD"] = self.ctx.args.db_user_password
+        command = [
+            self.ctx.args.pg_restore,
+            "-h",
+            self.ctx.args.db_host,
+            "-p",
+            str(self.ctx.args.db_port),
+            "-v",
+            "-w",
+            "-U",
+            self.ctx.args.db_user,
+            "-d",
+            self.ctx.args.db_name,
+            "-j",
+            str(self.ctx.args.threads),
+            os.path.join(
+                self.ctx.args.input_dir, section.replace("-", "_") + ".backup"
+            ),
+        ]
+        if not self.ctx.args.db_host:
+            del command[command.index("-h") : command.index("-h") + 2]
+
+        if not self.ctx.args.db_user:
+            del command[command.index("-U") : command.index("-U") + 2]
+
+        self.ctx.logger.debug(str(command))
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        err, out = proc.communicate()
+        for v in out.decode("utf-8").split("\n"):
+            self.ctx.logger.info(v)
+
+    async def seq_init(self):
+        db_conn = await asyncpg.connect(**self.ctx.conn_params)
+        if self.ctx.args.seq_init_by_max_value:
             query = """
-                SET search_path = '%s';
-                SELECT setval(quote_ident('%s'), %s + 1);
-            """ % (
-                v["schema"].replace("'", "''"),
-                v["seq_name"].replace("'", "''"),
-                v["value"],
-            )
-            ctx.logger.info(query)
+                DO $$
+                DECLARE
+                    cmd text;
+                    schema text;
+                BEGIN
+                    FOR cmd, schema IN (
+                        select
+                           ('SELECT setval(''' || T.seq_name || ''', max("' || T.column_name || '") + 1) FROM "' || T.table_name || '"') as cmd,
+                           T.table_schema as schema
+                        FROM (
+                                select
+                                   substring(t.column_default from 10 for length(t.column_default) - 21) as seq_name,
+                                   t.table_schema,
+                                   t.table_name,
+                                   t.column_name
+                                   FROM (
+                                       SELECT table_schema, table_name, column_name, column_default
+                                       FROM information_schema.columns
+                                       WHERE column_default LIKE 'nextval%'
+                                   ) T
+                        ) T
+                    ) LOOP
+                        EXECUTE 'SET search_path = ''' || schema || ''';';
+                        -- EXECUTE cmd;
+                        raise notice '%', cmd;
+                    END LOOP;
+                    SET search_path = 'public';
+                END$$;"""
+            self.ctx.logger.debug(query)
             await db_conn.execute(query)
+        else:
+            for v in self.ctx.metadata["seq_lastvals"].values():
+                query = """
+                    SET search_path = '%s';
+                    SELECT setval(quote_ident('%s'), %s + 1);
+                """ % (
+                    v["schema"].replace("'", "''"),
+                    v["seq_name"].replace("'", "''"),
+                    v["value"],
+                )
+                self.ctx.logger.info(query)
+                await db_conn.execute(query)
 
-    await db_conn.close()
+        await db_conn.close()
 
 
 def generate_analyze_queries(ctx):
@@ -151,13 +163,14 @@ async def restore_table_data(
         os.remove(extracted_file)
         await pool.release(db_conn)
 
-    ctx.logger.info(f"{'>':=>20} Finished task {str(table_name)}")
+        self.ctx.logger.info(f"{'>':=>20} Finished task {str(table_name)}")
 
-
-async def make_restore_impl(ctx, sn_id):
-    pool = await asyncpg.create_pool(
-        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
-    )
+    async def make_restore_impl(self, sn_id):
+        pool = await asyncpg.create_pool(
+            **self.ctx.conn_params,
+            min_size=self.ctx.args.threads,
+            max_size=self.ctx.args.threads
+        )
 
     loop = asyncio.get_event_loop()
     tasks = set()
@@ -185,107 +198,99 @@ async def make_restore_impl(ctx, sn_id):
             )
         )
 
-    # Wait for the remaining restores to finish
-    await asyncio.wait(tasks)
-    await pool.close()
+        # Wait for the remaining restores to finish
+        await asyncio.wait(tasks)
+        await pool.close()
 
-
-async def check_free_disk_space(ctx, db_conn):
-    data_directory_location = await db_conn.fetchval(
-        """
-        SELECT setting
-        FROM pg_settings
-        WHERE name = 'data_directory'
-        """
-    )
-    disk_size = shutil.disk_usage(data_directory_location)
-    ctx.logger.info("Free disk space: " + pretty_size(disk_size.free))
-    ctx.logger.info(
-        "Required disk space: "
-        + pretty_size(int(ctx.metadata["total_tables_size"]) * 1.5)
-    )
-    if disk_size.free < int(ctx.metadata["total_tables_size"]) * 1.5:
-        raise Exception(
-            "Not enough freed disk space! Free %s, Required %s"
-            % (
-                pretty_size(disk_size.free),
-                pretty_size(int(ctx.metadata["total_tables_size"]) * 1.5),
-            )
-        )
-
-
-async def make_restore(ctx):
-    result = PgAnonResult()
-    ctx.logger.info("-------------> Started restore")
-
-    if (
-        ctx.args.input_dir.find("""/""") == -1
-        and ctx.args.input_dir.find("""\\""") == -1
-    ):
-        ctx.args.input_dir = os.path.join(ctx.current_dir, "output", ctx.args.input_dir)
-
-    if not os.path.exists(ctx.args.input_dir):
-        msg = "ERROR: input directory %s does not exists" % ctx.args.input_dir
-        ctx.logger.error(msg)
-        raise RuntimeError(msg)
-
-    db_conn = await asyncpg.connect(**ctx.conn_params)
-    db_is_empty = await db_conn.fetchval(
-        """
-        SELECT NOT EXISTS(
-            SELECT table_schema, table_name
-            FROM information_schema.tables
-            WHERE table_schema not in (
-                    'pg_catalog',
-                    'information_schema',
-                    'anon_funcs'
-                ) AND table_type = 'BASE TABLE'
-        )"""
-    )
-
-    if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
-        db_conn.close()
-        raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
-
-    metadata_file = open(
-        os.path.join(ctx.current_dir, "dict", ctx.args.input_dir, "metadata.json"), "r"
-    )
-    metadata_content = metadata_file.read()
-    metadata_file.close()
-    ctx.metadata = eval(metadata_content)
-
-    if not ctx.args.disable_checks:
-        if get_major_version(ctx.pg_version) < get_major_version(
-            ctx.metadata["pg_version"]
+    async def check_version(self, db_conn):
+        if get_major_version(self.ctx.pg_version) < get_major_version(
+            self.ctx.metadata["pg_version"]
         ):
             await db_conn.close()
             raise Exception(
                 "Target PostgreSQL major version %s is below than source %s!"
-                % (ctx.pg_version, ctx.metadata["pg_version"])
+                % (self.ctx.pg_version, self.ctx.metadata["pg_version"])
             )
         if get_major_version(
-            get_pg_util_version(ctx.args.pg_restore)
-        ) < get_major_version(ctx.metadata["pg_dump_version"]):
+            get_pg_util_version(self.ctx.args.pg_restore)
+        ) < get_major_version(self.ctx.metadata["pg_dump_version"]):
             await db_conn.close()
             raise Exception(
                 "pg_restore major version %s is below than source pg_dump version %s!"
                 % (
-                    get_pg_util_version(ctx.args.pg_restore),
-                    ctx.metadata["pg_dump_version"],
+                    get_pg_util_version(self.ctx.args.pg_restore),
+                    self.ctx.metadata["pg_dump_version"],
                 )
             )
-        await check_free_disk_space(ctx, db_conn)
 
-    if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
-        for v in ctx.metadata["schemas"]:
-            query = 'CREATE SCHEMA IF NOT EXISTS "%s"' % v
-            ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
-            await db_conn.execute(query)
+    async def check_free_disk_space(self, db_conn):
+        data_directory_location = await db_conn.fetchval(
+            """
+            SELECT setting
+            FROM pg_settings
+            WHERE name = 'data_directory'
+            """
+        )
+        disk_size = shutil.disk_usage(data_directory_location)
+        self.ctx.logger.info("Free disk space: " + pretty_size(disk_size.free))
+        self.ctx.logger.info(
+            "Required disk space: "
+            + pretty_size(int(self.ctx.metadata["total_tables_size"]) * 1.5)
+        )
+        if disk_size.free < int(self.ctx.metadata["total_tables_size"]) * 1.5:
+            raise Exception(
+                "Not enough freed disk space! Free %s, Required %s"
+                % (
+                    pretty_size(disk_size.free),
+                    pretty_size(int(self.ctx.metadata["total_tables_size"]) * 1.5),
+                )
+            )
 
-    if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
-        await run_pg_restore(ctx, "pre-data")
+    @staticmethod
+    def read_metadata(current_dir, input_dir):
+        metadata_file = open(
+            os.path.join(current_dir, "dict", input_dir, "metadata.json"), "r"
+        )
+        metadata_content = metadata_file.read()
+        metadata_file.close()
+        metadata = eval(metadata_content)
+        return metadata
 
-    if ctx.args.drop_custom_check_constr:
+    @staticmethod
+    async def check_db_empty(db_conn, mode):
+        # db_conn = await pool.acquire()
+        db_is_empty = await db_conn.fetchval(
+            """
+            SELECT NOT EXISTS(
+                SELECT table_schema, table_name
+                FROM information_schema.tables
+                WHERE table_schema not in (
+                        'pg_catalog',
+                        'information_schema',
+                        'anon_funcs'
+                    ) AND table_type = 'BASE TABLE'
+            )"""
+        )
+
+        # await db_conn.close()
+
+        if not db_is_empty and mode != AnonMode.SYNC_DATA_RESTORE:
+            db_conn.close()
+        raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
+
+    @staticmethod
+    def get_dir(current_dir, input_dir):
+        if input_dir.find("""/""") == -1 and input_dir.find("""\\""") == -1:
+            input_dir = os.path.join(current_dir, "output", input_dir)
+
+        if not os.path.exists(input_dir):
+            msg = "ERROR: input directory %s does not exists" % input_dir
+            logger.error(msg)
+            raise RuntimeError(msg)  # end
+        return input_dir
+
+    @staticmethod
+    async def drop_custom_check_constr(db_conn):
         # drop all CHECK constrains containing user-defined procedures to avoid
         # performance degradation at the data loading stage
         check_constraints = await db_conn.fetch(
@@ -320,87 +325,218 @@ async def make_restore(ctx):
 
         if check_constraints is not None:
             for conn in check_constraints:
-                ctx.logger.info("Removing constraints: " + conn[2])
+                logger.info("Removing constraints: " + conn[2])
                 query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(
                     conn[0], conn[1], conn[2]
                 )
                 await db_conn.execute(query)
 
-    result.result_code = ResultCode.DONE
-    if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+    async def execute_database_restore_transaction(self, db_conn):
         tr = db_conn.transaction()
         await tr.start()
         try:
             await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
             await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
             sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-            await make_restore_impl(ctx, sn_id)
+            await self.make_restore_impl(sn_id)
         except:
-            ctx.logger.error(
+            self.ctx.logger.error(
                 "<------------- make_restore failed\n" + exception_helper()
             )
-            result.result_code = "fail"
+            self.result.result_code = ResultCode.FAIL
         finally:
             await tr.commit()
             await db_conn.close()
 
-        if ctx.total_rows != int(ctx.metadata["total_rows"]):
-            ctx.logger.error(
+        if self.ctx.total_rows != int(self.ctx.metadata["total_rows"]):
+            self.ctx.logger.error(
                 "The number of restored rows (%s) is different from the metadata (%s)"
-                % (str(ctx.total_rows), ctx.metadata["total_rows"])
+                % (str(self.ctx.total_rows), self.ctx.metadata["total_rows"])
             )
-            result.result_code = ResultCode.FAIL
+            self.result.result_code = ResultCode.FAIL
 
-    if ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
-        await run_pg_restore(ctx, "post-data")
+    async def run_custom_query(self, pool, query):
+        # in single tx
+        self.ctx.logger.info("================> Started query %s" % str(query))
 
-    if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
-        await seq_init(ctx)
+        db_conn = await pool.acquire()
+        try:
+            await db_conn.execute(query)
+        except Exception as e:
+            self.ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
+            raise Exception("Can't execute query: %s" % query)
+        finally:
+            await db_conn.close()
+            await pool.release(db_conn)
 
-    await db_conn.close()
-    ctx.logger.info("<------------- Finished restore")
-    return result
+        self.ctx.logger.info("<================ Finished query %s" % str(query))
 
+    async def run_analyze(self):
+        self.ctx.logger.info("-------------> Started analyze")
+        pool = await asyncpg.create_pool(
+            **self.ctx.conn_params,
+            min_size=self.ctx.args.threads,
+            max_size=self.ctx.args.threads
+        )
 
-async def run_custom_query(ctx, pool, query):
-    # in single tx
-    ctx.logger.info("================> Started query %s" % str(query))
+        queries = self.generate_analyze_queries()
+        loop = asyncio.get_event_loop()
+        tasks = set()
+        for v in queries:
+            if len(tasks) >= self.ctx.args.threads:
+                done, tasks = await asyncio.wait(
+                    tasks, return_when=asyncio.FIRST_COMPLETED
+                )
+                exception = done.pop().exception()
+                if exception is not None:
+                    await pool.close()
+                    raise exception
+            tasks.add(loop.create_task(self.run_custom_query(pool, v)))
 
-    db_conn = await pool.acquire()
-    try:
-        await db_conn.execute(query)
-    except Exception as e:
-        ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
-        raise Exception("Can't execute query: %s" % query)
-    finally:
+        # Wait for the remaining queries to finish
+        await asyncio.wait(tasks)
+        await pool.close()
+        self.ctx.logger.info("<------------- Finished analyze")
+
+    async def run_mode_restore_asy(self):
+        self.ctx.logger.info("-------------> Started restore")
+
+        self.ctx.args.input_dir = self.get_dir(
+            current_dir=self.ctx.current_dir, input_dir=self.ctx.args.input_dir
+        )
+
+        # pool = await asyncpg.create_pool(
+        #     **self.ctx.conn_params,
+        #     min_size=self.ctx.args.threads,
+        #     max_size=self.ctx.args.threads,
+        # )
+        db_conn = await asyncpg.connect(**self.ctx.conn_params)
+        await self.check_db_empty(db_conn, self.ctx.args.mode)
+
+        self.ctx.metadata = self.read_metadata(
+            self.ctx.current_dir, self.ctx.args.input_dir
+        )
+
+        if not self.ctx.args.disable_checks:
+            await self.check_version(db_conn)  # Закрывается ли соединение?
+            await self.check_free_disk_space(db_conn)
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        await self.run_pg_restore(
+            "pre-data"
+        )  # ctx.args.mode != AnonMode.SYNC_DATA_RESTORE
+
+        if self.ctx.args.drop_custom_check_constr:
+            await self.drop_custom_check_constr(db_conn)
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        # there is `db_conn.close` in finally
+        await self.execute_database_restore_transaction(
+            db_conn
+        )  # ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        await self.run_pg_restore(
+            "post-data"
+        )  # ctx.args.mode != AnonMode.SYNC_DATA_RESTORE
+
+        await self.seq_init()  # ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE
+
         await db_conn.close()
-        await pool.release(db_conn)
 
-    ctx.logger.info("<================ Finished query %s" % str(query))
+        logger.info("<------------- Finished restore")
 
+    async def run_mode_sync_struct(self):
+        self.ctx.logger.info("-------------> Started restore")
 
-async def run_analyze(ctx):
-    ctx.logger.info("-------------> Started analyze")
-    pool = await asyncpg.create_pool(
-        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
-    )
+        self.ctx.args.input_dir = self.get_dir(
+            current_dir=self.ctx.current_dir, input_dir=self.ctx.args.input_dir
+        )
 
-    queries = generate_analyze_queries(ctx)
-    loop = asyncio.get_event_loop()
-    tasks = set()
-    for v in queries:
-        if len(tasks) >= ctx.args.threads:
-            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            exception = done.pop().exception()
-            if exception is not None:
-                await pool.close()
-                raise exception
-        tasks.add(loop.create_task(run_custom_query(ctx, pool, v)))
+        # pool = await asyncpg.create_pool(
+        #     **self.ctx.conn_params,
+        #     min_size=self.ctx.args.threads,
+        #     max_size=self.ctx.args.threads,
+        # )
+        db_conn = await asyncpg.connect(**self.ctx.conn_params)
+        await self.check_db_empty(db_conn, self.ctx.args.mode)
 
-    # Wait for the remaining queries to finish
-    await asyncio.wait(tasks)
-    await pool.close()
-    ctx.logger.info("<------------- Finished analyze")
+        self.ctx.metadata = self.read_metadata(
+            self.ctx.current_dir, self.ctx.args.input_dir
+        )
+
+        if not self.ctx.args.disable_checks:
+            await self.check_version(db_conn)  # Закрывается ли соединение?
+            await self.check_free_disk_space(db_conn)
+
+        for v in self.ctx.metadata["schemas"]:
+            query = 'CREATE SCHEMA IF NOT EXISTS "%s"' % v
+            self.ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
+            await db_conn.execute(query)
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        await self.run_pg_restore(
+            "pre-data"
+        )  # ctx.args.mode != AnonMode.SYNC_DATA_RESTORE
+
+        if self.ctx.args.drop_custom_check_constr:
+            await self.drop_custom_check_constr(db_conn)
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        await self.run_pg_restore(
+            "post-data"
+        )  # ctx.args.mode != AnonMode.SYNC_DATA_RESTORE
+
+        await db_conn.close()
+
+        logger.info("<------------- Finished restore")
+
+    async def run_mode_sync_data(self):
+        self.ctx.logger.info("-------------> Started restore")
+
+        self.ctx.args.input_dir = self.get_dir(
+            current_dir=self.ctx.current_dir, input_dir=self.ctx.args.input_dir
+        )
+
+        # pool = await asyncpg.create_pool(
+        #     **self.ctx.conn_params,
+        #     min_size=self.ctx.args.threads,
+        #     max_size=self.ctx.args.threads,
+        # )
+        db_conn = await asyncpg.connect(**self.ctx.conn_params)
+        await self.check_db_empty(db_conn, self.ctx.args.mode)
+
+        self.ctx.metadata = self.read_metadata(
+            self.ctx.current_dir, self.ctx.args.input_dir
+        )
+
+        if not self.ctx.args.disable_checks:
+            await self.check_version(db_conn)  # Закрывается ли соединение?
+            await self.check_free_disk_space(db_conn)
+
+        if self.ctx.args.drop_custom_check_constr:
+            await self.drop_custom_check_constr(db_conn)
+
+        # SYNC_STRUCT_RESTORE or SYNC_DATA_RESTORE
+        # there is `db_conn.close` in finally
+        await self.execute_database_restore_transaction(
+            db_conn
+        )  # ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE
+
+        await self.seq_init()  # ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE
+
+        await db_conn.close()
+
+        logger.info("<------------- Finished restore")
+
+    async def make_restore(self):
+        if self.ctx.args.mode == AnonMode.RESTORE:
+            await self.run_mode_restore_asy()
+        elif self.ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+            await self.run_mode_sync_struct()
+        elif self.ctx.args.mode == AnonMode.SYNC_DATA_RESTORE:
+            await self.run_mode_sync_data()
+        return self.result
 
 
 async def validate_restore(ctx):
