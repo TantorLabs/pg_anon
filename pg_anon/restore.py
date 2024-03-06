@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import subprocess
-from typing import LiteralString
 
 import asyncpg
 
@@ -19,15 +18,6 @@ from pg_anon.common import (
     pretty_size,
 )
 from pg_anon.context import Context
-
-
-class QuerySaver:
-    def __init__(self):
-        self.queries = []
-
-    def __call__(self, record):
-        self.queries.append(record.query)
-        print(self.queries)
 
 
 async def run_pg_restore(ctx, section):
@@ -111,25 +101,6 @@ async def seq_init(ctx):
     await db_conn.close()
 
 
-def generate_restore_queries(ctx):
-    # TODO: deprecate
-    queries = []
-    for file_name, target in ctx.metadata["files"].items():
-        full_path = os.path.join(
-            ctx.current_dir, "output", ctx.args.input_dir, file_name
-        )
-        schema = target["schema"]
-        table = target["table"]
-        query = 'COPY "%s"."%s" FROM PROGRAM \'gunzip -c %s\' %s' % (
-            schema,
-            table,
-            full_path,
-            ctx.args.copy_options,
-        )
-        queries.append(query)
-    return queries
-
-
 def generate_analyze_queries(ctx):
     analyze_queries = []
     for file_name, target in ctx.metadata["files"].items():
@@ -138,27 +109,6 @@ def generate_analyze_queries(ctx):
         analyze_query = 'analyze "%s"."%s"' % (schema, table)
         analyze_queries.append(analyze_query)
     return analyze_queries
-
-
-async def restore_obj_func(ctx, pool, task, sn_id):
-    ctx.logger.info("================> Started task %s" % str(task))
-
-    db_conn = await pool.acquire()
-    try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        res = await db_conn.execute(task)
-        await db_conn.copy_to_table()
-        ctx.total_rows += int(re.findall(r"(\d+)", res)[0])
-        await db_conn.execute("COMMIT;")
-        ctx.logger.debug("COPY %s [rows] Task: %s " % (ctx.total_rows, str(task)))
-    except Exception as e:
-        ctx.logger.error("Exception in restore_obj_func:\n" + exception_helper())
-        # raise Exception("Can't execute task: %s" % task)
-    finally:
-        await pool.release(db_conn)
-
-    ctx.logger.info("================> Finished task %s" % str(task))
 
 
 async def restore_table_data(
@@ -170,10 +120,9 @@ async def restore_table_data(
     sn_id: str,
 ):
     ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
-    extracted_file = f"{dump_file.removesuffix('.dat.gz')}.bin"
+    extracted_file = f"{dump_file.removesuffix('.bin.gz')}.bin"
 
     with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
-        # shutil.copyfileobj(extracted_data, tmp_file)
         trg_file.writelines(src_file)
     db_conn = await pool.acquire()
     try:
@@ -210,7 +159,6 @@ async def make_restore_impl(ctx, sn_id):
         **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
     )
 
-    queries = generate_restore_queries(ctx)
     loop = asyncio.get_event_loop()
     tasks = set()
     for file_name, target in ctx.metadata["files"].items():
@@ -296,6 +244,7 @@ async def make_restore(ctx):
     )
 
     if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
+        db_conn.close()
         raise Exception("Target DB is not empty!")
 
     metadata_file = open(
