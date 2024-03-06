@@ -7,6 +7,7 @@ import re
 import subprocess
 from datetime import datetime
 from hashlib import sha256
+from logging import getLogger
 
 import asyncpg
 
@@ -18,6 +19,8 @@ from pg_anon.common import (
     exception_helper,
     get_pg_util_version,
 )
+
+logger = getLogger(__name__)
 
 
 async def run_pg_dump(ctx, section):
@@ -76,13 +79,19 @@ async def run_pg_dump(ctx, section):
 
 async def get_dump_table(query: str, file_name: str, db_conn, output_dir: str):
     full_file_name = os.path.join(output_dir, file_name.split(".")[0])
-    result = await db_conn.copy_from_query(query, output=f"{full_file_name}.txt")
-    with open(f"{full_file_name}.txt", "rb") as f_in, gzip.open(
-        f"{full_file_name}.dat.gz", "wb"
-    ) as f_out:
-        f_out.writelines(f_in)
-    os.remove(f"{full_file_name}.txt")
-    return result
+    try:
+        result = await db_conn.copy_from_query(
+            query, output=f"{full_file_name}.bin", format="binary"
+        )
+        with open(f"{full_file_name}.bin", "rb") as f_in, gzip.open(
+            f"{full_file_name}.dat.gz", "wb"
+        ) as f_out:
+            f_out.writelines(f_in)
+        os.remove(f"{full_file_name}.bin")
+        return result
+    except Exception as exc:
+        logger.error(exc)
+        raise exc
 
 
 async def dump_obj_func(ctx, pool, task, sn_id, file_name):

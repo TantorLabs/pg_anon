@@ -1,9 +1,11 @@
 import asyncio
+import gzip
 import json
 import os
 import re
 import shutil
 import subprocess
+from typing import LiteralString
 
 import asyncpg
 
@@ -16,6 +18,16 @@ from pg_anon.common import (
     get_pg_util_version,
     pretty_size,
 )
+from pg_anon.context import Context
+
+
+class QuerySaver:
+    def __init__(self):
+        self.queries = []
+
+    def __call__(self, record):
+        self.queries.append(record.query)
+        print(self.queries)
 
 
 async def run_pg_restore(ctx, section):
@@ -100,6 +112,7 @@ async def seq_init(ctx):
 
 
 def generate_restore_queries(ctx):
+    # TODO: deprecate
     queries = []
     for file_name, target in ctx.metadata["files"].items():
         full_path = os.path.join(
@@ -135,6 +148,7 @@ async def restore_obj_func(ctx, pool, task, sn_id):
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
         res = await db_conn.execute(task)
+        await db_conn.copy_to_table()
         ctx.total_rows += int(re.findall(r"(\d+)", res)[0])
         await db_conn.execute("COMMIT;")
         ctx.logger.debug("COPY %s [rows] Task: %s " % (ctx.total_rows, str(task)))
@@ -147,6 +161,50 @@ async def restore_obj_func(ctx, pool, task, sn_id):
     ctx.logger.info("================> Finished task %s" % str(task))
 
 
+async def restore_table_data(
+    ctx: Context,
+    pool: asyncpg.Pool,
+    dump_file: str,
+    schema_name: str,
+    table_name: str,
+    sn_id: str,
+):
+    ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
+    extracted_file = f"{dump_file.removesuffix('.dat.gz')}.bin"
+
+    with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
+        # shutil.copyfileobj(extracted_data, tmp_file)
+        trg_file.writelines(src_file)
+    db_conn = await pool.acquire()
+    try:
+        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+        await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
+
+        result = await db_conn.copy_to_table(
+            schema_name=schema_name,
+            table_name=table_name,
+            source=extracted_file,
+            format="binary",
+        )
+        ctx.total_rows += int(re.findall(r"(\d+)", result)[0])
+        await db_conn.execute("COMMIT;")
+    except Exception as exc:
+        ctx.logger.error(
+            f"Exception in restore_obj_func:"
+            f" {schema_name = }"
+            f" {table_name = }"
+            f"\n{exc.query = }"
+            f"\n{exc.position = }"
+            f"\n{exc = }"
+        )
+
+    finally:
+        os.remove(extracted_file)
+        await pool.release(db_conn)
+
+    ctx.logger.info(f"{'>':=>20} Finished task {str(table_name)}")
+
+
 async def make_restore_impl(ctx, sn_id):
     pool = await asyncpg.create_pool(
         **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
@@ -155,7 +213,10 @@ async def make_restore_impl(ctx, sn_id):
     queries = generate_restore_queries(ctx)
     loop = asyncio.get_event_loop()
     tasks = set()
-    for v in queries:
+    for file_name, target in ctx.metadata["files"].items():
+        full_path = os.path.join(
+            ctx.current_dir, "output", ctx.args.input_dir, file_name
+        )
         if len(tasks) >= ctx.args.threads:
             # Wait for some restore to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -163,7 +224,18 @@ async def make_restore_impl(ctx, sn_id):
             if exception is not None:
                 await pool.close()
                 raise exception
-        tasks.add(loop.create_task(restore_obj_func(ctx, pool, v, sn_id)))
+        tasks.add(
+            loop.create_task(
+                restore_table_data(
+                    ctx=ctx,
+                    pool=pool,
+                    dump_file=str(full_path),
+                    schema_name=target["schema"],
+                    table_name=target["table"],
+                    sn_id=sn_id,
+                )
+            )
+        )
 
     # Wait for the remaining restores to finish
     await asyncio.wait(tasks)
