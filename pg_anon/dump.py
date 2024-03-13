@@ -1,4 +1,5 @@
 import asyncio
+import gzip
 import hashlib
 import json
 import os
@@ -6,6 +7,7 @@ import re
 import subprocess
 from datetime import datetime
 from hashlib import sha256
+from logging import getLogger
 
 import asyncpg
 
@@ -17,6 +19,10 @@ from pg_anon.common import (
     exception_helper,
     get_pg_util_version,
 )
+
+logger = getLogger(__name__)
+
+DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
 
 
 async def run_pg_dump(ctx, section):
@@ -73,14 +79,36 @@ async def run_pg_dump(ctx, section):
         ctx.logger.info(v)
 
 
-async def dump_obj_func(ctx, pool, task, sn_id):
+async def get_dump_table(query: str, file_name: str, db_conn, output_dir: str):
+    full_file_name = os.path.join(output_dir, file_name.split(".")[0])
+    try:
+        result = await db_conn.copy_from_query(
+            query, output=f"{full_file_name}.bin", format="binary"
+        )
+        with open(f"{full_file_name}.bin", "rb") as f_in, gzip.open(
+            f"{full_file_name}.bin.gz", "wb"
+        ) as f_out:
+            f_out.writelines(f_in)
+        os.remove(f"{full_file_name}.bin")
+        return result
+    except Exception as exc:
+        logger.error(exc)
+        raise exc
+
+
+async def dump_obj_func(ctx, pool, task, sn_id, file_name):
     ctx.logger.info("================> Started task %s" % str(task))
 
     db_conn = await pool.acquire()
     try:
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        res = await db_conn.execute(task)
+        res = await get_dump_table(
+            query=task,
+            file_name=file_name,
+            db_conn=db_conn,
+            output_dir=ctx.args.output_dir,
+        )
         count_rows = re.findall(r"(\d+)", res)[0]
         ctx.task_results[hash(task)] = count_rows
         ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
@@ -143,21 +171,27 @@ def find_obj_in_dict(dictionary_obj, schema, table):
     return result
 
 
-async def generate_dump_queries(ctx, db_conn):
-    db_objs = await db_conn.fetch(
-        """
+async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection):
+    excluded_schemas_str = ", ".join(
+        [f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]]
+    )
+    query_db_obj = f"""
             SELECT table_schema, table_name
             FROM information_schema.tables
             WHERE
-                table_schema not in (%s) and
+                table_schema not in ({excluded_schemas_str}) and
                 table_type = 'BASE TABLE'
         """
-        % ", ".join(
-            [
-                "'" + v + "'"
-                for v in ctx.exclude_schemas + ["pg_catalog", "information_schema"]
-            ]
-        )
+    db_objs = await db_conn.fetch(query_db_obj)
+    table_names = [
+        f'"{table_schema}"."{table_name}"' for table_schema, table_name in db_objs
+    ]
+    return db_objs
+
+
+async def generate_dump_queries(ctx, db_conn):
+    db_objs = await get_tables_to_dump(
+        excluded_schemas=ctx.exclude_schemas, db_conn=db_conn
     )
     queries = []
     files = {}
@@ -165,59 +199,62 @@ async def generate_dump_queries(ctx, db_conn):
     included_objs = []  # for debug purposes
     excluded_objs = []  # for debug purposes
 
-    for item in db_objs:
-        table_name = '"' + item[0] + '"."' + item[1] + '"'
+    for table_schema, table_name in db_objs:
+        table_name_full = f'"{table_schema}"."{table_name}"'
 
-        if item[0] == "public" and item[1] == "tbl_100":
-            x = 1
-
-        a_obj = find_obj_in_dict(ctx.dictionary_obj["dictionary"], item[0], item[1])
+        a_obj = find_obj_in_dict(
+            ctx.dictionary_obj["dictionary"], table_schema, table_name
+        )
         found_white_list = not (a_obj is None)
 
         # dictionary_exclude has the highest priority
         if "dictionary_exclude" in ctx.dictionary_obj:
             exclude_obj = find_obj_in_dict(
-                ctx.dictionary_obj["dictionary_exclude"], item[0], item[1]
+                ctx.dictionary_obj["dictionary_exclude"], table_schema, table_name
             )
             found = not (exclude_obj is None)
             if found and not found_white_list:
                 excluded_objs.append(
-                    [exclude_obj, item[0], item[1], "if found and not found_white_list"]
+                    [
+                        exclude_obj,
+                        table_schema,
+                        table_name,
+                        "if found and not found_white_list",
+                    ]
                 )
-                ctx.logger.info("Skipping: " + str(table_name))
+                ctx.logger.info("Skipping: " + str(table_name_full))
                 continue
 
-        hashed_name = hashlib.md5((item[0] + "_" + item[1]).encode()).hexdigest()
-        full_file_name = "%s.dat.gz" % os.path.join(ctx.args.output_dir, hashed_name)
-        files["%s.dat.gz" % hashed_name] = {"schema": item[0], "table": item[1]}
+        hashed_name = hashlib.md5(
+            (table_schema + "_" + table_name).encode()
+        ).hexdigest()
+
+        files["%s.bin.gz" % hashed_name] = {"schema": table_schema, "table": table_name}
 
         if not found_white_list:
-            included_objs.append([a_obj, item[0], item[1], "if not found_white_list"])
+            included_objs.append(
+                [a_obj, table_schema, table_name, "if not found_white_list"]
+            )
             # there is no table in the dictionary, so it will be transferred "as is"
             if not ctx.args.validate_dict:
-                query = "COPY (SELECT * FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
-                    table_name,
-                    (ctx.validate_limit if ctx.args.validate_full else ""),
-                    full_file_name,
-                    ctx.args.copy_options,
-                )
+                query = f"SELECT * FROM {table_name_full} {(ctx.validate_limit if ctx.args.validate_full else '')}"
                 ctx.logger.info(str(query))
                 queries.append(query)
             else:
-                query = "SELECT * FROM %s %s" % (table_name, ctx.validate_limit)
+                query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
                 ctx.logger.info(str(query))
                 queries.append(query)
         else:
-            included_objs.append([a_obj, item[0], item[1], "if found_white_list"])
+            included_objs.append(
+                [a_obj, table_schema, table_name, "if found_white_list"]
+            )
             # table found in dictionary
             if "raw_sql" in a_obj:
                 # the table is transferred using "raw_sql"
                 if not ctx.args.validate_dict:
-                    query = "COPY (%s %s) to PROGRAM 'gzip > %s' %s" % (
+                    query = "%s %s" % (
                         a_obj["raw_sql"],
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        full_file_name,
-                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
@@ -229,54 +266,52 @@ async def generate_dump_queries(ctx, db_conn):
                 # the table is transferred with the specific fields for anonymization
                 fields_list = await db_conn.fetch(
                     """
-                        SELECT column_name FROM information_schema.columns
+                        SELECT column_name, udt_name FROM information_schema.columns
                         WHERE table_schema = '%s' AND table_name='%s'
                         ORDER BY ordinal_position ASC
                     """
-                    % (item[0].replace("'", "''"), item[1].replace("'", "''"))
+                    % (table_schema.replace("'", "''"), table_name.replace("'", "''"))
                 )
 
                 sql_expr = ""
 
                 def check_fld(fld_name):
                     if fld_name in a_obj["fields"]:
-                        return [fld_name, a_obj["fields"][fld_name]]
-                    return None
+                        return fld_name, a_obj["fields"][fld_name]
+                    return None, None
 
-                for cnt, v in enumerate(fields_list):
-                    a_fld = check_fld(v[0])
-                    if a_fld is not None:
-                        fld_name = a_fld[0]
-                        fld_val = a_fld[1]
+                for cnt, column_info in enumerate(fields_list):
+                    column_name = column_info["column_name"]
+                    udt_name = column_info["udt_name"]
+                    fld_name, fld_val = check_fld(column_name)
+                    if fld_name:
                         if fld_val.find("SQL:") == 0:
-                            sql_expr += "(" + fld_val[4:] + ') as "' + fld_name + '"'
+                            sql_expr += f'({fld_val[4:]}) as "{fld_name}"'
                         else:
-                            sql_expr += fld_val + ' as "' + fld_name + '"'
+                            sql_expr += f'{fld_val}::{udt_name} as "{fld_name}"'
                     else:
                         # field "as is"
-                        if (not v[0].islower() and not v[0].isupper()) or v[
-                            0
-                        ].isupper():
-                            sql_expr += '"' + v[0] + '" as "' + v[0] + '"'
+                        if (
+                            not column_name.islower() and not column_name.isupper()
+                        ) or column_name.isupper():
+                            sql_expr += f'"{column_name}" as "{column_name}"'
                         else:
-                            sql_expr += ' "' + v[0] + '" as "' + v[0] + '"'
+                            sql_expr += f'"{column_name}" as "{column_name}"'
                     if cnt != len(fields_list) - 1:
                         sql_expr += ",\n"
 
                 if not ctx.args.validate_dict:
-                    query = "COPY (SELECT %s FROM %s %s) to PROGRAM 'gzip > %s' %s" % (
+                    query = "SELECT %s FROM %s %s" % (
                         sql_expr,
-                        table_name,
+                        table_name_full,
                         (ctx.validate_limit if ctx.args.validate_full else ""),
-                        full_file_name,
-                        ctx.args.copy_options,
                     )
                     ctx.logger.info(str(query))
                     queries.append(query)
                 else:
                     query = "SELECT %s FROM %s %s" % (
                         sql_expr,
-                        table_name,
+                        table_name_full,
                         ctx.validate_limit,
                     )
                     ctx.logger.info(str(query))
@@ -303,7 +338,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
 
     zipped_list = list(zip([hash(v) for v in queries], files))
 
-    for v in queries:
+    for file_name, query in zip(files.keys(), queries):
         if len(tasks) >= ctx.args.threads:
             # Wait for some dump to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -311,7 +346,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
             if exception is not None:
                 await pool.close()
                 raise exception
-        tasks.add(loop.create_task(dump_obj_func(ctx, pool, v, sn_id)))
+        tasks.add(loop.create_task(dump_obj_func(ctx, pool, query, sn_id, file_name)))
 
     # Wait for the remaining dumps to finish
     await asyncio.wait(tasks)
