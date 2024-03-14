@@ -8,6 +8,7 @@ from logging import getLogger
 from typing import List, Optional, Any, Dict
 from multiprocessing import Pool
 import asyncpg
+from rich.progress import track
 
 from pg_anon.common import (
     PgAnonResult,
@@ -212,8 +213,9 @@ class SensFieldScan:
         return True
 
     def _check_tagged_fields(self, fields_info: List[FieldInfo]) -> List[FieldInfo]:
-        for field_info, tagged_field in itertools.product(
-            fields_info, self.tagged_fields
+        for field_info, tagged_field in track(
+            itertools.product(fields_info, self.tagged_fields),
+            description="Check for tagged fields:",
         ):
             print(field_info, tagged_field)
             if (
@@ -314,7 +316,7 @@ class SensFieldScan:
         self.dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
     async def _check_sensitive_fld_names(self, fields_info: List[FieldInfo]):
-        for field_info in fields_info:
+        for field_info in track(fields_info, "Check for sensitive fields:"):
             if "rules" in self.dictionary_obj["field"]:
                 for rule in self.dictionary_obj["field"]["rules"]:
                     if re.search(rule, field_info.column_name) is not None:
@@ -443,13 +445,20 @@ class SensFieldScan:
             with Pool(processes=self.processes) as pool:
                 scan_results = pool.starmap(
                     self._check_sensitive_data_in_fld,
-                    ((field_info,) for field_info in fields_info),
+                    (
+                        (field_info,)
+                        for field_info in track(
+                            fields_info, "Scanning for sensitive data:"
+                        )
+                    ),
                 )
             scan_results = [scan_result for scan_result in scan_results if scan_result]
             return scan_results
 
         scan_results = []
-        for field_info in fields_info:
+        for field_info in track(
+            fields_info, description="Scanning for sensitive data:"
+        ):
             scan_results.append(
                 self._check_sensitive_data_in_fld(
                     field_info,
