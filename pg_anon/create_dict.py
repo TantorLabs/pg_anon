@@ -8,6 +8,7 @@ from logging import getLogger
 from typing import List, Optional, Any, Dict
 from multiprocessing import Pool
 import asyncpg
+from rich.progress import track
 
 from pg_anon.common import (
     PgAnonResult,
@@ -124,10 +125,10 @@ class SensFieldScan:
         conn_params: Dict[str, str],
         processes: int,
         threads: int,
-        output_dict_file: dict,
+        output_dict_file: str,
         current_dir: str,
         scan_mode: ScanMode,
-        scan_partial_rows: bool,
+        scan_partial_rows: int,
         dict_file_name: str,
     ):
         self.result.result_code = ResultCode.DONE
@@ -443,13 +444,20 @@ class SensFieldScan:
             with Pool(processes=self.processes) as pool:
                 scan_results = pool.starmap(
                     self._check_sensitive_data_in_fld,
-                    ((field_info,) for field_info in fields_info),
+                    (
+                        (field_info,)
+                        for field_info in track(
+                            fields_info, "Scanning for sensitive data:"
+                        )
+                    ),
                 )
             scan_results = [scan_result for scan_result in scan_results if scan_result]
             return scan_results
 
         scan_results = []
-        for field_info in fields_info:
+        for field_info in track(
+            fields_info, description="Scanning for sensitive data:"
+        ):
             scan_results.append(
                 self._check_sensitive_data_in_fld(
                     field_info,

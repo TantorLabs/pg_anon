@@ -1,7 +1,12 @@
 import asyncio
 
-from pg_anon import MainRoutine
+import typer
+
+from pg_anon import create_dict_cli
+
+app = typer.Typer()
+app.add_typer(create_dict_cli.app, name="create-dict")
+
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(MainRoutine().run())
+    app()
