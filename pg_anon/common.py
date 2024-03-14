@@ -7,7 +7,7 @@ import sys
 import traceback
 from enum import Enum
 
-from pkg_resources import parse_version as version
+from packaging.version import parse as version
 
 
 class BasicEnum:
