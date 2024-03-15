@@ -1,4 +1,25 @@
-# README #
+# pg_anon
+
+## Description
+
+`pg_anon` is a Postgres data anonimisation tool. Most IT companies store and process
+data that constitutes commercial secrets or data containing personal user information.
+These two groups of data can be referred to as "sensitive" data. 
+Personal data includes: contact phone numbers, passport information, etc.
+
+The most common task in the development process becomes transferring 
+the contents of the database from the production environment to other environments 
+for the purpose of performance testing or debugging functionality during development.
+Typically, all company employees have access to the data in the testing or development contour.
+
+The database transferred from the production environment should not contain sensitive data to avoid leaks. 
+To solve this problem, a tool called pg_anon was developed, allowing to clone the database while replacing
+sensitive data with random or hashed values.
+
+`pg_anon` is based on `Python3` and additionally requires the third-part libraries 
+
+- Why you used the technologies you used,
+- Some of the challenges you faced and features you hope to implement in the future.
 
 
 ### Installation ###
