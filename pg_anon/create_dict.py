@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import logging
 import os
 
 import re
@@ -8,7 +9,11 @@ from logging import getLogger
 from typing import List, Optional, Any, Dict
 from multiprocessing import Pool
 import asyncpg
+from rich import print_json
+from rich.logging import RichHandler
 from rich.progress import track
+from rich.json import JSON as RICH_JSON
+
 
 from pg_anon.common import (
     PgAnonResult,
@@ -16,6 +21,13 @@ from pg_anon.common import (
     ScanMode,
     exception_helper,
     setof_to_list,
+)
+
+logging.basicConfig(
+    level="NOTSET",
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(rich_tracebacks=True)],
 )
 
 
@@ -425,6 +437,7 @@ class SensFieldScan:
         ) as output_dict_file:
 
             output_dict_file.write(json.dumps(output_dict, indent=4))
+        return output_dict
 
     async def _get_row_data(self, fields_info: List[FieldInfo]):
         tasks = []
@@ -488,7 +501,7 @@ class SensFieldScan:
 
         self._check_sens_data(fields_info=fields_info)
 
-        self._create_output_dict()
+        return self._create_output_dict()
 
     def _get_dict_from_file(self):
         with open(
@@ -509,7 +522,7 @@ class SensFieldScan:
             return self.result
 
         try:
-            await self._create_dict_impl()
+            output_dict = await self._create_dict_impl()
         except:
             logger.error("<------------- create_dict failed\n" + exception_helper())
             self.result.result_code = ResultCode.FAIL
@@ -517,4 +530,5 @@ class SensFieldScan:
 
         if self.result.result_code == ResultCode.DONE:
             logger.info("<------------- Finished create_dict mode")
+            print_json(data=output_dict)
         return self.result
