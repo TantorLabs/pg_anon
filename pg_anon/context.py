@@ -4,7 +4,6 @@ import os
 from pg_anon.common import (
     exception_handler,
     AnonMode,
-    OutputFormat,
     VerboseOptions,
     ScanMode,
 )
@@ -87,20 +86,6 @@ class Context:
             "--mode", type=AnonMode, choices=list(AnonMode), default=AnonMode.INIT
         )
         parser.add_argument(
-            "--copy-options",
-            dest="copy_options",
-            default="",
-            help='Options for COPY command like "with binary".',
-        )
-        parser.add_argument(
-            "--format",
-            dest="format",
-            type=OutputFormat,
-            choices=list(OutputFormat),
-            default=OutputFormat.BINARY.value,
-            help="COPY data format, can be overwritten by --copy-options. Selects the data format to be read or written: text, csv or binary.",
-        )
-        parser.add_argument(
             "--verbose",
             dest="verbose",
             type=VerboseOptions,
@@ -109,9 +94,30 @@ class Context:
             help="Enable verbose output",
         )
         parser.add_argument("--dict-file", type=str, default="")
-        parser.add_argument("--threads", type=int, default=4)
-        parser.add_argument("--pg-dump", type=str, default="/usr/bin/pg_dump")
-        parser.add_argument("--pg-restore", type=str, default="/usr/bin/pg_restore")
+        parser.add_argument(
+            "--threads",
+            type=int,
+            default=4,
+            help="Amount of threads for IO operations.",
+        )
+        parser.add_argument(
+            "--processes",
+            type=int,
+            default=4,
+            help="Amount of processes for multiprocessing operations.",
+        )
+        parser.add_argument(
+            "--pg-dump",
+            type=str,
+            default="/usr/bin/pg_dump",
+            help="Path to the `pg_dump` Postgres tool",
+        )
+        parser.add_argument(
+            "--pg-restore",
+            type=str,
+            default="/usr/bin/pg_restore",
+            help="Path to the `pg_dump` Postgres tool.",
+        )
         parser.add_argument("--output-dir", type=str, default="")
         parser.add_argument("--input-dir", type=str, default="")
         parser.add_argument(
@@ -128,26 +134,24 @@ class Context:
         )
         parser.add_argument("--clear-output-dir", action="store_true", default=False)
         parser.add_argument(
-            "--drop-custom-check-constr", action="store_true", default=False
+            "--drop-custom-check-constr",
+            action="store_true",
+            default=False,
+            help="Drop all CHECK constrains containing user-defined procedures to avoid performance "
+            "degradation at the data loading stage.",
         )
         parser.add_argument(
             "--seq-init-by-max-value",
             action="store_true",
             default=False,
-            help="""Initialize sequences based on maximum values. Otherwise, the sequences will be initialized
-                based on the values of the source database.""",
+            help="Initialize sequences based on maximum values. Otherwise, the sequences "
+            "will be initialized based on the values of the source database.",
         )
         parser.add_argument(
             "--disable-checks",
             action="store_true",
             default=False,
-            help="""Disable checks of disk space and PostgreSQL version""",
-        )
-        parser.add_argument(
-            "--skip-data",
-            action="store_true",
-            default=False,
-            help="""Don't copy data. Only the database structure will be dumped""",
+            help="Disable checks of disk space and PostgreSQL version.",
         )
         parser.add_argument(
             "--scan-mode",

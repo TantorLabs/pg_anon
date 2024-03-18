@@ -475,7 +475,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
 
     p = aioprocessing.AioProcess(
         target=process_impl,
-        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.threads),
+        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.processes),
     )
     p.start()
     res = None

@@ -85,7 +85,6 @@ To facilitate the testing, here are instructions on how to set up PostgreSQL on 
 2. Update packages and install PostgreSQL:
 
    ```commandline
-   apt update && apt --yes remove postgresql\*
    apt -y install postgresql-15 postgresql-client-15
    ```
 
@@ -201,7 +200,7 @@ python pg_anon.py --mode create-dict \
 ```
 
 | Option                | Description                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------- |
+|-----------------------|---------------------------------------------------------------------------------------------|
 | `--dict-file`         | Specify the dictionary file with data about anonymization                                   |
 | `--output-dict-file`  | Output file will be saved to this value                                                     |
 | `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
@@ -430,4 +429,4 @@ python3 setup.py sdist
 - `--copy-options`: Options for COPY command like "with binary".
 - Supporting restore after full dump:
   Right now struct restoring the structure of the database possible only after struct dump. So you don't able to restore the structure after full dump.
-- Simplify commands and options to improve user experience
+- Simplify commands and options to improve the user experience.
