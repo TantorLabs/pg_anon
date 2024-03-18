@@ -4,8 +4,10 @@ import os
 import sys
 import unittest
 from decimal import Decimal
+from typing import Tuple, List, Any, Dict
 
 import asyncpg
+from logging import getLogger
 
 from pg_anon.common import (
     PgAnonResult,
@@ -22,6 +24,88 @@ input_args = None
 passed_stages = []
 rows_in_init_env = 1512
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+logger = getLogger(__name__)
+
+
+class TestingFunctions:
+    @staticmethod
+    async def validate_target_tables(
+        current_dir: str, dict_file: str, conn_params: dict
+    ) -> PgAnonResult:
+        result = PgAnonResult()
+        try:
+            result = await TestingFunctions.validate_restore(
+                current_dir=current_dir,
+                dict_file=dict_file,
+                conn_params=conn_params,
+            )
+        except:
+            logger.error(exception_helper(show_traceback=True))
+        finally:
+            return result
+
+    @staticmethod
+    async def validate_restore(
+        current_dir: str, dict_file: str, conn_params: dict
+    ) -> tuple[list[Any], dict[Any, Any]] | PgAnonResult:
+        result = PgAnonResult()
+        result.result_code = ResultCode.DONE
+        logger.info("-------------> Started validate_restore")
+
+        try:
+            dictionary_file = open(os.path.join(current_dir, "dict", dict_file), "r")
+            dictionary_content = dictionary_file.read()
+            dictionary_file.close()
+            dictionary_obj = eval(dictionary_content)
+        except:
+            logger.error(exception_helper(show_traceback=True))
+            return [], {}
+
+        if "validate_tables" in dictionary_obj:
+            db_conn = await asyncpg.connect(**conn_params)
+            db_objs = await db_conn.fetch(
+                """
+                select n.nspname, c.relname --, c.reltuples
+                from pg_class c
+                join pg_namespace n on c.relnamespace = n.oid
+                where
+                    c.relkind = 'r' and
+                    n.nspname not in ('pg_catalog', 'information_schema') and
+                    c.reltuples > 0
+            """
+            )
+            await db_conn.close()
+            tables_in_target_db = []
+            for item in db_objs:
+                tables_in_target_db.append(item[0] + "." + item[1])
+
+            tables_in_dict = []
+            for d in dictionary_obj["validate_tables"]:
+                tables_in_dict.append(d["schema"] + "." + d["table"])
+
+            diff_l = list(set(tables_in_target_db) - set(tables_in_dict))
+            diff_r = list(set(tables_in_dict) - set(tables_in_target_db))
+
+            if len(diff_r) > 0:
+                logger.error(
+                    "validate_tables: in target DB not found tables:\n%s"
+                    % json.dumps(diff_r, indent=4)
+                )
+                result.result_code = ResultCode.FAIL
+
+            if len(diff_l) > 0:
+                logger.error(
+                    """validate_tables: non-empty tables were found in target database that
+                    are not described in the dictionary:\n%s"""
+                    % json.dumps(diff_l, indent=4)
+                )
+                result.result_code = ResultCode.FAIL
+        else:
+            logger.error("Section validate_tables is not found in dictionary!")
+            result.result_code = ResultCode.FAIL
+
+        logger.info("<------------- Finished validate_restore")
+        return result
 
 
 class TestParams:
@@ -624,20 +708,19 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await MainRoutine(args).run()
         self.assertTrue(res.result_code == ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=%s" % params.test_target_db + "_2",
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
-                "--threads=%s" % params.test_threads,
-                "--dict-file=test_exclude.py",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-        res = await MainRoutine(args).validate_target_tables()
+        args = {
+            "conn_params": {
+                "host": params.test_db_host,
+                "database": params.test_target_db + "_2",
+                "port": params.test_db_port,
+                "user": params.test_db_user,
+            },
+            "current_dir": os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+            "dict_file": "test_exclude.py",
+        }
+
+        res = await TestingFunctions.validate_target_tables(**args)
+
         self.assertTrue(res.result_code == ResultCode.DONE)
         if res.result_code == ResultCode.DONE:
             passed_stages.append("test_05_restore")
