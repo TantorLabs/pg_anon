@@ -245,7 +245,7 @@ async def make_restore(ctx):
 
     if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         db_conn.close()
-        raise Exception("Target DB is not empty!")
+        raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
 
     metadata_file = open(
         os.path.join(ctx.current_dir, "dict", ctx.args.input_dir, "metadata.json"), "r"

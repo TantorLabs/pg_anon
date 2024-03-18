@@ -430,4 +430,4 @@ python3 setup.py sdist
 - `--copy-options`: Options for COPY command like "with binary".
 - Supporting restore after full dump:
   Right now struct restoring the structure of the database possible only after struct dump. So you don't able to restore the structure after full dump.
-- Simplify commands and options to improve user experience
+- Simplify commands and options to improve the user experience.
