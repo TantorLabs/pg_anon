@@ -1,73 +1,135 @@
 # pg_anon
 
-## Description
+## Overview
 
-`pg_anon` is a Postgres data anonimisation tool. Most IT companies store and process
-data that constitutes commercial secrets or data containing personal user information.
-These two groups of data can be referred to as "sensitive" data. 
-Personal data includes: contact phone numbers, passport information, etc.
+`pg_anon` is an efficient tool for the anonymization of Postgres data specifically designed for IT companies. These companies often store "sensitive" data that includes both commercial secrets and personal user information such as contact numbers, passport details, etc.
 
-The most common task in the development process becomes transferring 
-the contents of the database from the production environment to other environments 
-for the purpose of performance testing or debugging functionality during development.
-Typically, all company employees have access to the data in the testing or development contour.
+The tool comes in handy when it is necessary to transfer the database contents from the production environment to other environments for performance testing or functionality debugging during the development process. With `pg_anon`, no sensitive data is exposed, preventing potential data leaks.
 
-The database transferred from the production environment should not contain sensitive data to avoid leaks. 
-To solve this problem, a tool called pg_anon was developed, allowing to clone the database while replacing
-sensitive data with random or hashed values.
+## Features
 
-`pg_anon` is based on `Python3` and additionally requires the third-part libraries 
+`pg_anon` works in several modes:
 
-- Why you used the technologies you used,
-- Some of the challenges you faced and features you hope to implement in the future.
+- **`init`**: Creates `anon_funcs` schema with anonymization functions.
+- **`create_dict`**: Scans the DB data and creates a metadict with an anonymization profile.
+- **`dump`**: Creates a database structure dump using Postgres `pg_dump` tool, and data dumps using `COPY ...` queries with anonymization functions. The data dump step saves data locally in `*.bin.gz` format. During this step, the data is anonymized on the database side by `anon_funcs`.
+- **`restore`**: Restores database structure using Postgres `pg_restore` tool and data from the dump to the target DB. `restore` mode can separately restore database structure or data.
 
+## Requirements & Dependencies
 
-### Installation ###
+`pg_anon` is based on `Python3` and also requires the third-party libraries listed in `requirements.txt`.
+
+It uses the following tools and technologies:
+
+- Postgres [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) tool for dumping the database structure.
+- Postgres [`pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html) tool for restoring the database structure.
+- Postgres [functions](https://www.postgresql.org/docs/current/functions.html) for the anonymization process.
+
+## Installation Guide
+
+### Preconditions
+
+The tool supports Python3.8 and higher versions. The code is hosted on the following repository: [pg_anon repository on Github](https://github.com/TantorLabs/pg_anon).
+
+### Installation Instructions
+
+Installation processes slightly differ depending on your operating system.
+
+#### macOS
+
+1. Install Python3 if it isn't installed:
+   - Install [Homebrew](https://brew.sh/)
+   - `brew install python3`
+2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
+3. Go to the project directory: `cd pg_anon`
+4. Set up a virtual environment:
+   - Install the virtual environment: `python3 -m venv venv`
+   - Activate the virtual environment: `source venv/bin/activate`
+5. Install the dependencies: `pip install -r requirements.txt`
+
+#### Ubuntu/Redhat/CentOS
+
+1. Install Python3 if it isn't installed: `sudo apt-get install python3.8` (for Ubuntu), `sudo yum install python38` (for Redhat/Centos)
+2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
+3. Go to the project directory: `cd pg_anon`
+4. Set up a virtual environment:
+   - Install the virtual environment: `python3 -m venv venv`
+   - Activate the virtual environment: `source venv/bin/activate`
+5. Install the dependencies: `pip install -r requirements.txt`
+
+#### Windows 7/Windows 11
+
+1. Install Python3 if it isn't installed: Download it from the official [Python website](https://www.python.org/downloads/)
+2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
+3. Go to the project directory: `cd pg_anon`
+4. Set up a virtual environment:
+   - Install the virtual environment: `py -m venv venv`
+   - Activate the virtual environment: `.\venv\Scripts\activate`
+5. Install the dependencies: `pip install -r requirements.txt`
+
+## Testing
+
+To test `pg_anon`, you need to have a local database installed. This section covers the installation of postgres and running the test suite.
+
+### Setting Up PostgreSQL
+
+To facilitate the testing, here are instructions on how to set up PostgreSQL on Ubuntu:
+
+1. Add repository configuration:
+
+   ```commandline
+   echo "deb [arch=amd64] http://apt.postgresql.org/pub/repos/apt focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list
+   wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+   ```
+
+2. Update packages and install PostgreSQL:
+
+   ```commandline
+   apt update && apt --yes remove postgresql\*
+   apt -y install postgresql-15 postgresql-client-15
+   ```
+
+3. Allow connections to the PostgreSQL server:
+   ```commandline
+   sed -i  '/listen_addresses/s/^#//g' /etc/postgresql/15/main/postgresql.conf
+   sed -ie "s/^listen_addresses.*/listen_addresses = '127.0.0.1'/" /etc/postgresql/15/main/postgresql.conf
+   ```
+4. Restart the PostgreSQL instance for the changes to take effect:
+   ```commandline
+   pg_ctlcluster 15 main restart
+   ```
+5. Create a test user with superuser rights to allow running the COPY commands:
+   ```commandline
+   psql -c "CREATE USER anon_test_user WITH PASSWORD 'mYy5RexGsZ' SUPERUSER;" -U postgres
+   ```
+
+### Executing Tests
+
+To validate that your setup is functioning correctly, run the unit tests:
 
 ```commandline
-git clone https://github.com/TantorLabs/pg_anon.git
-cd pg_anon
-
-apt install -y python3-pip
-pip3 install -r requirements.txt
+python test/full_test.py -v
 ```
 
-You must have a local database installed to test the functionality of `pg_anon`. Example of installing PostgreSQL on ubuntu:
+Upon successful execution, the output should resemble the following:
+
 ```commandline
-echo "deb [arch=amd64] http://apt.postgresql.org/pub/repos/apt focal-pgdg main" >> /etc/apt/sources.list.d/pgdg.list
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
-apt update && apt --yes remove postgresql\*
-apt -y install postgresql-15 postgresql-client-15
-
-sed -i  '/listen_addresses/s/^#//g' /etc/postgresql/15/main/postgresql.conf
-sed -ie "s/^listen_addresses.*/listen_addresses = '127.0.0.1'/" /etc/postgresql/15/main/postgresql.conf
-
-pg_ctlcluster 15 main restart
+Ran N tests in ...
+OK
 ```
 
-Create a test user with superuser rights (required to run `COPY` commands).
-```sql
-psql -c "CREATE USER anon_test_user WITH PASSWORD 'mYy5RexGsZ' SUPERUSER;" -U postgres
-```
+If all tests pass, the application is ready to use.
 
-### Run tests ###
+To run a specific test case, use the following pattern:
 
-Check if the application is working, run unit tests:
-```python
-chown -R postgres .
-su - postgres
-python3 test/full_test.py -v
->>
-	Ran N tests in ...
-	OK
-
-# If all tests is OK then application ready to use
-
-# To run specific case
+```commandline
 python3 test/full_test.py -v PGAnonValidateUnitTest
 ```
 
-You can override test database connection settings as follows:
+### Test Database Configuration
+
+Test database connection settings can be overridden using environment variables:
+
 ```commandline
 set TEST_DB_USER=anon_test_user
 set TEST_DB_USER_PASSWORD=mYy5RexGsZ
@@ -77,145 +139,189 @@ set TEST_SOURCE_DB=test_source_db
 set TEST_TARGET_DB=test_target_db
 ```
 
+## Usage
 
-### Configure permission ###
-
-If tests raised error like:
-
-```commandline
-asyncpg.exceptions.ExternalRoutineError: program "gzip > ... *.dat.gz" failed
-```
-
-in this case needs to configure permissions:
+To display the help message for the CLI, run:
 
 ```commandline
-usermod -a -G current_user_name postgres
-chmod -R g+rw /home/current_user_name/Desktop/pg_anon
-chmod g+x /home/current_user_name/Desktop/pg_anon/output/test
-su - postgres
-touch /home/current_user_name/Desktop/pg_anon/output/1.txt
-
-id -Gn current_user_name
->>
-  current_user_name ... postgres
-
-id -Gn postgres
->>
-  postgres ssl-cert current_user_name
-
-getent group current_user_name
->>
-  current_user_name:x:1000:postgres
-
-getent group postgres
->>
-  postgres:x:133:current_user_name
+python pg_anon.py --help
 ```
 
-### Usage cases ###
+Common pg_anon options:
 
-#### Usage case: full dump/restore ####
+| Option        | Description                                                    |
+|---------------|----------------------------------------------------------------|
+| `--debug`     | Enable debug mode (default false)                              |
+| `--verbose`   | Configure verbose mode: [info, debug, error] (default info)    |
+| `--threads`   | Amount of threads for IO operations (default 4)                |
+| `--processes` | Amount of processes for multiprocessing operations (default 4) |
 
-Input: source database, empty target database, dictionary
+Database configuration options:
 
-Task: copy full structure of DB and all data using dictionary
+| Option                | Description                                                                                         |
+|-----------------------|-----------------------------------------------------------------------------------------------------|
+| `--db-host`           | Specifies your database host                                                                        |
+| `--db-port`           | Specifies your database port                                                                        |
+| `--db-name`           | Specifies your database name                                                                        |
+| `--db-user`           | Specifies your database user                                                                        |
+| `--db-user-password`  | Specifies your database user password                                                               |
+| `--db-passfile`       | Path to the file containing the password to be used when connecting to the database                 |
+| `--db-ssl-key-file`   | Path to the client SSL key file for secure connections to the database                              |
+| `--db-ssl-cert-file`  | Path to the client SSL certificate file for secure connections to the database                      |
+| `--db-ssl-ca-file`    | Path to the root SSL certificate file. This certificate is used to verify the server's certificate  |
+
+### Run init mode
+
+To init schema "anon_funcs", run pg_anon in 'init' mode:
 
 ```commandline
-# Common options in any mode:
-#   --debug			(default false)
-# 	--verbose = [info, debug, error]	(default info)
-#   --threads
-
-#---------------------------
-# init schema "anon_funcs"
-#---------------------------
-python3 pg_anon.py \
-	--db-host=127.0.0.1 \
-	--db-name=test_source_db \
-	--db-user=anon_test_user \
-	--db-port=5432 \
-	--db-user-password=mYy5RexGsZ \
-	--mode=init
-
-#---------------------------
-# run dump
-#---------------------------
-python3 pg_anon.py \
-	--db-host=127.0.0.1 \
-	--db-name=test_source_db \
-	--db-user=anon_test_user \
-	--db-port=5432 \
-	--db-user-password=mYy5RexGsZ \
-	--dict-file=some_dict.py \
-	--clear-output-dir \
-	--mode=dump
-# result will be written to "output/some_dict"
-
-# Possible options in mode=dump:
-#   --validate-dict			(default false)
-#   --validate-full			(default false)
-#   --clear-output-dir		(default true)
-#   --pg-dump=...
-#   --format=[binary, text]
-#   --copy-options=...
-
-#---------------------------
-# run restore
-#---------------------------
-python3 pg_anon.py \
-	--db-host=127.0.0.1 \
-	--db-name=test_target_db \
-	--db-user=anon_test_user \
-	--db-port=5432 \
-	--db-user-password=mYy5RexGsZ \
-	--input-dir=some_dict \
-	--mode=restore
-
-# Possible options in mode=restore:
-#   --disable-checks 					(default false)
-#   --seq-init-by-max-value 			(default false)
-#   --drop-custom-check-constr 			(default false)
-#   --pg-restore=...
-
-#---------------------------
-# If "--db-host" is not local then on database server prepare same directory:
-# mkdir -p /home/pg_anon/output/some_dict
-# chown postgres:postgres -R /home/pg_anon
-#---------------------------
+python pg_anon.py --mode init \
+                  --db-user postgres \
+                  --db-user-password postgres \
+                  --db-name test_source_db
 ```
 
-#### Usage case: partial dump/restore ####
+### Run create_dict mode
 
-Input: source database, empty target database, dictionary
+#### Prerequisites:
 
-Task: copy partial structure and data of specific tables using dictionary
+- Generated or manually created dictionary `*.py` file with anonymization profile
+- "anon_funcs" created in init mode
 
-```
-TODO
-```
+To create the dictionary:
 
-#### Usage case: sync specific tables ####
-
-Input: source database, NOT empty target database, dictionary
-
-Task: truncate target tables and copy data using dictionary
-
-```
-TODO
-```
-
-#### Usage case: dictionary generator ####
-
-Input: source database
-
-Task: anonymizer itself walks through the database and all tables, searches based on some algorithm for tables and fields for anonymization, then writes a dictionary itself with substitution of suitable functions
-
-```
-TODO
+```commandline
+python pg_anon.py --mode create-dict \
+                  --db-user postgres \
+                  --db-user-password postgres \
+                  --db-name test_source_db \
+                  --dict-file test_meta_dict.py \
+                  --output-dict-file test_dict_output.py \
+                  --processes 2
 ```
 
+| Option                | Description                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `--dict-file`         | Specify the dictionary file with data about anonymization                                   |
+| `--output-dict-file`  | Output file will be saved to this value                                                     |
+| `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
+| `--scan-partial-rows` | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
 
-### Generate dictionary by table rows ###
+### Run dump mode
+
+#### Prerequisites:
+
+- `anon_funcs` schema with anonymization functions should be created. See [--mode init](#run-init-mode) example.
+- output dict file with meta information about database fields, and it's anonymization should be created.
+  See [--mode create-dict](#run-create_dict-mode)
+
+#### Dump modes:
+
+1. To create the structure dump and data dump:
+
+   ```commandline
+   python pg_anon.py --mode dump \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_source_db \
+                     --dict-file test_dict_output.py
+   ```
+
+2. To create only structure dump:
+
+   ```commandline
+   python pg_anon.py --mode sync-struct-dump \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_source_db \
+                     --output-dir test_sync_struct_dump \
+                     --dict-file test_dict_output.py
+   ```
+
+3. To create only data dump:
+
+   ```commandline
+   python pg_anon.py --mode sync-data-dump \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_source_db \
+                     --output-dir test_sync_data_dump \
+                     --dict-file test_dict_output.py
+   ```
+
+   This mode could be useful for scheduling the database synchronization, for example with `cron`.
+
+Possible options in mode=dump:
+
+| Option               | Description                                                                                  |
+|----------------------|----------------------------------------------------------------------------------------------|
+| `--validate-dict`    | Validate dictionary, show the tables and run SQL queries without data export (default false) |
+| `--validate-full`    | Same as `--validate-dict` + data export with limit (default false)                           |
+| `--clear-output-dir` | In dump mode clears output dict from previous dump or another files. (default true)          |
+| `--pg-dump`          | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                            |
+| `--output-dir`       | Output directory for dump files. (default "")                                                |
+
+### Run restore mode
+
+#### Prerequisites:
+
+- Each mode requires dump for restore.
+
+#### Restore modes:
+
+1. Restore structure and data:  
+   _This mode requires the dump output, created in `--mode=dump`._
+
+   ```commandline
+   python pg_anon.py --mode restore \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_target_db \
+                     --input-dir test_dict_output \
+                     --verbose debug
+   ```
+
+2. Restore structure only:  
+   _This mode requires the dump output, created in `--mode=sync-struct-dump`._
+
+   ```commandline
+   python pg_anon.py --mode sync-struct-restore \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_target_db \
+                     --input-dir test_sync_struct_dump \
+                     --verbose debug
+   ```
+
+3. Restore data only:  
+   _This mode requires the dump output, created in `--mode=sync-data-dump`._
+
+   ```commandline
+   python pg_anon.py --mode sync-data-restore \
+                     --db-host=127.0.0.1 \
+                     --db-user postgres \
+                     --db-user-password postgres \
+                     --db-name test_target_db \
+                     --input-dir test_sync_data_dump \
+                     --verbose debug
+   ```
+
+Possible options in `--mode restore`:
+
+| Option                       | Description                                                                                                                            |
+|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `--input-dir`                | Input directory, with the dump files, created in dump mode                                                                             |
+| `--disable-checks`           | Disable checks of disk space and PostgreSQL version (default false)                                                                    |
+| `--seq-init-by-max-value`    | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database. |
+| `--drop-custom-check-constr` | Drop all CHECK constrains containing user-defined procedures to avoid performance degradation at the data loading stage.               |
+| `--pg-restore`               | Path to the `pg_dump` Postgres tool.                                                                                                   |
+
+### Generate dictionary from table rows
 
 If you have a table that contains objects and fields for anonymization, you can use this SQL query to generate a dictionary in json format:
 
@@ -261,10 +367,9 @@ from (
 	]
 ```
 
-### How to escape/unescape complex names of objects ###
+### How to escape/unescape complex names of objects
 
 ```python
-python3
 
 import json
 j = {"k": "_TBL.$complex#имя;@&* a'2"}
@@ -278,6 +383,7 @@ print(u['k'])
 >>
 	_TBL.$complex#имя;@&* a'2
 ```
+
 ## Contributing
 
 ### Dependencies
@@ -290,6 +396,7 @@ install Poetry and run command:
 ```commandline
 poetry add <package_name>
 ```
+
 For locking the dependencies use command:
 
 ```commandline
@@ -297,7 +404,7 @@ poetry lock --no-update
 ```
 
 Additionally, [export](https://python-poetry.org/docs/cli/#export)
-the latest packages to *requirements.txt* using poetry export plugin:
+the latest packages to _requirements.txt_ using poetry export plugin:
 
 ```commandline
 poetry export -f requirements.txt --output requirements.txt
@@ -316,3 +423,11 @@ Additionally package could be build package using setuptools:
 ```commandline
 python3 setup.py sdist
 ```
+
+## Future plans:
+
+- `--format`: COPY data format, can be overwritten by --copy-options. Selects the data format to be read or written: text, csv or binary.
+- `--copy-options`: Options for COPY command like "with binary".
+- Supporting restore after full dump:
+  Right now struct restoring the structure of the database possible only after struct dump. So you don't able to restore the structure after full dump.
+- Simplify commands and options to improve user experience
