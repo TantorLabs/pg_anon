@@ -115,6 +115,8 @@ class MainRoutine:
             self.logger.setLevel(log_level)
 
     def close_logger_handlers(self):
+        if not self.logger:  # FIXME: Return an exception for --help command
+            return
         for handler in self.logger.handlers[
             :
         ]:  # iterate over a copy of the handlers list
