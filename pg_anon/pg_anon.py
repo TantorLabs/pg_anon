@@ -189,16 +189,13 @@ class MainRoutine:
                     db_user_password=self.args.db_user_password,
                     threads=self.ctx.args.threads,
                     input_dir=self.ctx.args.input_dir,
-                    copy_options=self.ctx.args.copy_options,
                     seq_init_by_max_value=self.ctx.args.seq_init_by_max_value,
                     disable_checks=self.ctx.args.disable_checks,
                     drop_custom_check_constr=self.ctx.args.drop_custom_check_constr,
                     mode=self.ctx.args.mode,
                     conn_params=self.ctx.conn_params,
-                    metadata=self.ctx.metadata,
                     current_dir=self.ctx.current_dir,
                     total_rows=self.ctx.total_rows,
-                    pg_version=self.ctx.pg_version,
                 )
                 result = await restore.make_restore()
                 if self.ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:

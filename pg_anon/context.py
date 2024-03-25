@@ -116,7 +116,7 @@ class Context:
             "--pg-restore",
             type=str,
             default="/usr/bin/pg_restore",
-            help="Path to the `pg_dump` Postgres tool.",
+            help="Path to the `pg_restore` Postgres tool.",
         )
         parser.add_argument("--output-dir", type=str, default="")
         parser.add_argument("--input-dir", type=str, default="")

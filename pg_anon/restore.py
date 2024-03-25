@@ -18,14 +18,17 @@ from pg_anon.common import (
     get_major_version,
     get_pg_util_version,
     pretty_size,
+    get_pg_version,
 )
-from pg_anon.context import Context
+
+from pg_anon.models import MetaData
 
 logger = getLogger(__name__)
 
 
 class Restore:
     result: PgAnonResult = PgAnonResult()
+    metadata: Dict = dict()
 
     def __init__(
         self,
@@ -37,16 +40,13 @@ class Restore:
         db_user_password: str,
         threads: int,
         input_dir: str,
-        copy_options: str,
         seq_init_by_max_value: bool,
         disable_checks: bool,
         drop_custom_check_constr: bool,
         mode: AnonMode,
         conn_params: dict,
-        metadata: dict,
         current_dir: str,
         total_rows: int,
-        pg_version: str,
     ):
         self.db_user_password = db_user_password
         self.pg_restore_path = pg_restore_path
@@ -57,15 +57,12 @@ class Restore:
         self.threads = threads
         self.input_dir = input_dir
         self.current_dir = current_dir
-        self.copy_options = copy_options
         self.seq_init_by_max_value = seq_init_by_max_value
         self.disable_checks = disable_checks
         self.drop_custom_check_constr = drop_custom_check_constr
         self.mode = mode
         self.conn_params = conn_params
-        self.metadata = metadata
         self.total_rows = total_rows
-        self.pg_version = pg_version
         self.result.result_code = ResultCode.DONE
 
     async def run_pg_restore(self, section: str):
@@ -148,102 +145,104 @@ class Restore:
 
         await db_conn.close()
 
+    def generate_analyze_queries(self):
+        analyze_queries = []
+        for file_name, target in self.metadata["files"].items():
+            schema = target["schema"]
+            table = target["table"]
+            analyze_query = 'analyze "%s"."%s"' % (schema, table)
+            analyze_queries.append(analyze_query)
+        return analyze_queries
 
-def generate_analyze_queries(ctx):
-    analyze_queries = []
-    for file_name, target in ctx.metadata["files"].items():
-        schema = target["schema"]
-        table = target["table"]
-        analyze_query = 'analyze "%s"."%s"' % (schema, table)
-        analyze_queries.append(analyze_query)
-    return analyze_queries
+    async def restore_table_data(
+        self,
+        pool: asyncpg.Pool,
+        dump_file: str,
+        schema_name: str,
+        table_name: str,
+        sn_id: str,
+    ):
+        logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
+        extracted_file = f"{dump_file.removesuffix('.bin.gz')}.bin"
 
+        with gzip.open(dump_file, "rb") as src_file, open(
+            extracted_file, "wb"
+        ) as trg_file:
+            trg_file.writelines(src_file)
+        db_conn = await pool.acquire()
+        try:
+            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
 
-async def restore_table_data(
-    ctx: Context,
-    pool: asyncpg.Pool,
-    dump_file: str,
-    schema_name: str,
-    table_name: str,
-    sn_id: str,
-):
-    ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
-    extracted_file = f"{dump_file.removesuffix('.bin.gz')}.bin"
+            result = await db_conn.copy_to_table(
+                schema_name=schema_name,
+                table_name=table_name,
+                source=extracted_file,
+                format="binary",
+            )
+            self.total_rows += int(re.findall(r"(\d+)", result)[0])
+            await db_conn.execute("COMMIT;")
+        except Exception as exc:
+            logger.error(
+                f"Exception in restore_obj_func:"
+                f" {schema_name = }"
+                f" {table_name = }"
+                f"\n{exc.query = }"
+                f"\n{exc.position = }"
+                f"\n{exc = }"
+            )
 
-    with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
-        trg_file.writelines(src_file)
-    db_conn = await pool.acquire()
-    try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
+        finally:
+            os.remove(extracted_file)
+            await pool.release(db_conn)
 
-        result = await db_conn.copy_to_table(
-            schema_name=schema_name,
-            table_name=table_name,
-            source=extracted_file,
-            format="binary",
-        )
-        ctx.total_rows += int(re.findall(r"(\d+)", result)[0])
-        await db_conn.execute("COMMIT;")
-    except Exception as exc:
-        ctx.logger.error(
-            f"Exception in restore_obj_func:"
-            f" {schema_name = }"
-            f" {table_name = }"
-            f"\n{exc.query = }"
-            f"\n{exc.position = }"
-            f"\n{exc = }"
-        )
-
-    finally:
-        os.remove(extracted_file)
-        await pool.release(db_conn)
-
-        logger.info(f"{'>':=>20} Finished task {str(table_name)}")
+            logger.info(f"{'>':=>20} Finished task {str(table_name)}")
 
     async def make_restore_impl(self, sn_id):
         pool = await asyncpg.create_pool(
             **self.conn_params, min_size=self.threads, max_size=self.threads
         )
 
-    loop = asyncio.get_event_loop()
-    tasks = set()
-    for file_name, target in ctx.metadata["files"].items():
-        full_path = os.path.join(
-            ctx.current_dir, "output", ctx.args.input_dir, file_name
-        )
-        if len(tasks) >= ctx.args.threads:
-            # Wait for some restore to finish before adding a new one
-            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            exception = done.pop().exception()
-            if exception is not None:
-                await pool.close()
-                raise exception
-        tasks.add(
-            loop.create_task(
-                restore_table_data(
-                    ctx=ctx,
-                    pool=pool,
-                    dump_file=str(full_path),
-                    schema_name=target["schema"],
-                    table_name=target["table"],
-                    sn_id=sn_id,
+        loop = asyncio.get_event_loop()
+        tasks = set()
+        for file_name, target in self.metadata["files"].items():
+            full_path = os.path.join(
+                self.current_dir, "output", self.input_dir, file_name
+            )
+            if len(tasks) >= self.threads:
+                # Wait for some restore to finish before adding a new one
+                done, tasks = await asyncio.wait(
+                    tasks, return_when=asyncio.FIRST_COMPLETED
+                )
+                exception = done.pop().exception()
+                if exception is not None:
+                    await pool.close()
+                    raise exception
+            tasks.add(
+                loop.create_task(
+                    self.restore_table_data(
+                        pool=pool,
+                        dump_file=str(full_path),
+                        schema_name=target["schema"],
+                        table_name=target["table"],
+                        sn_id=sn_id,
+                    )
                 )
             )
-        )
 
         # Wait for the remaining restores to finish
         await asyncio.wait(tasks)
         await pool.close()
 
     async def check_version(self, db_conn):
-        if get_major_version(self.pg_version) < get_major_version(
+        pg_version = await get_pg_version(db_conn)
+        if get_major_version(pg_version) < get_major_version(
             self.metadata["pg_version"]
         ):
             await db_conn.close()
             raise Exception(
                 "Target PostgreSQL major version %s is below than source %s!"
-                % (self.pg_version, self.metadata["pg_version"])
+                % (pg_version, self.metadata["pg_version"])
             )
         if get_major_version(
             get_pg_util_version(self.pg_restore_path)
@@ -281,17 +280,16 @@ async def restore_table_data(
             )
 
     @staticmethod
-    def read_metadata(current_dir: str, input_dir: str) -> Dict:
-        metadata_file = open(
-            os.path.join(current_dir, "dict", input_dir, "metadata.json"), "r"
-        )
-        metadata_content = metadata_file.read()
-        metadata_file.close()
+    def read_metadata(input_dir: str) -> Dict:
+        metadata_path = os.path.join(input_dir, "metadata.json")
+        with open(metadata_path, "r") as metadata_file:
+            metadata_content = metadata_file.read()
+            # metadata_json = json.loads(metadata_content)
         metadata = eval(metadata_content)
+        # metadata_obj = MetaData(**metadata_json)  # ToDo: pydantic json-like object
         return metadata
 
-    @staticmethod
-    async def check_db_empty(db_conn, mode: AnonMode):
+    async def check_db_empty(self, db_conn, mode: AnonMode):
         db_is_empty = await db_conn.fetchval(
             """
             SELECT NOT EXISTS(
@@ -307,7 +305,7 @@ async def restore_table_data(
 
         if not db_is_empty and mode != AnonMode.SYNC_DATA_RESTORE:
             db_conn.close()
-        raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
+            raise Exception(f"Target DB {self.conn_params['database']} is not empty!")
 
     @staticmethod
     def get_dir(current_dir: str, input_dir: str):
@@ -436,7 +434,7 @@ async def restore_table_data(
         db_conn = await asyncpg.connect(**self.conn_params)
         await self.check_db_empty(db_conn, self.mode)
 
-        self.metadata = self.read_metadata(self.current_dir, self.input_dir)
+        self.metadata = self.read_metadata(self.input_dir)
 
         if not self.disable_checks:
             await self.check_version(db_conn)
@@ -467,7 +465,7 @@ async def restore_table_data(
         db_conn = await asyncpg.connect(**self.conn_params)
         await self.check_db_empty(db_conn, self.mode)
 
-        self.metadata = self.read_metadata(self.current_dir, self.input_dir)
+        self.metadata = self.read_metadata(self.input_dir)
 
         if not self.disable_checks:
             await self.check_version(db_conn)
@@ -499,9 +497,7 @@ async def restore_table_data(
         db_conn = await asyncpg.connect(**self.conn_params)
         await self.check_db_empty(db_conn=db_conn, mode=self.mode)
 
-        self.metadata = self.read_metadata(
-            current_dir=self.current_dir, input_dir=self.input_dir
-        )
+        self.metadata = self.read_metadata(self.input_dir)
 
         if not self.disable_checks:
             await self.check_version(db_conn)
