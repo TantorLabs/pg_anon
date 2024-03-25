@@ -54,6 +54,12 @@ def get_pg_util_version(util_name):
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
 
 
+async def get_pg_version(db_conn):
+    pg_version = await db_conn.fetchval("select version()")
+    pg_version = re.findall(r"(\d+\.\d+)", str(pg_version))[0]
+    return pg_version
+
+
 def check_pg_util(ctx, util_name, output_util_res):
     if not os.path.isfile(util_name):
         ctx.logger.error("ERROR: program %s is not exists!" % util_name)
