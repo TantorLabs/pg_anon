@@ -47,6 +47,7 @@ class ScanMode(StrEnum):
 
 
 def get_pg_util_version(util_name):
+    """Dummy docstring."""
     command = [util_name, "--version"]
     res = subprocess.run(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
