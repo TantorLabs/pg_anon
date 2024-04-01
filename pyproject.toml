@@ -34,7 +34,7 @@ authors = ["Tantor Labs <tantor@tantorlabs.ru>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.11"
 aioprocessing = "2.0.1"
 asyncpg = "0.29.0"
 nest-asyncio = "1.6.0"
