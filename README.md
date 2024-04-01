@@ -29,7 +29,7 @@ It uses the following tools and technologies:
 
 ### Preconditions
 
-The tool supports Python3.8 and higher versions. The code is hosted on the following repository: [pg_anon repository on Github](https://github.com/TantorLabs/pg_anon).
+The tool supports Python3.11 and higher versions. The code is hosted on the following repository: [pg_anon repository on Github](https://github.com/TantorLabs/pg_anon).
 
 ### Installation Instructions
 
@@ -39,7 +39,7 @@ Installation processes slightly differ depending on your operating system.
 
 1. Install Python3 if it isn't installed:
    - Install [Homebrew](https://brew.sh/)
-   - `brew install python3`
+   - [`brew install python@3.11`](https://formulae.brew.sh/formula/python@3.11)
 2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
 3. Go to the project directory: `cd pg_anon`
 4. Set up a virtual environment:
@@ -49,7 +49,7 @@ Installation processes slightly differ depending on your operating system.
 
 #### Ubuntu/Redhat/CentOS
 
-1. Install Python3 if it isn't installed: `sudo apt-get install python3.8` (for Ubuntu), `sudo yum install python38` (for Redhat/Centos)
+1. Install Python3 if it isn't installed: `sudo apt-get install python3.11` (for Ubuntu), `sudo yum install python311` (for Redhat/Centos)
 2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
 3. Go to the project directory: `cd pg_anon`
 4. Set up a virtual environment:
