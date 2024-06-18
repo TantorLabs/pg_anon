@@ -184,7 +184,7 @@ class BasicUnitTest:
         return res
 
     async def init_env_tag(self):
-        if "init_env" in passed_stages:
+        if "init_env_tag" in passed_stages:
             print("init_env_tag already called")
             res = PgAnonResult()
             res.result_code = ResultCode.DONE
