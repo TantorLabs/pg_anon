@@ -7,7 +7,6 @@ import re
 import subprocess
 from datetime import datetime
 from hashlib import sha256
-from logging import getLogger
 
 import asyncpg
 
@@ -20,7 +19,6 @@ from pg_anon.common import (
     get_pg_util_version,
 )
 
-logger = getLogger(__name__)
 
 DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
 

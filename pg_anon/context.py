@@ -23,6 +23,7 @@ class Context:
         self.total_rows = 0
         self.create_dict_matches = {}  # for create-dict mode
         self.exclude_schemas = ["anon_funcs", "columnar_internal"]
+        self.logger = None
 
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
             args.db_user_password = os.environ["PGPASSWORD"]

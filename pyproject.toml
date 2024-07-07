@@ -1,6 +1,6 @@
 [project]
 name = "pg_anon"
-version = "0.1.1"
+version = "1.0.1"
 description = "PostgreSQL anonymization tool."
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}
@@ -9,7 +9,9 @@ readme = "README.md"
 dependencies=[
     "aioprocessing==2.0.1",
     "asyncpg==0.29.0",
-    "nest-asyncio==1.6.0"
+    "nest-asyncio==1.6.0",
+    "async-timeout==4.0.3",
+    "setuptools==68.2.0"
 ]
 
 [build-system]
@@ -28,13 +30,15 @@ include-package-data = false
 
 [tool.poetry]
 name = "pg_anon"
-version = "0.1.1"
+version = "1.0.1"
 description = ""
 authors = ["Tantor Labs <tantor@tantorlabs.ru>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.8"
 aioprocessing = "2.0.1"
 asyncpg = "0.29.0"
 nest-asyncio = "1.6.0"
+setuptools = "68.2.0"
+async-timeout = "4.0.3"

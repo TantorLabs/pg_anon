@@ -120,7 +120,10 @@ async def restore_table_data(
     sn_id: str,
 ):
     ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
-    extracted_file = f"{dump_file.removesuffix('.bin.gz')}.bin"
+    if dump_file.endswith('.bin.gz'):
+        extracted_file = f"{dump_file[:-7]}.bin"
+    else:
+        extracted_file = f"{dump_file}.bin"
 
     with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
         trg_file.writelines(src_file)
@@ -274,7 +277,7 @@ async def make_restore(ctx):
                     ctx.metadata["pg_dump_version"],
                 )
             )
-        await check_free_disk_space(ctx, db_conn)
+        # await check_free_disk_space(ctx, db_conn)
 
     if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
         for v in ctx.metadata["schemas"]:
@@ -282,7 +285,7 @@ async def make_restore(ctx):
             ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
             await db_conn.execute(query)
 
-    if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
+    if ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         await run_pg_restore(ctx, "pre-data")
 
     if ctx.args.drop_custom_check_constr:

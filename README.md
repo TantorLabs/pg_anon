@@ -92,6 +92,7 @@ To facilitate the testing, here are instructions on how to set up PostgreSQL on 
    ```commandline
    sed -i  '/listen_addresses/s/^#//g' /etc/postgresql/15/main/postgresql.conf
    sed -ie "s/^listen_addresses.*/listen_addresses = '127.0.0.1'/" /etc/postgresql/15/main/postgresql.conf
+   sed -i -e '/local.*peer/s/postgres/all/' -e 's/peer\|md5/trust/g' /etc/postgresql/${PG_VERSION}/main/pg_hba.conf
    ```
 4. Restart the PostgreSQL instance for the changes to take effect:
    ```commandline
@@ -107,7 +108,8 @@ To facilitate the testing, here are instructions on how to set up PostgreSQL on 
 To validate that your setup is functioning correctly, run the unit tests:
 
 ```commandline
-python test/full_test.py -v
+export PYTHONPATH=$(pwd)
+python tests/test_full.py -v
 ```
 
 Upon successful execution, the output should resemble the following:
@@ -122,7 +124,8 @@ If all tests pass, the application is ready to use.
 To run a specific test case, use the following pattern:
 
 ```commandline
-python3 test/full_test.py -v PGAnonValidateUnitTest
+export PYTHONPATH=$(pwd)
+python tests/test_full.py -v PGAnonValidateUnitTest
 ```
 
 ### Test Database Configuration

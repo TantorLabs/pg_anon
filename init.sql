@@ -86,22 +86,17 @@ $$
   PARALLEL SAFE
   SECURITY INVOKER;
 
-CREATE OR REPLACE FUNCTION anon_funcs.partial_email(
-  ov TEXT
-)
+CREATE OR REPLACE FUNCTION anon_funcs.partial_email(ov TEXT)
 RETURNS TEXT AS $$
-  SELECT substring(regexp_replace(ov, '@.*', '') FROM 1 FOR 2)
-      || '******'
-      || '@'
-      || substring(regexp_replace(ov, '.*@', '') FROM 1 FOR 2)
-      || '******'
-      || '.'
-      || regexp_replace(ov, '.*\.', '');
-$$
-  LANGUAGE SQL
-  IMMUTABLE
-  PARALLEL SAFE
-  SECURITY INVOKER;
+BEGIN
+  RETURN substring(ov, 1, 2) || '******' ||
+         '@' ||
+         substring(ov from position('@' in ov) + 1 for position('.' in reverse(ov)) - 2) ||
+         '******' ||
+         '.' ||
+         right(ov, position('.' in reverse(ov)) - 1);
+END;
+$$ LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION anon_funcs.random_string(
   l integer

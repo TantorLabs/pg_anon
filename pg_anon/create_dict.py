@@ -4,7 +4,6 @@ import os
 import random
 import re
 import time
-from logging import getLogger
 from typing import List, Optional
 
 import aioprocessing
@@ -20,10 +19,9 @@ from pg_anon.common import (
     setof_to_list,
 )
 
+logger = None
 
-logger = getLogger(__name__)
-
-SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
+SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
 
 class TaggedFields:
@@ -184,7 +182,8 @@ async def generate_scan_objs(conn_params, dictionary_obj):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
-        -- AND c.relname = 'card_numbers'  -- debug
+        -- AND c.relname = '_reference866'  -- debug
+        -- and a.attname = '_code'
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
@@ -239,7 +238,7 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
 def check_sensitive_data_in_fld(
     name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
 ) -> dict:
-    if field_info.relname == "card_numbers":
+    if field_info.relname == "_reference866":
         x = 1
     fld_data_set = set()
     dict_matches = {}
@@ -585,6 +584,8 @@ async def create_dict_impl(ctx):
 
 
 async def create_dict(ctx):
+    global logger
+    logger = ctx.logger
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
     logger.info("-------------> Started create_dict mode")

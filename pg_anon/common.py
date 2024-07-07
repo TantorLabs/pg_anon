@@ -5,12 +5,12 @@ import re
 import subprocess
 import sys
 import traceback
-from enum import StrEnum
+from enum import Enum
 
 from pkg_resources import parse_version as version
 
 
-class ResultCode(StrEnum):
+class ResultCode(Enum):
     DONE = "done"
     FAIL = "fail"
     UNKNOWN = "unknown"
@@ -22,13 +22,13 @@ class PgAnonResult:
     result_data = None
 
 
-class VerboseOptions(StrEnum):
+class VerboseOptions(Enum):
     INFO = "info"
     DEBUG = "debug"
     ERROR = "error"
 
 
-class AnonMode(StrEnum):
+class AnonMode(Enum):
     DUMP = "dump"  # dump table contents to files using dictionary
     RESTORE = "restore"  # create tables in target database and load data from files
     INIT = "init"  # create a schema with anonymization helper functions
@@ -41,7 +41,7 @@ class AnonMode(StrEnum):
     CREATE_DICT = "create-dict"  # create dictionary
 
 
-class ScanMode(StrEnum):
+class ScanMode(Enum):
     FULL = "full"
     PARTIAL = "partial"
 
