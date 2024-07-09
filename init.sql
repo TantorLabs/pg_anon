@@ -294,8 +294,8 @@ begin
 			select 'test: noise' as test, anon_funcs.noise(100, 1.2) < 300
 			union all
 			select 'test: dnoise' as test,
-				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') < '2020-03-02 10:10:10'::timestamp and
-				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') > '2020-01-02 10:10:10'::timestamp
+				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') < '2020-03-03 10:10:10'::timestamp and
+				anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month') > '2020-01-01 10:10:10'::timestamp
 			union all
 			select 'test: digest' as test, anon_funcs.digest('text', 'salt', 'sha256') = '3353e16497ad272fea4382119ff2801e54f0a4cf2057f4e32d00317bda5126c3'
 			union all

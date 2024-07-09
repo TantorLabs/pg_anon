@@ -1344,3 +1344,12 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 if __name__ == "__main__":
     unittest.main(exit=False)
+    # loader = unittest.TestLoader()
+    #
+    # tests = loader.loadTestsFromTestCase(PGAnonDictGenUnitTest)
+    # test_suite = unittest.TestSuite(tests)
+    #
+    # test_suite = loader.discover(start_dir='.', pattern='test*.py')
+    #
+    # runner = unittest.TextTestRunner(failfast=True, verbosity=2)
+    # runner.run(test_suite)

@@ -479,6 +479,7 @@ async def make_dump(ctx):
                             or file.endswith(".gz")
                             or file.endswith(".json")
                             or file.endswith(".backup")
+                            or file.endswith(".bin")
                         ):
                             os.remove(os.path.join(root, file))
                         else:
