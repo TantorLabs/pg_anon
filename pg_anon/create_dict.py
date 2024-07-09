@@ -4,6 +4,7 @@ import os
 import random
 import re
 import time
+import sys
 from typing import List, Optional
 
 import aioprocessing
@@ -21,6 +22,7 @@ from pg_anon.common import (
 
 
 SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
+MAX_SIZE_BYTES = 5 * 1024 * 1024  # 2 MB
 
 
 class TaggedFields:
@@ -181,8 +183,8 @@ async def generate_scan_objs(ctx):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
-        -- AND c.relname = '_reference866'  -- debug
-        -- and a.attname = '_code'
+        -- AND c.relname = '_reference89'  -- debug
+        -- and a.attname = '_fld61508'
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
@@ -234,10 +236,29 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
                     ctx.create_dict_matches[field_info.obj_id] = field_info
 
 
+def is_binary_string(s):
+    text_chars = bytearray({7, 8, 9, 10, 12, 13, 27}
+                           | set(range(0x20, 0x100)) - {0x7f})
+    if not bool(s.translate(text_chars)):
+        return False
+    if any(char.isdigit() or char in {' ', '-', '(', ')'} for char in s):
+        return False
+    return True
+
+
+def check_string_size(s):
+    size_in_bytes = sys.getsizeof(s)
+    num_characters = len(s)
+    if size_in_bytes > MAX_SIZE_BYTES or num_characters > MAX_SIZE_BYTES // 2:
+        return False
+    else:
+        return True
+
+
 def check_sensitive_data_in_fld(
     ctx, name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
 ) -> dict:
-    if field_info.relname == "_reference866":
+    if field_info.relname == "_reference89" and field_info.column_name == "_fld61508":
         x = 1
     fld_data_set = set()
     dict_matches = {}
@@ -260,6 +281,8 @@ def check_sensitive_data_in_fld(
         if (
             field_info.obj_id not in dict_matches
             and field_info.obj_id not in create_dict_matches
+            # and is_binary_string(v) is not True
+            and check_string_size(v) is True
         ):
             for r in dictionary_obj["data_regex"]["rules"]:
                 if v is not None and re.search(r, v) is not None:
@@ -419,7 +442,6 @@ def process_impl(
                 if exception is not None:
                     await pool.close()
                     raise exception
-
             task_res = loop.create_task(
                 scan_obj_func(
                     name,
