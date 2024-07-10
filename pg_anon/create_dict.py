@@ -269,6 +269,11 @@ def check_sensitive_data_in_fld(
             if len(word) >= 5:
                 fld_data_set.add(word.lower())
 
+    ctx.logger.debug(
+        "---> Process[%s]: Started check_sensitive_data for %s"
+        % (name, str(field_info.column_name))
+    )
+
     result = set.intersection(dictionary_obj["data_const"]["constants"], fld_data_set)
     if len(result) > 0:
         ctx.logger.debug(
@@ -285,6 +290,10 @@ def check_sensitive_data_in_fld(
             and check_string_size(v) is True
         ):
             for r in dictionary_obj["data_regex"]["rules"]:
+                # ctx.logger.debug(
+                #     "---> Process[%s]: Apply regex %s"
+                #     % (name, str(r))
+                # )
                 if v is not None and re.search(r, v) is not None:
                     ctx.logger.debug(
                         '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s'
@@ -293,6 +302,11 @@ def check_sensitive_data_in_fld(
                     dict_matches[field_info.obj_id] = field_info
         else:
             break
+
+    ctx.logger.debug(
+        "<--- Process[%s]: Finished check_sensitive_data for %s"
+        % (name, str(field_info.column_name))
+    )
 
     return dict_matches
 
@@ -344,7 +358,12 @@ async def scan_obj_func(
         if scan_mode == ScanMode.PARTIAL and scanning_flag:
             # TODO: Create check for bigger than 10MB fields
             fld_data = await db_conn.fetch(
-                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
+                """
+                    SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                    FROM \"%s\".\"%s\"
+                    WHERE \"%s\" is not null
+                    LIMIT %s
+                """
                 % (
                     field_info.column_name,
                     field_info.nspname,
@@ -364,7 +383,11 @@ async def scan_obj_func(
         if scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
-                    """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null"""
+                    """
+                        SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                        FROM \"%s\".\"%s\"
+                        WHERE \"%s\" is not null
+                    """
                     % (
                         field_info.column_name,
                         field_info.nspname,

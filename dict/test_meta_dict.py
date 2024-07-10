@@ -21,7 +21,7 @@
 	],
 	"data_regex": {
 		"rules": [
-			"""([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+""",  # email
+			"""[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
 			"7?[\d]{10}",				# phone 7XXXXXXXXXX
 			"^other_ext_tbl_text",		# catch "schm_mask_ext_exclude_2.other_ext_tbl_2"
 			"""[0-9]{3}-[0-9]{2}-[0-9]{4}""",  # social Security numbers "nnn-nn-nnnn"
