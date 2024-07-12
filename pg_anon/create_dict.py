@@ -20,7 +20,7 @@ from pg_anon.common import (
 )
 
 
-SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
+SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
 
 class TaggedFields:
@@ -362,24 +362,22 @@ async def scan_obj_func(
             )
         elif scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
-                offset = 0
-                while True:
-                    fld_data = await db_conn.fetch(
-                        """
-                            SELECT distinct(substring(\"%s\"::text, 1, 8196))
-                            FROM \"%s\".\"%s\"
-                            WHERE \"%s\" is not null
-                            LIMIT %s OFFSET %s
-                        """
-                        % (
-                            field_info.column_name,
-                            field_info.nspname,
-                            field_info.relname,
-                            field_info.column_name,
-                            scan_partial_rows,
-                            offset
-                        )
+                cur = await db_conn.cursor(
+                    """
+                        SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                        FROM \"%s\".\"%s\"
+                        WHERE \"%s\" is not null
+                    """
+                    % (
+                        field_info.column_name,
+                        field_info.nspname,
+                        field_info.relname,
+                        field_info.column_name,
                     )
+                )
+                next_rows = True
+                while next_rows:
+                    fld_data = await cur.fetch(scan_partial_rows)
                     res = check_sensitive_data_in_fld(
                         ctx,
                         name,
@@ -390,8 +388,6 @@ async def scan_obj_func(
                     )
                     if len(fld_data) == 0 or len(res) > 0:
                         break
-                    else:
-                        offset += scan_partial_rows
 
     except Exception as e:
         ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
