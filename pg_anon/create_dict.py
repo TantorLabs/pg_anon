@@ -4,7 +4,6 @@ import os
 import random
 import re
 import time
-import sys
 from typing import List, Optional
 
 import aioprocessing
@@ -21,8 +20,7 @@ from pg_anon.common import (
 )
 
 
-SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
-MAX_SIZE_BYTES = 5 * 1024 * 1024  # 2 MB
+SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
 
 
 class TaggedFields:
@@ -144,7 +142,7 @@ async def generate_scan_objs(ctx):
     db_conn = await asyncpg.connect(**ctx.conn_params)
     query = """
     -- generate task queue
-    SELECT 
+    SELECT DISTINCT
         n.nspname,
         c.relname,
         a.attname AS column_name,
@@ -183,8 +181,8 @@ async def generate_scan_objs(ctx):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
-        -- AND c.relname = '_reference89'  -- debug
-        -- and a.attname = '_fld61508'
+        -- AND c.relname = '_reference405'  -- debug
+        -- and a.attname = '_fld80650'
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
@@ -236,25 +234,6 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
                     ctx.create_dict_matches[field_info.obj_id] = field_info
 
 
-def is_binary_string(s):
-    text_chars = bytearray({7, 8, 9, 10, 12, 13, 27}
-                           | set(range(0x20, 0x100)) - {0x7f})
-    if not bool(s.translate(text_chars)):
-        return False
-    if any(char.isdigit() or char in {' ', '-', '(', ')'} for char in s):
-        return False
-    return True
-
-
-def check_string_size(s):
-    size_in_bytes = sys.getsizeof(s)
-    num_characters = len(s)
-    if size_in_bytes > MAX_SIZE_BYTES or num_characters > MAX_SIZE_BYTES // 2:
-        return False
-    else:
-        return True
-
-
 def check_sensitive_data_in_fld(
     ctx, name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
 ) -> dict:
@@ -274,6 +253,10 @@ def check_sensitive_data_in_fld(
         % (name, str(field_info.column_name))
     )
 
+    # ctx.logger.debug(
+    #     "========> Process[%s]: fld_data_set: %s"
+    #     % (name, str(fld_data_set))
+    # )
     result = set.intersection(dictionary_obj["data_const"]["constants"], fld_data_set)
     if len(result) > 0:
         ctx.logger.debug(
@@ -286,8 +269,6 @@ def check_sensitive_data_in_fld(
         if (
             field_info.obj_id not in dict_matches
             and field_info.obj_id not in create_dict_matches
-            # and is_binary_string(v) is not True
-            and check_string_size(v) is True
         ):
             for r in dictionary_obj["data_regex"]["rules"]:
                 # ctx.logger.debug(
@@ -311,12 +292,12 @@ def check_sensitive_data_in_fld(
     return dict_matches
 
 
-def check_sens_pg_types(field_type: str):
+def check_sens_pg_types(dictionary_obj, field_type: str):
     """Check if actual field type is sens."""
-    for pg_type in SENS_PG_TYPES:
-        if pg_type in field_type:
-            return True
-    return False
+    data_types = dictionary_obj.get("sens_pg_types", [])
+    sens_types = data_types if data_types else SENS_PG_TYPES
+
+    return any(pg_type in field_type for pg_type in sens_types)
 
 
 async def scan_obj_func(
@@ -333,7 +314,7 @@ async def scan_obj_func(
     ctx.logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
 
     start_t = time.time()
-    if not check_sens_pg_types(field_info.type):
+    if not check_sens_pg_types(dictionary_obj, field_info.type):
         ctx.logger.debug(
             "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
             % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
@@ -356,7 +337,6 @@ async def scan_obj_func(
                 break
 
         if scan_mode == ScanMode.PARTIAL and scanning_flag:
-            # TODO: Create check for bigger than 10MB fields
             fld_data = await db_conn.fetch(
                 """
                     SELECT distinct(substring(\"%s\"::text, 1, 8196))
@@ -380,24 +360,26 @@ async def scan_obj_func(
                 field_info,
                 setof_to_list(fld_data),
             )
-        if scan_mode == ScanMode.FULL and scanning_flag:
+        elif scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
-                cur = await db_conn.cursor(
-                    """
-                        SELECT distinct(substring(\"%s\"::text, 1, 8196))
-                        FROM \"%s\".\"%s\"
-                        WHERE \"%s\" is not null
-                    """
-                    % (
-                        field_info.column_name,
-                        field_info.nspname,
-                        field_info.relname,
-                        field_info.column_name,
+                offset = 0
+                while True:
+                    fld_data = await db_conn.fetch(
+                        """
+                            SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                            FROM \"%s\".\"%s\"
+                            WHERE \"%s\" is not null
+                            LIMIT %s OFFSET %s
+                        """
+                        % (
+                            field_info.column_name,
+                            field_info.nspname,
+                            field_info.relname,
+                            field_info.column_name,
+                            scan_partial_rows,
+                            offset
+                        )
                     )
-                )
-                next_rows = True
-                while next_rows:
-                    fld_data = await cur.fetch(scan_partial_rows)
                     res = check_sensitive_data_in_fld(
                         ctx,
                         name,
@@ -407,8 +389,9 @@ async def scan_obj_func(
                         setof_to_list(fld_data),
                     )
                     if len(fld_data) == 0 or len(res) > 0:
-                        next_rows = False
                         break
+                    else:
+                        offset += scan_partial_rows
 
     except Exception as e:
         ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())

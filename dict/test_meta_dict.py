@@ -41,13 +41,19 @@
 	},
 	"data_const": {
 		"constants": [
-			"bank",
 			"account",
 			"email",
 			"слово",
-			"Иван"
+			"сергей"
 		]
 	},
+	"sens_pg_types": [
+		"text",
+		"integer",
+		"bigint",
+		"character",
+		"json"
+	],
 	"funcs": {
 		"text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
 		"numeric": "anon_funcs.noise(\"%s\", 10)",
