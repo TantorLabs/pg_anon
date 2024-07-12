@@ -19,7 +19,6 @@ from pg_anon.common import (
     setof_to_list,
 )
 
-logger = None
 
 SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
@@ -106,10 +105,10 @@ async def get_tagged_fields(conn_params) -> List[TaggedFields]:
     return tagged_fields
 
 
-def check_skip_fields(dictionary_obj, fld):
-    if "skip_rules" not in dictionary_obj:
+def check_skip_fields(ctx, fld):
+    if "skip_rules" not in ctx.dictionary_obj:
         return True
-    for v in dictionary_obj["skip_rules"]:
+    for v in ctx.dictionary_obj["skip_rules"]:
         schema_match = False
         tbl_match = False
         fld_match = False
@@ -130,7 +129,7 @@ def check_skip_fields(dictionary_obj, fld):
             res = False
 
         if not res:
-            logger.debug(
+            ctx.logger.debug(
                 "!!! ------> check_skip_fields: filtered fld %s by rule %s"
                 % (str(dict(fld)), str(v))
             )
@@ -139,11 +138,11 @@ def check_skip_fields(dictionary_obj, fld):
     return True
 
 
-async def generate_scan_objs(conn_params, dictionary_obj):
-    db_conn = await asyncpg.connect(**conn_params)
+async def generate_scan_objs(ctx):
+    db_conn = await asyncpg.connect(**ctx.conn_params)
     query = """
     -- generate task queue
-    SELECT 
+    SELECT DISTINCT
         n.nspname,
         c.relname,
         a.attname AS column_name,
@@ -182,15 +181,15 @@ async def generate_scan_objs(conn_params, dictionary_obj):
                 AND d.classid = 'pg_catalog.pg_class'::regclass
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
-        -- AND c.relname = '_reference866'  -- debug
-        -- and a.attname = '_code'
+        -- AND c.relname = '_reference405'  -- debug
+        -- and a.attname = '_fld80650'
     ORDER BY 1, 2, a.attnum
     """
     query_res = await db_conn.fetch(query)
     await db_conn.close()
 
     return [
-        FieldInfo(**fld) for fld in query_res if check_skip_fields(dictionary_obj, fld)
+        FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
     ]
 
 
@@ -217,7 +216,7 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
         if "rules" in ctx.dictionary_obj["field"]:
             for rule in ctx.dictionary_obj["field"]["rules"]:
                 if re.search(rule, field_info.column_name) is not None:
-                    logger.debug(
+                    ctx.logger.debug(
                         '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
                         % (str(rule), str(field_info))
                     )
@@ -227,7 +226,7 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
         if "constants" in ctx.dictionary_obj["field"]:
             for rule in ctx.dictionary_obj["field"]["constants"]:
                 if rule == field_info.column_name:
-                    logger.debug(
+                    ctx.logger.debug(
                         '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
                         % (str(rule), str(field_info))
                     )
@@ -236,9 +235,9 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
 
 
 def check_sensitive_data_in_fld(
-    name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
+    ctx, name, dictionary_obj, create_dict_matches, field_info: FieldInfo, fld_data
 ) -> dict:
-    if field_info.relname == "_reference866":
+    if field_info.relname == "_reference89" and field_info.column_name == "_fld61508":
         x = 1
     fld_data_set = set()
     dict_matches = {}
@@ -249,9 +248,18 @@ def check_sensitive_data_in_fld(
             if len(word) >= 5:
                 fld_data_set.add(word.lower())
 
+    ctx.logger.debug(
+        "---> Process[%s]: Started check_sensitive_data for %s"
+        % (name, str(field_info.column_name))
+    )
+
+    # ctx.logger.debug(
+    #     "========> Process[%s]: fld_data_set: %s"
+    #     % (name, str(fld_data_set))
+    # )
     result = set.intersection(dictionary_obj["data_const"]["constants"], fld_data_set)
     if len(result) > 0:
-        logger.debug(
+        ctx.logger.debug(
             "========> Process[%s]: check_sensitive_data: match by constant %s , %s"
             % (name, str(result), str(field_info))
         )
@@ -263,8 +271,12 @@ def check_sensitive_data_in_fld(
             and field_info.obj_id not in create_dict_matches
         ):
             for r in dictionary_obj["data_regex"]["rules"]:
+                # ctx.logger.debug(
+                #     "---> Process[%s]: Apply regex %s"
+                #     % (name, str(r))
+                # )
                 if v is not None and re.search(r, v) is not None:
-                    logger.debug(
+                    ctx.logger.debug(
                         '========> Process[%s]: check_sensitive_data: match by "%s", %s, %s'
                         % (name, str(r), str(v), str(field_info))
                     )
@@ -272,15 +284,20 @@ def check_sensitive_data_in_fld(
         else:
             break
 
+    ctx.logger.debug(
+        "<--- Process[%s]: Finished check_sensitive_data for %s"
+        % (name, str(field_info.column_name))
+    )
+
     return dict_matches
 
 
-def check_sens_pg_types(field_type: str):
+def check_sens_pg_types(dictionary_obj, field_type: str):
     """Check if actual field type is sens."""
-    for pg_type in SENS_PG_TYPES:
-        if pg_type in field_type:
-            return True
-    return False
+    data_types = dictionary_obj.get("sens_pg_types", [])
+    sens_types = data_types if data_types else SENS_PG_TYPES
+
+    return any(pg_type in field_type for pg_type in sens_types)
 
 
 async def scan_obj_func(
@@ -294,11 +311,11 @@ async def scan_obj_func(
     scan_partial_rows,
 ):
 
-    logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
+    ctx.logger.debug("====>>> Process[%s]: Started task %s" % (name, str(field_info)))
 
     start_t = time.time()
-    if not check_sens_pg_types(field_info.type):
-        logger.debug(
+    if not check_sens_pg_types(dictionary_obj, field_info.type):
+        ctx.logger.debug(
             "========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
             % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
         )
@@ -320,9 +337,13 @@ async def scan_obj_func(
                 break
 
         if scan_mode == ScanMode.PARTIAL and scanning_flag:
-            # TODO: Create check for bigger than 10MB fields
             fld_data = await db_conn.fetch(
-                """SELECT distinct(\"%s\")::text FROM \"%s\".\"%s\" WHERE \"%s\" is not null LIMIT %s"""
+                """
+                    SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                    FROM \"%s\".\"%s\"
+                    WHERE \"%s\" is not null
+                    LIMIT %s
+                """
                 % (
                     field_info.column_name,
                     field_info.nspname,
@@ -332,16 +353,21 @@ async def scan_obj_func(
                 )
             )
             res = check_sensitive_data_in_fld(
+                ctx,
                 name,
                 dictionary_obj,
                 ctx.create_dict_matches,
                 field_info,
                 setof_to_list(fld_data),
             )
-        if scan_mode == ScanMode.FULL and scanning_flag:
+        elif scan_mode == ScanMode.FULL and scanning_flag:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
-                    """select distinct(\"%s\")::text from \"%s\".\"%s\" WHERE \"%s\" is not null"""
+                    """
+                        SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                        FROM \"%s\".\"%s\"
+                        WHERE \"%s\" is not null
+                    """
                     % (
                         field_info.column_name,
                         field_info.nspname,
@@ -353,6 +379,7 @@ async def scan_obj_func(
                 while next_rows:
                     fld_data = await cur.fetch(scan_partial_rows)
                     res = check_sensitive_data_in_fld(
+                        ctx,
                         name,
                         dictionary_obj,
                         ctx.create_dict_matches,
@@ -360,11 +387,10 @@ async def scan_obj_func(
                         setof_to_list(fld_data),
                     )
                     if len(fld_data) == 0 or len(res) > 0:
-                        next_rows = False
                         break
 
     except Exception as e:
-        logger.error("Exception in scan_obj_func:\n" + exception_helper())
+        ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % field_info)
     finally:
         await db_conn.close()
@@ -372,12 +398,12 @@ async def scan_obj_func(
 
     end_t = time.time()
     if end_t - start_t > 10:
-        logger.warning(
+        ctx.logger.warning(
             "!!! Process[%s]: scan_obj_func took %s sec. Task %s"
             % (name, str(round(end_t - start_t, 2)), str(field_info))
         )
 
-    logger.debug(
+    ctx.logger.debug(
         "<<<<==== Process[%s]: Found %s items(s) Finished task %s "
         % (name, str(len(res)), str(field_info))
     )
@@ -401,11 +427,11 @@ def process_impl(
         )
         tasks = set()
 
-        logger.info(
+        ctx.logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
         tagged_fields = await get_tagged_fields(conn_params)
-        logger.info(
+        ctx.logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
 
@@ -418,7 +444,6 @@ def process_impl(
                 if exception is not None:
                     await pool.close()
                     raise exception
-
             task_res = loop.create_task(
                 scan_obj_func(
                     name,
@@ -437,7 +462,7 @@ def process_impl(
                 progress = (
                     str(round(float(idx) * 100 / len(fields_info_chunk), 2)) + "%"
                 )
-                logger.info("Process [%s] Progress %s" % (name, str(progress)))
+                ctx.logger.info("Process [%s] Progress %s" % (name, str(progress)))
         if len(tasks) > 0:
             await asyncio.wait(tasks)
         await pool.close()
@@ -448,7 +473,7 @@ def process_impl(
     try:
         loop.run_until_complete(run())
     except asyncio.exceptions.TimeoutError:
-        logger.error(
+        ctx.logger.error(
             "================> Process [%s]: asyncio.exceptions.TimeoutError" % name
         )
     finally:
@@ -466,7 +491,7 @@ def process_impl(
 
 async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     start_t = time.time()
-    logger.info(
+    ctx.logger.info(
         "================> Process [%s] started. Input items: %s"
         % (name, str(len(fields_info_chunk)))
     )
@@ -485,7 +510,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
         res = result
     await p.coro_join()
     end_t = time.time()
-    logger.info(
+    ctx.logger.info(
         "<================ Process [%s] finished, elapsed: %s sec. Result %s item(s)"
         % (
             name,
@@ -526,17 +551,13 @@ async def create_dict_impl(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
 
-    # TODO: Here we create obj
-    fields_info: List[FieldInfo] = await generate_scan_objs(
-        ctx.conn_params, ctx.dictionary_obj
-    )
+    fields_info: List[FieldInfo] = await generate_scan_objs(ctx)
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 
     await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
 
     # objs_prepared = recordset_to_list(fields_info)
-    # FIXME: why shuffle?
     random.shuffle(fields_info)
     fields_info_chunks = list(chunkify(fields_info, ctx.args.threads))
 
@@ -584,11 +605,9 @@ async def create_dict_impl(ctx):
 
 
 async def create_dict(ctx):
-    global logger
-    logger = ctx.logger
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
-    logger.info("-------------> Started create_dict mode")
+    ctx.logger.info("-------------> Started create_dict mode")
 
     try:
         dictionary_file = open(
@@ -599,17 +618,17 @@ async def create_dict(ctx):
         ctx.dictionary_obj = eval(ctx.dictionary_content)
         await prepare_dictionary_obj(ctx)
     except:
-        logger.error("<------------- create_dict failed\n" + exception_helper())
+        ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     try:
         result = await create_dict_impl(ctx)
     except:
-        logger.error("<------------- create_dict failed\n" + exception_helper())
+        ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     if result.result_code == ResultCode.DONE:
-        logger.info("<------------- Finished create_dict mode")
+        ctx.logger.info("<------------- Finished create_dict mode")
     return result

@@ -28,7 +28,12 @@ from pg_anon.version import __version__
 async def make_init(ctx):
     result = PgAnonResult()
     ctx.logger.info("-------------> Started init mode")
+
+    async def handle_notice(connection, message):
+        ctx.logger.info("NOTICE: %s" % message)
+
     db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_conn.add_log_listener(handle_notice)
 
     tr = db_conn.transaction()
     await tr.start()

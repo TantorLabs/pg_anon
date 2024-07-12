@@ -77,7 +77,7 @@ async def run_pg_dump(ctx, section):
         ctx.logger.info(v)
 
 
-async def get_dump_table(query: str, file_name: str, db_conn, output_dir: str):
+async def get_dump_table(ctx, query: str, file_name: str, db_conn, output_dir: str):
     full_file_name = os.path.join(output_dir, file_name.split(".")[0])
     try:
         result = await db_conn.copy_from_query(
@@ -90,7 +90,7 @@ async def get_dump_table(query: str, file_name: str, db_conn, output_dir: str):
         os.remove(f"{full_file_name}.bin")
         return result
     except Exception as exc:
-        logger.error(exc)
+        ctx.logger.error(exc)
         raise exc
 
 
@@ -102,6 +102,7 @@ async def dump_obj_func(ctx, pool, task, sn_id, file_name):
         await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
         await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
         res = await get_dump_table(
+            ctx,
             query=task,
             file_name=file_name,
             db_conn=db_conn,
@@ -478,6 +479,7 @@ async def make_dump(ctx):
                             or file.endswith(".gz")
                             or file.endswith(".json")
                             or file.endswith(".backup")
+                            or file.endswith(".bin")
                         ):
                             os.remove(os.path.join(root, file))
                         else:

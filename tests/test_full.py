@@ -1130,7 +1130,8 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 "--dict-file=test_meta_dict.py",
                 "--output-dict-file=stress_%s" % self.target_dict,
                 # '--threads=%s' % params.test_threads,
-                "--threads=6",
+                "--threads=4",
+                "--processes=2",
                 "--scan-partial-rows=100",  # ,
                 # '--verbose=debug',
                 # '--debug'
@@ -1159,7 +1160,8 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 "--dict-file=test_meta_dict.py",
                 "--output-dict-file=stress_%s" % self.target_dict,
                 # '--threads=%s' % params.test_threads,
-                "--threads=6",
+                "--threads=4",
+                "--processes=2",
                 # '--verbose=debug',
                 # '--debug'
             ]
@@ -1344,3 +1346,12 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 if __name__ == "__main__":
     unittest.main(exit=False)
+    # loader = unittest.TestLoader()
+    #
+    # tests = loader.loadTestsFromTestCase(PGAnonDictGenUnitTest)
+    # test_suite = unittest.TestSuite(tests)
+    #
+    # test_suite = loader.discover(start_dir='.', pattern='test*.py')
+    #
+    # runner = unittest.TextTestRunner(failfast=True, verbosity=2)
+    # runner.run(test_suite)

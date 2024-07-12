@@ -21,7 +21,7 @@
 	],
 	"data_regex": {
 		"rules": [
-			"""([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+""",  # email
+			"""[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
 			"7?[\d]{10}",				# phone 7XXXXXXXXXX
 			"^other_ext_tbl_text",		# catch "schm_mask_ext_exclude_2.other_ext_tbl_2"
 			"""[0-9]{3}-[0-9]{2}-[0-9]{4}""",  # social Security numbers "nnn-nn-nnnn"
@@ -35,21 +35,31 @@
 			# Any card number
 			"""[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}""",
 			# URLs
-			"""(?i)\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()]+|\(([^\s()]+|(\([^\s()]+\)))*\))+(?:\(([^\s()]+|(\([^\s()]+\)))*\)|[^\s`!()\[\]{};:'".,?«»“”‘’]))"""
+			"""(?i)\b((?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()]+|\(([^\s()]+|(\([^\s()]+\)))*\))+(?:\(([^\s()]+|(\([^\s()]+\)))*\)|[^\s`!()\[\]{};:'".,?«»“”‘’]))""",
+			"""[0-9]{2}-[0-9]{7}"""  # INN from 1c
 		]
 	},
 	"data_const": {
 		"constants": [
-			"bank",
 			"account",
 			"email",
-			"слово"
+			"слово",
+			"сергей"
 		]
 	},
+	"sens_pg_types": [
+		"text",
+		"integer",
+		"bigint",
+		"character",
+		"json"
+	],
 	"funcs": {
 		"text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
 		"numeric": "anon_funcs.noise(\"%s\", 10)",
 		"timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
-		"bigint": "anon_funcs.random_inn()"
+		"bigint": "anon_funcs.random_inn()",
+		"integer": "anon_funcs.random_int_between(1, 10)",
+		"mvarchar": "anon_funcs.digest(\"%s\"::text, 'salt_word', 'md5')"
 	}
 }

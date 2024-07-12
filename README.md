@@ -209,6 +209,59 @@ python pg_anon.py --mode create-dict \
 | `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
 | `--scan-partial-rows` | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
 
+#### Requirements for input --dict-file (metadict):
+
+Input metadict .py file should contain that type of structure:
+```python
+var = {
+    "field": {  # Which fields to anonymize without scanning the content
+        "rules": [  # List of regular expressions to search for fields by name
+            "^fld_5_em",
+            "^amount"
+        ],
+        "constants": [  # List of constant field names
+            "usd",
+            "name"
+        ]
+    },
+    "skip_rules": [  # List of schemas, tables, and fields to skip
+        {
+            # possibly some schema or table contains a lot of data that is not worth scanning. Skipped objects will not be automatically included in the resulting dictionary. Masks are not supported in this object.
+            "schema": "schm_mask_ext_exclude_2",  # Schema specification is mandatory
+            "table": "card_numbers",  # Optional. If there is no "table", the entire schema will be skipped.
+            "fields": ["val_skip"]  # Optional. If there are no "fields", the entire table will be skipped.
+        }
+    ],
+    "data_regex": {  # List of regular expressions to search for sensitive data
+        "rules": [
+            """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
+            "7?[\d]{10}"  # phone 7XXXXXXXXXX 
+        ]
+    },
+    "data_const": {
+        # List of constants in lowercase, upon detection of which the field will be included in the resulting dictionary. If a text field contains a value consisting of several words, this value will be split into words, converted to lowercase, and matched with the constants from this list. Words shorter than 5 characters are ignored. Search is performed using set.intersection
+        "constants": [  # When reading the meta-dictionary, the values of this list are placed in a set container
+            "simpson",
+            "account"
+        ]
+    },
+    "sens_pg_types": [
+        # List of field types which should be checked (other types won't be checked). If this massive is empty program set default SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
+        "text",
+        "integer",
+        "bigint",
+        "varchar",  # better write small names, because checker find substrings in original name. For example types varchar(3) contains varchar, so varchar(3) will be checked in program.
+        "json"
+    ],
+    "funcs": {  # List of field types (int, text, ...) and functions for anonymization
+        # If a certain field is found during scanning, a function listed in this list will be used according to its type.
+        "text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
+        "numeric": "anon_funcs.noise(\"%s\", 10)",
+        "timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')"
+    }
+}
+```
+
 ### Run dump mode
 
 #### Prerequisites:
