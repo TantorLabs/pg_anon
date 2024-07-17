@@ -65,46 +65,6 @@ class FieldInfo:
             f"tbl_id={self.tbl_id}"
         )
 
-
-async def get_tagged_fields(conn_params) -> List[TaggedFields]:
-    """Get fields tagged sens and nosens."""
-    query = """
-    SELECT
-        nspname AS schema_name,
-        relname AS table_name,
-        attname AS column_name,
-        description AS column_comment
-    FROM
-        pg_description
-        JOIN pg_attribute ON pg_description.objoid = pg_attribute.attrelid
-                           AND pg_description.objsubid = pg_attribute.attnum
-        JOIN pg_class ON pg_class.oid = pg_attribute.attrelid
-        JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-    WHERE
-        pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
-        and (description like '%:sens%' OR description like '%:nosens%')
-    ORDER BY
-        nspname,
-        relname,
-        attname;
-    """
-    db_conn = await asyncpg.connect(**conn_params)
-    try:
-        query_res = await db_conn.fetch(query)
-    finally:
-        await db_conn.close()
-    tagged_fields = [
-        TaggedFields(
-            nspname=record["schema_name"],
-            relname=record["table_name"],
-            column_name=record["column_name"],
-            column_comment=record["column_comment"],
-        )
-        for record in query_res
-    ]
-    return tagged_fields
-
-
 def check_skip_fields(ctx, fld):
     if "skip_rules" not in ctx.dictionary_obj:
         return True
@@ -305,7 +265,6 @@ async def scan_obj_func(
     ctx,
     pool,
     field_info: FieldInfo,
-    tagged_fields: List[Optional[TaggedFields]],
     scan_mode: ScanMode,
     dictionary_obj,
     scan_partial_rows,
@@ -323,20 +282,8 @@ async def scan_obj_func(
 
     db_conn = await pool.acquire()
     res = {}
-    scanning_flag = True
     try:
-        for field in tagged_fields:
-            if (
-                field.nspname == field_info.nspname
-                and field.relname == field_info.relname
-                and field.column_name == field_info.column_name
-            ):
-                if ":sens" in field.column_comment:
-                    res[field_info.obj_id] = field_info
-                scanning_flag = False
-                break
-
-        if scan_mode == ScanMode.PARTIAL and scanning_flag:
+        if scan_mode == ScanMode.PARTIAL:
             fld_data = await db_conn.fetch(
                 """
                     SELECT distinct(substring(\"%s\"::text, 1, 8196))
@@ -360,7 +307,7 @@ async def scan_obj_func(
                 field_info,
                 setof_to_list(fld_data),
             )
-        elif scan_mode == ScanMode.FULL and scanning_flag:
+        elif scan_mode == ScanMode.FULL:
             async with db_conn.transaction():
                 cur = await db_conn.cursor(
                     """
@@ -430,7 +377,6 @@ def process_impl(
         ctx.logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
-        tagged_fields = await get_tagged_fields(conn_params)
         ctx.logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
@@ -450,7 +396,6 @@ def process_impl(
                     ctx,
                     pool,
                     field_info,
-                    tagged_fields,
                     ctx.args.scan_mode,
                     ctx.dictionary_obj,
                     ctx.args.scan_partial_rows,
