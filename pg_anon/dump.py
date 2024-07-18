@@ -97,26 +97,24 @@ async def get_dump_table(ctx, query: str, file_name: str, db_conn, output_dir: s
 async def dump_obj_func(ctx, pool, task, sn_id, file_name):
     ctx.logger.info("================> Started task %s" % str(task))
 
-    db_conn = await pool.acquire()
     try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-        res = await get_dump_table(
-            ctx,
-            query=task,
-            file_name=file_name,
-            db_conn=db_conn,
-            output_dir=ctx.args.output_dir,
-        )
-        count_rows = re.findall(r"(\d+)", res)[0]
-        ctx.task_results[hash(task)] = count_rows
-        ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
+        async with pool.acquire() as db_conn:
+            async with db_conn.transaction():
+                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+                await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
+                res = await get_dump_table(
+                    ctx,
+                    query=task,
+                    file_name=file_name,
+                    db_conn=db_conn,
+                    output_dir=ctx.args.output_dir,
+                )
+                count_rows = re.findall(r"(\d+)", res)[0]
+                ctx.task_results[hash(task)] = count_rows
+                ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % task)
-    finally:
-        await db_conn.close()
-        await pool.release(db_conn)
 
     ctx.logger.info("<================ Finished task %s" % str(task))
 
@@ -466,35 +464,36 @@ async def make_dump(ctx):
                     dir_empty = False
                     break
 
-            if not dir_empty and not ctx.args.clear_output_dir:
-                msg = "Output directory " + output_dir + " is not empty!"
-                ctx.logger.error(msg)
-                raise Exception(msg)
+            if not dir_empty:
+                if not ctx.args.clear_output_dir:
+                    msg = "Output directory " + output_dir + " is not empty!"
+                    ctx.logger.error(msg)
+                    raise Exception(msg)
 
-            if not dir_empty and ctx.args.clear_output_dir:
-                for root, dirs, files in os.walk(output_dir):
-                    for file in files:
-                        if (
-                            file.endswith(".sql")
-                            or file.endswith(".gz")
-                            or file.endswith(".json")
-                            or file.endswith(".backup")
-                            or file.endswith(".bin")
-                        ):
-                            os.remove(os.path.join(root, file))
-                        else:
-                            msg = (
-                                "Option --clear-output-dir enabled. Unexpected file extension: %s"
-                                % os.path.join(root, file)
-                            )
-                            ctx.logger.error(msg)
-                            raise Exception(msg)
+                else:
+                    for root, dirs, files in os.walk(output_dir):
+                        for file in files:
+                            if (
+                                file.endswith(".sql")
+                                or file.endswith(".gz")
+                                or file.endswith(".json")
+                                or file.endswith(".backup")
+                                or file.endswith(".bin")
+                            ):
+                                os.remove(os.path.join(root, file))
+                            else:
+                                msg = (
+                                    "Option --clear-output-dir enabled. Unexpected file extension: %s"
+                                    % os.path.join(root, file)
+                                )
+                                ctx.logger.error(msg)
+                                raise Exception(msg)
 
-        if not ctx.args.validate_dict and ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
-            ctx.logger.info("-------------> Started pg_dump")
-            await run_pg_dump(ctx, "pre-data")
-            await run_pg_dump(ctx, "post-data")
-            ctx.logger.info("<------------- Finished pg_dump")
+            if ctx.args.mode != AnonMode.SYNC_DATA_DUMP:
+                ctx.logger.info("-------------> Started pg_dump")
+                await run_pg_dump(ctx, "pre-data")
+                await run_pg_dump(ctx, "post-data")
+                ctx.logger.info("<------------- Finished pg_dump")
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
@@ -504,17 +503,15 @@ async def make_dump(ctx):
 
     if ctx.args.mode != AnonMode.SYNC_STRUCT_DUMP:
         db_conn = await asyncpg.connect(**ctx.conn_params)
-        tr = db_conn.transaction()
-        await tr.start()
         try:
-            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-            sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-            await make_dump_impl(ctx, db_conn, sn_id)
+            async with db_conn.transaction():
+                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+                sn_id = await db_conn.fetchval("select pg_export_snapshot()")
+                await make_dump_impl(ctx, db_conn, sn_id)
         except:
             ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
             result.result_code = ResultCode.FAIL
         finally:
-            await tr.rollback()
             await db_conn.close()
 
     if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
