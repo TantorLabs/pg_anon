@@ -401,7 +401,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["dictionary_content_hash"] = sha256(
         ctx.dictionary_content.encode("utf-8")
     ).hexdigest()
-    metadata["dict_file"] = ctx.args.dict_file
+    metadata["meta_dict_file"] = ctx.args.meta_dict_file
 
     for v in zipped_list:
         files[v[1]].update({"rows": ctx.task_results[v[0]]})
@@ -431,7 +431,7 @@ async def make_dump(ctx):
 
     try:
         dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
+            os.path.join(ctx.current_dir, "dict", ctx.args.meta_dict_file), "r"
         )
         ctx.dictionary_content = dictionary_file.read()
         dictionary_file.close()
@@ -451,7 +451,7 @@ async def make_dump(ctx):
             output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
         else:
             output_dir = os.path.join(
-                ctx.current_dir, "output", os.path.splitext(ctx.args.dict_file)[0]
+                ctx.current_dir, "output", os.path.splitext(ctx.args.meta_dict_file)[0]
             )
 
         ctx.args.output_dir = output_dir
@@ -525,7 +525,7 @@ async def make_dump(ctx):
         metadata["dictionary_content_hash"] = sha256(
             ctx.dictionary_content.encode("utf-8")
         ).hexdigest()
-        metadata["dict_file"] = ctx.args.dict_file
+        metadata["meta_dict_file"] = ctx.args.meta_dict_file
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
 

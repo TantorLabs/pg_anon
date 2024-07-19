@@ -103,8 +103,8 @@ class MainRoutine:
                 log_file = "%s_%s.log" % (
                     str(self.args.mode),
                     str(
-                        os.path.splitext(os.path.basename(self.args.dict_file))[0]
-                        if self.args.dict_file != ""
+                        os.path.splitext(os.path.basename(self.args.meta_dict_file))[0]
+                        if self.args.meta_dict_file != ""
                         else os.path.basename(self.args.input_dir)
                     ),
                 )

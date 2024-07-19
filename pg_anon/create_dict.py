@@ -556,7 +556,7 @@ async def create_dict(ctx):
 
     try:
         dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
+            os.path.join(ctx.current_dir, "dict", ctx.args.meta_dict_file), "r"
         )
         ctx.dictionary_content = dictionary_file.read()
         dictionary_file.close()

@@ -197,19 +197,19 @@ python pg_anon.py --mode create-dict \
                   --db-user postgres \
                   --db-user-password postgres \
                   --db-name test_source_db \
-                  --dict-file test_meta_dict.py \
+                  --meta-dict-file test_meta_dict.py \
                   --output-dict-file test_dict_output.py \
                   --processes 2
 ```
 
 | Option                | Description                                                                                 |
 |-----------------------|---------------------------------------------------------------------------------------------|
-| `--dict-file`         | Specify the dictionary file with data about anonymization                                   |
+| `--meta-dict-file`    | Specify the dictionary file with data about anonymization                                   |
 | `--output-dict-file`  | Output file will be saved to this value                                                     |
 | `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
 | `--scan-partial-rows` | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
 
-#### Requirements for input --dict-file (metadict):
+#### Requirements for input --meta-dict-file (metadict):
 
 Input metadict .py file should contain that type of structure:
 ```python
@@ -280,7 +280,7 @@ var = {
                      --db-user postgres \
                      --db-user-password postgres \
                      --db-name test_source_db \
-                     --dict-file test_dict_output.py
+                     --meta-dict-file test_dict_output.py
    ```
 
 2. To create only structure dump:
@@ -292,7 +292,7 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_struct_dump \
-                     --dict-file test_dict_output.py
+                     --meta-dict-file test_dict_output.py
    ```
 
 3. To create only data dump:
@@ -304,7 +304,7 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_data_dump \
-                     --dict-file test_dict_output.py
+                     --meta-dict-file test_dict_output.py
    ```
 
    This mode could be useful for scheduling the database synchronization, for example with `cron`.

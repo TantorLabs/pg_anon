@@ -94,7 +94,7 @@ class Context:
             default=VerboseOptions.INFO,
             help="Enable verbose output",
         )
-        parser.add_argument("--dict-file", type=str, default="")
+        parser.add_argument("--meta-dict-file", type=str, default="")
         parser.add_argument(
             "--threads",
             type=int,
