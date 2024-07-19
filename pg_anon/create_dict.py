@@ -538,11 +538,9 @@ async def create_dict_impl(ctx):
     for _, v in anon_dict_rules.items():
         output_dict["dictionary"].append(v)
 
-    output_dict_file = open(
-        os.path.join(ctx.current_dir, "dict", ctx.args.output_dict_file), "w"
-    )
-    output_dict_file.write(json.dumps(output_dict, indent=4))
-    output_dict_file.close()
+    output_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_sens_dict_file)
+    with open(output_sens_dict_file_name, "w") as file:
+        file.write(json.dumps(output_dict, indent=4))
 
     return result
 

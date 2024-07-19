@@ -198,16 +198,16 @@ python pg_anon.py --mode create-dict \
                   --db-user-password postgres \
                   --db-name test_source_db \
                   --meta-dict-file test_meta_dict.py \
-                  --output-dict-file test_dict_output.py \
+                  --output-sens-dict-file test_dict_output.py \
                   --processes 2
 ```
 
-| Option                | Description                                                                                 |
-|-----------------------|---------------------------------------------------------------------------------------------|
-| `--meta-dict-file`    | Specify the dictionary file with data about anonymization                                   |
-| `--output-dict-file`  | Output file will be saved to this value                                                     |
-| `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
-| `--scan-partial-rows` | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
+| Option                    | Description                                                                                 |
+|---------------------------|---------------------------------------------------------------------------------------------|
+| `--meta-dict-file`        | Specify the dictionary file with data about anonymization                                   |
+| `--output-sens-dict-file` | Output file will be saved to this value                                                     |
+| `--scan-mode`             | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
+| `--scan-partial-rows`     | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
 
 #### Requirements for input --meta-dict-file (metadict):
 

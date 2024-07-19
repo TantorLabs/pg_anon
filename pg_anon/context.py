@@ -162,9 +162,9 @@ class Context:
             help="In '--create-dict' mode defines whether to scan all data or only part of it",
         )
         parser.add_argument(
-            "--output-dict-file",
+            "--output-sens-dict-file",
             type=str,
-            default="output-dict-file.py",
+            default="output-sens-dict-file.py",
             help="In '--create-dict' mode output file will be saved to this value",
         )
         parser.add_argument(
