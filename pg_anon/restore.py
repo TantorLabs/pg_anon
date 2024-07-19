@@ -127,32 +127,32 @@ async def restore_table_data(
 
     with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
         trg_file.writelines(src_file)
-    db_conn = await pool.acquire()
-    try:
-        await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-        await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
 
-        result = await db_conn.copy_to_table(
-            schema_name=schema_name,
-            table_name=table_name,
-            source=extracted_file,
-            format="binary",
-        )
-        ctx.total_rows += int(re.findall(r"(\d+)", result)[0])
-        await db_conn.execute("COMMIT;")
+    try:
+        async with pool.acquire() as db_conn:
+            async with db_conn.transaction():
+                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+                await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
+
+                result = await db_conn.copy_to_table(
+                    schema_name=schema_name,
+                    table_name=table_name,
+                    source=extracted_file,
+                    format="binary",
+                )
+                ctx.total_rows += int(re.findall(r"(\d+)", result)[0])
+                await db_conn.execute("COMMIT;")
     except Exception as exc:
         ctx.logger.error(
             f"Exception in restore_obj_func:"
-            f" {schema_name = }"
-            f" {table_name = }"
-            f"\n{exc.query = }"
-            f"\n{exc.position = }"
-            f"\n{exc = }"
+            f" {schema_name=}"
+            f" {table_name=}"
+            f"\n{exc.query=}"
+            f"\n{exc.position=}"
+            f"\n{exc=}"
         )
-
     finally:
         os.remove(extracted_file)
-        await pool.release(db_conn)
 
     ctx.logger.info(f"{'>':=>20} Finished task {str(table_name)}")
 
@@ -247,7 +247,7 @@ async def make_restore(ctx):
     )
 
     if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
-        db_conn.close()
+        await db_conn.close()
         raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
 
     metadata_file = open(
@@ -331,20 +331,18 @@ async def make_restore(ctx):
 
     result.result_code = ResultCode.DONE
     if ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
-        tr = db_conn.transaction()
-        await tr.start()
         try:
-            await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
-            await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
-            sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-            await make_restore_impl(ctx, sn_id)
+            async with db_conn.transaction():
+                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+                await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
+                sn_id = await db_conn.fetchval("select pg_export_snapshot()")
+                await make_restore_impl(ctx, sn_id)
         except:
             ctx.logger.error(
                 "<------------- make_restore failed\n" + exception_helper()
             )
             result.result_code = "fail"
         finally:
-            await tr.commit()
             await db_conn.close()
 
         if ctx.total_rows != int(ctx.metadata["total_rows"]):
@@ -369,15 +367,12 @@ async def run_custom_query(ctx, pool, query):
     # in single tx
     ctx.logger.info("================> Started query %s" % str(query))
 
-    db_conn = await pool.acquire()
     try:
-        await db_conn.execute(query)
+        async with pool.acquire() as db_conn:
+            await db_conn.execute(query)
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute query: %s" % query)
-    finally:
-        await db_conn.close()
-        await pool.release(db_conn)
 
     ctx.logger.info("<================ Finished query %s" % str(query))
 
