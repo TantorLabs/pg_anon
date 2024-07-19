@@ -280,68 +280,66 @@ async def scan_obj_func(
         )
         return None
 
-    db_conn = await pool.acquire()
     res = {}
     try:
-        if scan_mode == ScanMode.PARTIAL:
-            fld_data = await db_conn.fetch(
-                """
-                    SELECT distinct(substring(\"%s\"::text, 1, 8196))
-                    FROM \"%s\".\"%s\"
-                    WHERE \"%s\" is not null
-                    LIMIT %s
-                """
-                % (
-                    field_info.column_name,
-                    field_info.nspname,
-                    field_info.relname,
-                    field_info.column_name,
-                    str(scan_partial_rows),
-                )
-            )
-            res = check_sensitive_data_in_fld(
-                ctx,
-                name,
-                dictionary_obj,
-                ctx.create_dict_matches,
-                field_info,
-                setof_to_list(fld_data),
-            )
-        elif scan_mode == ScanMode.FULL:
-            async with db_conn.transaction():
-                cur = await db_conn.cursor(
+        async with pool.acquire() as db_conn:
+            if scan_mode == ScanMode.PARTIAL:
+                fld_data = await db_conn.fetch(
                     """
                         SELECT distinct(substring(\"%s\"::text, 1, 8196))
                         FROM \"%s\".\"%s\"
                         WHERE \"%s\" is not null
+                        LIMIT %s
                     """
                     % (
                         field_info.column_name,
                         field_info.nspname,
                         field_info.relname,
                         field_info.column_name,
+                        str(scan_partial_rows),
                     )
                 )
-                next_rows = True
-                while next_rows:
-                    fld_data = await cur.fetch(scan_partial_rows)
-                    res = check_sensitive_data_in_fld(
-                        ctx,
-                        name,
-                        dictionary_obj,
-                        ctx.create_dict_matches,
-                        field_info,
-                        setof_to_list(fld_data),
+                res = check_sensitive_data_in_fld(
+                    ctx,
+                    name,
+                    dictionary_obj,
+                    ctx.create_dict_matches,
+                    field_info,
+                    setof_to_list(fld_data),
+                )
+            elif scan_mode == ScanMode.FULL:
+                async with db_conn.transaction():
+                    cur = await db_conn.cursor(
+                        """
+                            SELECT distinct(substring(\"%s\"::text, 1, 8196))
+                            FROM \"%s\".\"%s\"
+                            WHERE \"%s\" is not null
+                        """
+                        % (
+                            field_info.column_name,
+                            field_info.nspname,
+                            field_info.relname,
+                            field_info.column_name,
+                        )
                     )
-                    if len(fld_data) == 0 or len(res) > 0:
-                        break
+                    next_rows = True
+                    while next_rows:
+                        fld_data = await cur.fetch(scan_partial_rows)
+                        res = check_sensitive_data_in_fld(
+                            ctx,
+                            name,
+                            dictionary_obj,
+                            ctx.create_dict_matches,
+                            field_info,
+                            setof_to_list(fld_data),
+                        )
+                        if len(fld_data) == 0 or len(res) > 0:
+                            break
 
     except Exception as e:
         ctx.logger.error("Exception in scan_obj_func:\n" + exception_helper())
         raise Exception("Can't execute task: %s" % field_info)
-    finally:
-        await db_conn.close()
-        await pool.release(db_conn)
+
 
     end_t = time.time()
     if end_t - start_t > 10:
