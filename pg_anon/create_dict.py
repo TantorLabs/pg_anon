@@ -65,9 +65,8 @@ class FieldInfo:
             f"tbl_id={self.tbl_id}"
         )
 
+
 def check_skip_fields(ctx, fld):
-    if "skip_rules" not in ctx.dictionary_obj:
-        return True
     for v in ctx.dictionary_obj["skip_rules"]:
         schema_match = False
         tbl_match = False
@@ -153,7 +152,7 @@ async def generate_scan_objs(ctx):
     ]
 
 
-async def prepare_dictionary_obj(ctx):
+def prepare_dictionary_obj(ctx):
     ctx.dictionary_obj["data_const"]["constants"] = set(
         ctx.dictionary_obj["data_const"]["constants"]
     )
@@ -551,13 +550,8 @@ async def create_dict(ctx):
     ctx.logger.info("-------------> Started create_dict mode")
 
     try:
-        dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.meta_dict_file), "r"
-        )
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        ctx.dictionary_obj = eval(ctx.dictionary_content)
-        await prepare_dictionary_obj(ctx)
+        ctx.read_meta_dict()
+        prepare_dictionary_obj(ctx)
     except:
         ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL

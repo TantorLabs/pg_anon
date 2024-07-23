@@ -396,10 +396,15 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["seq_lastvals"] = seq_res_dict
     metadata["pg_version"] = ctx.pg_version
     metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-    metadata["dictionary_content_hash"] = sha256(
-        ctx.dictionary_content.encode("utf-8")
-    ).hexdigest()
-    metadata["meta_dict_file"] = ctx.args.meta_dict_file
+
+    metadata["dictionary_content_hash"] = {}
+    for dictionary_file_name, dictionary_content in ctx.dictionary_contents.items():
+        metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
+            dictionary_content.encode("utf-8")
+        ).hexdigest()
+    metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
+    if ctx.args.prepared_no_sens_dict_files:
+        metadata["prepared_no_sens_dict_files"] = ','.join(ctx.args.prepared_no_sens_dict_files)
 
     for v in zipped_list:
         files[v[1]].update({"rows": ctx.task_results[v[0]]})
@@ -428,28 +433,18 @@ async def make_dump(ctx):
     ctx.logger.info("-------------> Started dump mode")
 
     try:
-        dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.meta_dict_file), "r"
-        )
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        ctx.dictionary_obj = eval(ctx.dictionary_content)
+        ctx.read_prepared_dict()
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     try:
-        if (
-            ctx.args.output_dir.find("""/""") != -1
-            or ctx.args.output_dir.find("""\\""") != -1
-        ):
-            output_dir = ctx.args.output_dir
         if len(ctx.args.output_dir) > 1:
             output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
         else:
             output_dir = os.path.join(
-                ctx.current_dir, "output", os.path.splitext(ctx.args.meta_dict_file)[0]
+                ctx.current_dir, "output", os.path.splitext(ctx.args.prepared_sens_dict_files[0])[0]
             )
 
         ctx.args.output_dir = output_dir
@@ -519,10 +514,17 @@ async def make_dump(ctx):
         metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         metadata["pg_version"] = ctx.pg_version
         metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-        metadata["dictionary_content_hash"] = sha256(
-            ctx.dictionary_content.encode("utf-8")
-        ).hexdigest()
-        metadata["meta_dict_file"] = ctx.args.meta_dict_file
+
+        metadata["dictionary_content_hash"] = {}
+        for dictionary_file_name, dictionary_content in ctx.dictionary_contents.items():
+            metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
+                dictionary_content.encode("utf-8")
+            ).hexdigest()
+
+        metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
+        if ctx.args.prepared_no_sens_dict_files:
+            metadata["prepared_no_sens_dict_files"] = ','.join(ctx.args.prepared_no_sens_dict_files)
+
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
 

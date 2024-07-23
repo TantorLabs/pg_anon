@@ -1,11 +1,12 @@
 import argparse
 import os
+from typing import Dict, Optional
 
 from pg_anon.common import (
     exception_handler,
     AnonMode,
     VerboseOptions,
-    ScanMode,
+    ScanMode, parse_comma_separated_list,
 )
 
 
@@ -16,8 +17,8 @@ class Context:
         self.args = args
         self.pg_version = None
         self.validate_limit = "LIMIT 100"
-        self.dictionary_content = None  # for dump process
-        self.dictionary_obj = {}
+        self.dictionary_contents: Dict = {}  # for dump process
+        self.dictionary_obj: Dict = {}
         self.metadata = None  # for restore process
         self.task_results = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
@@ -55,6 +56,134 @@ class Context:
                     "ssl_ca_file": args.db_ssl_ca_file,
                 }
             )
+
+    def _check_meta_dict_types(self, meta_dict: Dict):
+        """
+        Checking expected types in meta dict fields
+        """
+        if not (
+            isinstance(meta_dict["field"]["rules"], list) and
+            isinstance(meta_dict["field"]["constants"], list) and
+            isinstance(meta_dict["skip_rules"], list) and
+            isinstance(meta_dict["data_regex"]["rules"], list) and
+            isinstance(meta_dict["data_const"]["constants"], list) and
+            isinstance(meta_dict["funcs"], dict)
+        ):
+            raise ValueError('Meta dict does not have expected types')
+
+    def _make_meta_dict(self, meta_dict_data: Optional[Dict] = None) -> dict:
+        """
+        Making meta dict in expected format, from meta dict data
+        """
+        result_dict = {
+          "field": {
+            "rules": meta_dict_data.get('field', {}).get('rules', []) if meta_dict_data else [],
+            "constants": meta_dict_data.get('field', {}).get('constants', []) if meta_dict_data else []
+          },
+          "skip_rules": meta_dict_data.get('skip_rules', []) if meta_dict_data else [],
+          "data_regex": {
+            "rules": meta_dict_data.get('data_regex', {}).get('rules', []) if meta_dict_data else []
+          },
+          "data_const": {
+            "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else []
+          },
+          "funcs": meta_dict_data.get('funcs', {}) if meta_dict_data else {},
+        }
+
+        return result_dict
+
+    def _append_meta_dict(self, meta_dict):
+        """
+        Appending meta dict to existing meta dict
+        """
+        self._check_meta_dict_types(meta_dict)
+
+        if meta_dict["field"]["rules"]:
+            self.dictionary_obj["field"]["rules"].extend(meta_dict["field"]["rules"])
+
+        if meta_dict["field"]["constants"]:
+            self.dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
+
+        if meta_dict["skip_rules"]:
+            self.dictionary_obj["skip_rules"].extend(meta_dict["skip_rules"])
+
+        if meta_dict["data_regex"]["rules"]:
+            self.dictionary_obj["data_regex"]["rules"].extend(meta_dict["data_regex"]["rules"])
+
+        if meta_dict["data_const"]["constants"]:
+            self.dictionary_obj["data_const"]["constants"].extend(meta_dict["data_const"]["constants"])
+
+        if meta_dict["funcs"]:
+            self.dictionary_obj["funcs"].update(meta_dict["funcs"])
+
+    def read_meta_dict(self):
+        self.dictionary_obj = self._make_meta_dict()
+
+        for meta_dict_file in self.args.meta_dict_files:
+            dictionary_file_name = os.path.join("dict", meta_dict_file)
+            with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
+                data = dictionary_file.read()
+
+            self.dictionary_contents = {dictionary_file_name: data}
+
+            if not data:
+                continue
+
+            meta_dict_data = eval(data)
+
+            if not meta_dict_data:
+                continue
+
+            if not isinstance(meta_dict_data, dict):
+                raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
+
+            prepared_meta_dict = self._make_meta_dict(meta_dict_data)
+            self._append_meta_dict(prepared_meta_dict)
+
+    def read_prepared_dict(self):
+        self.dictionary_obj = {
+            "dictionary": [],
+            "dictionary_exclude": [],
+            "validate_tables": [],
+            "no_sens_dictionary": [],
+        }
+
+        dict_files_list = []
+        if self.args.prepared_sens_dict_files:
+            dict_files_list += self.args.prepared_sens_dict_files
+
+        if self.args.prepared_no_sens_dict_files:
+            dict_files_list += self.args.prepared_no_sens_dict_files
+
+        for dict_file in dict_files_list:
+            dictionary_file_name = os.path.join("dict", dict_file)
+            with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
+                data = dictionary_file.read()
+
+            self.dictionary_contents = {dictionary_file_name: data}
+
+            if not data:
+                continue
+
+            dict_data = eval(data)
+
+            if not dict_data:
+                continue
+
+            if not isinstance(dict_data, dict):
+                raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
+
+            if dictionary := dict_data.get("dictionary", []):
+                self.dictionary_obj["dictionary"].extend(dictionary)
+
+            if dictionary := dict_data.get("dictionary_exclude", []):
+                self.dictionary_obj["dictionary_exclude"].extend(dictionary)
+
+            if validate_tables := dict_data.get("validate_tables", []):
+                self.dictionary_obj["validate_tables"].extend(validate_tables)
+
+            if no_sens_dictionary := dict_data.get("no_sens_dictionary", []):
+                self.dictionary_obj["no_sens_dictionary"].extend(no_sens_dictionary)
 
     @staticmethod
     def get_arg_parser():
@@ -94,7 +223,13 @@ class Context:
             default=VerboseOptions.INFO,
             help="Enable verbose output",
         )
-        parser.add_argument("--meta-dict-file", type=str, default="")
+        parser.add_argument(
+            "--meta-dict-file",
+            dest='meta_dict_files',
+            type=parse_comma_separated_list,
+            default=None,
+            help="In '--create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
+        )
         parser.add_argument(
             "--threads",
             type=int,
@@ -165,7 +300,24 @@ class Context:
             "--output-sens-dict-file",
             type=str,
             default="output-sens-dict-file.py",
-            help="In '--create-dict' mode output file will be saved to this value",
+            help="In '--create-dict' mode output file with sensitive fields will be saved to this value",
+        )
+        parser.add_argument(
+            "--output-no-sens-dict-file",
+            type=str,
+            help="In '--create-dict' mode output file with not sensitive fields will be saved to this value",
+        )
+        parser.add_argument(
+            "--prepared-sens-dict-file",
+            dest='prepared_sens_dict_files',
+            type=parse_comma_separated_list,
+            help="In '--create-dict' mode input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually",
+        )
+        parser.add_argument(
+            "--prepared-no-sens-dict-file",
+            dest="prepared_no_sens_dict_files",
+            type=parse_comma_separated_list,
+            help="In '--create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
         )
         parser.add_argument(
             "--scan-partial-rows",
