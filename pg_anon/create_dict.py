@@ -463,12 +463,12 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     return res
 
 
-def add_metadict_rule(dictionary_obj: dict, field_info: FieldInfo, anon_rules: dict):
+def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
     hash_func = (
         "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
     )
 
-    for fld_type, func in dictionary_obj["funcs"].items():
+    for fld_type, func in meta_dictionary_obj["funcs"].items():
         if str(field_info.type).find(fld_type) > -1:
             hash_func = func
 
@@ -476,17 +476,29 @@ def add_metadict_rule(dictionary_obj: dict, field_info: FieldInfo, anon_rules: d
         hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
     )
 
-    if field_info.tbl_id not in anon_rules:
-        anon_rules[field_info.tbl_id] = {
+    if field_info.tbl_id not in prepared_sens_dict_rules:
+        prepared_sens_dict_rules[field_info.tbl_id] = {
             "schema": field_info.nspname,
             "table": field_info.relname,
             "fields": {field_info.column_name: res_hash_func},
         }
     else:
-        anon_rules[field_info.tbl_id]["fields"].update(
+        prepared_sens_dict_rules[field_info.tbl_id]["fields"].update(
             {field_info.column_name: res_hash_func}
         )
-    return anon_rules
+    return prepared_sens_dict_rules
+
+
+def prepare_no_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
+    if field_info.tbl_id not in prepared_no_sens_dict_rules:
+        prepared_no_sens_dict_rules[field_info.tbl_id] = {
+            "schema": field_info.nspname,
+            "table": field_info.relname,
+            "fields": [field_info.column_name],
+        }
+    else:
+        prepared_no_sens_dict_rules[field_info.tbl_id]["fields"].append(field_info.column_name)
+    return prepared_no_sens_dict_rules
 
 
 async def create_dict_impl(ctx):
@@ -511,10 +523,9 @@ async def create_dict_impl(ctx):
     await asyncio.wait(tasks)
 
     # create output dict
-    output_sens_dict = {
-        "dictionary": []
-    }
-    anon_dict_rules = {}
+    prepared_sens_dict_rules = {}
+    need_prepare_no_sens_dict: bool = bool(ctx.args.output_no_sens_dict_file)
+    excluded_fields_for_prepared_no_sens_dict = set()
 
     # ============================================================================================
     # Fill results based on processes
@@ -522,25 +533,41 @@ async def create_dict_impl(ctx):
     for v in tasks:
         for res in v.result():
             for field_info in res.values():
-                anon_dict_rules = add_metadict_rule(
-                    ctx.meta_dictionary_obj, field_info, anon_dict_rules
+                prepared_sens_dict_rules = prepare_sens_dict_rule(
+                    ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
                 )
+                if need_prepare_no_sens_dict:
+                    excluded_fields_for_prepared_no_sens_dict.add(field_info.tbl_id)
 
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
     # ============================================================================================
     for field_info in ctx.create_dict_matches.values():
-        anon_dict_rules = add_metadict_rule(
-            ctx.meta_dictionary_obj, field_info, anon_dict_rules
+        prepared_sens_dict_rules = prepare_sens_dict_rule(
+            ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
         )
+        if need_prepare_no_sens_dict:
+            excluded_fields_for_prepared_no_sens_dict.add(field_info.tbl_id)
     # ============================================================================================
 
-    for _, v in anon_dict_rules.items():
-        output_sens_dict["dictionary"].append(v)
-
+    output_sens_dict = {"dictionary": list(prepared_sens_dict_rules.values())}
     output_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_sens_dict_file)
     with open(output_sens_dict_file_name, "w") as file:
         file.write(json.dumps(output_sens_dict, indent=4))
+
+    if need_prepare_no_sens_dict:
+        prepared_no_sens_dict_rules = {}
+
+        for field_info in fields_info:
+            if field_info.tbl_id not in excluded_fields_for_prepared_no_sens_dict:
+                prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
+                    ctx.meta_dictionary_obj, field_info, prepared_no_sens_dict_rules
+                )
+
+        output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
+        output_no_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_no_sens_dict_file)
+        with open(output_no_sens_dict_file_name, "w") as file:
+            file.write(json.dumps(output_no_sens_dict, indent=4))
 
     return result
 

@@ -90,7 +90,7 @@ class Context:
             "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else []
           },
           "funcs": meta_dict_data.get('funcs', {}) if meta_dict_data else {},
-          "no_sens_dictionary": meta_dict_data.get('no_sens_dictionary', {}) if meta_dict_data else {},
+          "no_sens_dictionary": meta_dict_data.get('no_sens_dictionary', []) if meta_dict_data else [],
         }
 
         return result_dict
