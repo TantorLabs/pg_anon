@@ -67,7 +67,7 @@ class FieldInfo:
 
 
 def check_skip_fields(ctx, fld):
-    for v in ctx.dictionary_obj["skip_rules"]:
+    for v in ctx.meta_dictionary_obj["skip_rules"]:
         schema_match = False
         tbl_match = False
         fld_match = False
@@ -152,28 +152,28 @@ async def generate_scan_objs(ctx):
     ]
 
 
-def prepare_dictionary_obj(ctx):
-    ctx.dictionary_obj["data_const"]["constants"] = set(
-        ctx.dictionary_obj["data_const"]["constants"]
+def prepare_meta_dictionary_obj(ctx):
+    ctx.meta_dictionary_obj["data_const"]["constants"] = set(
+        ctx.meta_dictionary_obj["data_const"]["constants"]
     )
 
     regex_for_compile = []
-    for v in ctx.dictionary_obj["data_regex"]["rules"]:
+    for v in ctx.meta_dictionary_obj["data_regex"]["rules"]:
         regex_for_compile.append(re.compile(v))
 
-    ctx.dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
+    ctx.meta_dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
 
     regex_for_compile = []
-    for v in ctx.dictionary_obj["field"]["rules"]:
+    for v in ctx.meta_dictionary_obj["field"]["rules"]:
         regex_for_compile.append(re.compile(v))
 
-    ctx.dictionary_obj["field"]["rules"] = regex_for_compile.copy()
+    ctx.meta_dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
 
 async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
     for field_info in fields_info:
-        if "rules" in ctx.dictionary_obj["field"]:
-            for rule in ctx.dictionary_obj["field"]["rules"]:
+        if "rules" in ctx.meta_dictionary_obj["field"]:
+            for rule in ctx.meta_dictionary_obj["field"]["rules"]:
                 if re.search(rule, field_info.column_name) is not None:
                     ctx.logger.debug(
                         '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
@@ -182,8 +182,8 @@ async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
                     # objs.remove(v)
                     ctx.create_dict_matches[field_info.obj_id] = field_info
 
-        if "constants" in ctx.dictionary_obj["field"]:
-            for rule in ctx.dictionary_obj["field"]["constants"]:
+        if "constants" in ctx.meta_dictionary_obj["field"]:
+            for rule in ctx.meta_dictionary_obj["field"]["constants"]:
                 if rule == field_info.column_name:
                     ctx.logger.debug(
                         '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
@@ -394,7 +394,7 @@ def process_impl(
                     pool,
                     field_info,
                     ctx.args.scan_mode,
-                    ctx.dictionary_obj,
+                    ctx.meta_dictionary_obj,
                     ctx.args.scan_partial_rows,
                 )
             )
@@ -511,8 +511,9 @@ async def create_dict_impl(ctx):
     await asyncio.wait(tasks)
 
     # create output dict
-    output_dict = {}
-    output_dict["dictionary"] = []
+    output_sens_dict = {
+        "dictionary": []
+    }
     anon_dict_rules = {}
 
     # ============================================================================================
@@ -522,7 +523,7 @@ async def create_dict_impl(ctx):
         for res in v.result():
             for field_info in res.values():
                 anon_dict_rules = add_metadict_rule(
-                    ctx.dictionary_obj, field_info, anon_dict_rules
+                    ctx.meta_dictionary_obj, field_info, anon_dict_rules
                 )
 
     # ============================================================================================
@@ -530,16 +531,16 @@ async def create_dict_impl(ctx):
     # ============================================================================================
     for field_info in ctx.create_dict_matches.values():
         anon_dict_rules = add_metadict_rule(
-            ctx.dictionary_obj, field_info, anon_dict_rules
+            ctx.meta_dictionary_obj, field_info, anon_dict_rules
         )
     # ============================================================================================
 
     for _, v in anon_dict_rules.items():
-        output_dict["dictionary"].append(v)
+        output_sens_dict["dictionary"].append(v)
 
     output_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_sens_dict_file)
     with open(output_sens_dict_file_name, "w") as file:
-        file.write(json.dumps(output_dict, indent=4))
+        file.write(json.dumps(output_sens_dict, indent=4))
 
     return result
 
@@ -551,7 +552,7 @@ async def create_dict(ctx):
 
     try:
         ctx.read_meta_dict()
-        prepare_dictionary_obj(ctx)
+        prepare_meta_dictionary_obj(ctx)
     except:
         ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL

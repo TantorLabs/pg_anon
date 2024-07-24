@@ -29,7 +29,7 @@ async def run_pg_dump(ctx, section):
     specific_tables = []
     if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
         tmp_list = []
-        for v in ctx.dictionary_obj["dictionary"]:
+        for v in ctx.prepared_dictionary_obj["dictionary"]:
             tmp_list.append(["-t", '"%s"."%s"' % (v["schema"], v["table"])])
         specific_tables = [item for sublist in tmp_list for item in sublist]
 
@@ -200,14 +200,14 @@ async def generate_dump_queries(ctx, db_conn):
         table_name_full = f'"{table_schema}"."{table_name}"'
 
         a_obj = find_obj_in_dict(
-            ctx.dictionary_obj["dictionary"], table_schema, table_name
+            ctx.prepared_dictionary_obj["dictionary"], table_schema, table_name
         )
         found_white_list = not (a_obj is None)
 
         # dictionary_exclude has the highest priority
-        if "dictionary_exclude" in ctx.dictionary_obj:
+        if "dictionary_exclude" in ctx.prepared_dictionary_obj:
             exclude_obj = find_obj_in_dict(
-                ctx.dictionary_obj["dictionary_exclude"], table_schema, table_name
+                ctx.prepared_dictionary_obj["dictionary_exclude"], table_schema, table_name
             )
             found = not (exclude_obj is None)
             if found and not found_white_list:
@@ -398,7 +398,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
 
     metadata["dictionary_content_hash"] = {}
-    for dictionary_file_name, dictionary_content in ctx.dictionary_contents.items():
+    for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
         metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
             dictionary_content.encode("utf-8")
         ).hexdigest()
@@ -516,7 +516,7 @@ async def make_dump(ctx):
         metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
 
         metadata["dictionary_content_hash"] = {}
-        for dictionary_file_name, dictionary_content in ctx.dictionary_contents.items():
+        for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
             metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
                 dictionary_content.encode("utf-8")
             ).hexdigest()
@@ -529,7 +529,7 @@ async def make_dump(ctx):
         metadata["total_rows"] = 0
 
         tmp_list = []
-        for v in ctx.dictionary_obj["dictionary"]:
+        for v in ctx.prepared_dictionary_obj["dictionary"]:
             tmp_list.append(v["schema"])
         metadata["schemas"] = list(set(tmp_list))
 

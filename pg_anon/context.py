@@ -17,8 +17,9 @@ class Context:
         self.args = args
         self.pg_version = None
         self.validate_limit = "LIMIT 100"
-        self.dictionary_contents: Dict = {}  # for dump process
-        self.dictionary_obj: Dict = {}
+        self.meta_dictionary_obj: Dict = {}
+        self.prepared_dictionary_obj: Dict = {}
+        self.prepared_dictionary_contents: Dict = {}  # for dump process
         self.metadata = None  # for restore process
         self.task_results = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
@@ -67,7 +68,8 @@ class Context:
             isinstance(meta_dict["skip_rules"], list) and
             isinstance(meta_dict["data_regex"]["rules"], list) and
             isinstance(meta_dict["data_const"]["constants"], list) and
-            isinstance(meta_dict["funcs"], dict)
+            isinstance(meta_dict["funcs"], dict) and
+            isinstance(meta_dict["no_sens_dictionary"], list)
         ):
             raise ValueError('Meta dict does not have expected types')
 
@@ -88,6 +90,7 @@ class Context:
             "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else []
           },
           "funcs": meta_dict_data.get('funcs', {}) if meta_dict_data else {},
+          "no_sens_dictionary": meta_dict_data.get('no_sens_dictionary', {}) if meta_dict_data else {},
         }
 
         return result_dict
@@ -99,32 +102,38 @@ class Context:
         self._check_meta_dict_types(meta_dict)
 
         if meta_dict["field"]["rules"]:
-            self.dictionary_obj["field"]["rules"].extend(meta_dict["field"]["rules"])
+            self.meta_dictionary_obj["field"]["rules"].extend(meta_dict["field"]["rules"])
 
         if meta_dict["field"]["constants"]:
-            self.dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
+            self.meta_dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
 
         if meta_dict["skip_rules"]:
-            self.dictionary_obj["skip_rules"].extend(meta_dict["skip_rules"])
+            self.meta_dictionary_obj["skip_rules"].extend(meta_dict["skip_rules"])
 
         if meta_dict["data_regex"]["rules"]:
-            self.dictionary_obj["data_regex"]["rules"].extend(meta_dict["data_regex"]["rules"])
+            self.meta_dictionary_obj["data_regex"]["rules"].extend(meta_dict["data_regex"]["rules"])
 
         if meta_dict["data_const"]["constants"]:
-            self.dictionary_obj["data_const"]["constants"].extend(meta_dict["data_const"]["constants"])
+            self.meta_dictionary_obj["data_const"]["constants"].extend(meta_dict["data_const"]["constants"])
 
         if meta_dict["funcs"]:
-            self.dictionary_obj["funcs"].update(meta_dict["funcs"])
+            self.meta_dictionary_obj["funcs"].update(meta_dict["funcs"])
+
+        if meta_dict["no_sens_dictionary"]:
+            self.meta_dictionary_obj["no_sens_dictionary"].update(meta_dict["no_sens_dictionary"])
 
     def read_meta_dict(self):
-        self.dictionary_obj = self._make_meta_dict()
+        self.meta_dictionary_obj = self._make_meta_dict()
 
-        for meta_dict_file in self.args.meta_dict_files:
+        dict_files_list = self.args.meta_dict_files
+
+        if self.args.prepared_no_sens_dict_files:
+            dict_files_list += self.args.prepared_no_sens_dict_files
+
+        for meta_dict_file in dict_files_list:
             dictionary_file_name = os.path.join("dict", meta_dict_file)
             with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
                 data = dictionary_file.read()
-
-            self.dictionary_contents = {dictionary_file_name: data}
 
             if not data:
                 continue
@@ -141,26 +150,18 @@ class Context:
             self._append_meta_dict(prepared_meta_dict)
 
     def read_prepared_dict(self):
-        self.dictionary_obj = {
+        self.prepared_dictionary_obj = {
             "dictionary": [],
             "dictionary_exclude": [],
             "validate_tables": [],
-            "no_sens_dictionary": [],
         }
 
-        dict_files_list = []
-        if self.args.prepared_sens_dict_files:
-            dict_files_list += self.args.prepared_sens_dict_files
-
-        if self.args.prepared_no_sens_dict_files:
-            dict_files_list += self.args.prepared_no_sens_dict_files
-
-        for dict_file in dict_files_list:
+        for dict_file in self.args.prepared_sens_dict_files:
             dictionary_file_name = os.path.join("dict", dict_file)
             with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
                 data = dictionary_file.read()
 
-            self.dictionary_contents = {dictionary_file_name: data}
+            self.prepared_dictionary_contents = {dictionary_file_name: data}
 
             if not data:
                 continue
@@ -174,16 +175,13 @@ class Context:
                 raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
 
             if dictionary := dict_data.get("dictionary", []):
-                self.dictionary_obj["dictionary"].extend(dictionary)
+                self.prepared_dictionary_obj["dictionary"].extend(dictionary)
 
             if dictionary := dict_data.get("dictionary_exclude", []):
-                self.dictionary_obj["dictionary_exclude"].extend(dictionary)
+                self.prepared_dictionary_obj["dictionary_exclude"].extend(dictionary)
 
             if validate_tables := dict_data.get("validate_tables", []):
-                self.dictionary_obj["validate_tables"].extend(validate_tables)
-
-            if no_sens_dictionary := dict_data.get("no_sens_dictionary", []):
-                self.dictionary_obj["no_sens_dictionary"].extend(no_sens_dictionary)
+                self.prepared_dictionary_obj["validate_tables"].extend(validate_tables)
 
     @staticmethod
     def get_arg_parser():

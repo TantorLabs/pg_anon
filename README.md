@@ -198,18 +198,20 @@ python pg_anon.py --mode=create-dict \
                   --db-user-password=postgres \
                   --db-name=test_source_db \
                   --meta-dict-file=test_meta_dict.py \
+                  --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
                   --output-sens-dict-file=test_sens_dict_output.py \
                   --output-no-sens-dict-file=test_no_sens_dict_output.py \
                   --processes 2
 ```
 
-| Option                         | Description                                                                                                                                       |
-|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--meta-dict-file`             | Input file or file list with scan rules of sensitive and not sensitive fields. In collision case, priority has first file in list                 |
-| `--output-sens-dict-file`      | Output file with sensitive fields will be saved to this value                                                                                     |
-| `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                      |
-| `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                       |
-| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000)                                                                           |
+| Option                         | Description                                                                                                                                                  |
+|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--meta-dict-file`             | Input file or file list with scan rules of sensitive and not sensitive fields. In collision case, priority has first file in list                            |
+| `--prepared-no-sens-dict-file` | Input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually (Optional) |
+| `--output-sens-dict-file`      | Output file with sensitive fields will be saved to this value                                                                                                |
+| `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                                 |
+| `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                                  |
+| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000)                                                                                      |
 
 #### Requirements for input --meta-dict-file (metadict):
 
@@ -282,8 +284,7 @@ var = {
                      --db-user postgres \
                      --db-user-password postgres \
                      --db-name test_source_db \
-                     --prepared-sens-dict-file=test_sens_dict_output.py \
-                     --prepared-no-sens-dict-file=test_no_sens_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 2. To create only structure dump:
@@ -295,8 +296,7 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_struct_dump \
-                     --prepared-sens-dict-file=test_sens_dict_output.py \
-                     --prepared-no-sens-dict-file=test_no_sens_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 3. To create only data dump:
@@ -308,8 +308,7 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_data_dump \
-                     --prepared-sens-dict-file=test_sens_dict_output.py \
-                     --prepared-no-sens-dict-file=test_no_sens_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
    This mode could be useful for scheduling the database synchronization, for example with `cron`.
@@ -319,7 +318,6 @@ Possible options in mode=dump:
 | Option                         | Description                                                                                                                                       |
 |--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
 | `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually        |
-| `--prepared-no-sens-dict-file` | Input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually |
 | `--validate-dict`              | Validate dictionary, show the tables and run SQL queries without data export (default false)                                                      |
 | `--validate-full`              | Same as `--validate-dict` + data export with limit (default false)                                                                                |
 | `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                               |
