@@ -1,10 +1,9 @@
 import asyncio
 import json
 import os
-import random
 import re
 import time
-from typing import List, Optional
+from typing import List, Dict
 
 import aioprocessing
 import asyncpg
@@ -147,9 +146,9 @@ async def generate_scan_objs(ctx):
     query_res = await db_conn.fetch(query)
     await db_conn.close()
 
-    return [
-        FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
-    ]
+    return {
+        fld['obj_id']: FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
+    }
 
 
 def prepare_meta_dictionary_obj(ctx):
@@ -170,27 +169,41 @@ def prepare_meta_dictionary_obj(ctx):
     ctx.meta_dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
 
-async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
-    for field_info in fields_info:
-        if "rules" in ctx.meta_dictionary_obj["field"]:
-            for rule in ctx.meta_dictionary_obj["field"]["rules"]:
-                if re.search(rule, field_info.column_name) is not None:
-                    ctx.logger.debug(
-                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                        % (str(rule), str(field_info))
-                    )
-                    # objs.remove(v)
-                    ctx.create_dict_matches[field_info.obj_id] = field_info
+def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
+    for obj_id, field_info in fields_info.copy().items():
+        matched: bool = False
 
-        if "constants" in ctx.meta_dictionary_obj["field"]:
-            for rule in ctx.meta_dictionary_obj["field"]["constants"]:
-                if rule == field_info.column_name:
-                    ctx.logger.debug(
-                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                        % (str(rule), str(field_info))
-                    )
-                    fields_info.remove(field_info)
-                    ctx.create_dict_matches[field_info.obj_id] = field_info
+        for rule in ctx.meta_dictionary_obj["field"]["rules"]:
+            if re.search(rule, field_info.column_name) is not None:
+                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                del fields_info[obj_id]
+                ctx.create_dict_sens_matches[obj_id] = field_info
+                matched = True
+                break
+
+        if matched:
+            continue
+
+        for rule in ctx.meta_dictionary_obj["field"]["constants"]:
+            if rule == field_info.column_name:
+                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                del fields_info[obj_id]
+                ctx.create_dict_sens_matches[obj_id] = field_info
+                matched = True
+                break
+
+        if matched:
+            continue
+
+        for rule in ctx.meta_dictionary_obj["no_sens_dictionary"]:
+            if (rule['schema'] == field_info.nspname and
+                rule['table'] == field_info.relname and
+                field_info.column_name in rule['fields']
+            ):
+                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as insensitive by "{rule}", removed {field_info}')
+                del fields_info[obj_id]
+                ctx.create_dict_no_sens_matches[obj_id] = field_info
+                break
 
 
 def check_sensitive_data_in_fld(
@@ -302,7 +315,7 @@ async def scan_obj_func(
                     ctx,
                     name,
                     dictionary_obj,
-                    ctx.create_dict_matches,
+                    ctx.create_dict_sens_matches,
                     field_info,
                     setof_to_list(fld_data),
                 )
@@ -328,7 +341,7 @@ async def scan_obj_func(
                             ctx,
                             name,
                             dictionary_obj,
-                            ctx.create_dict_matches,
+                            ctx.create_dict_sens_matches,
                             field_info,
                             setof_to_list(fld_data),
                         )
@@ -489,7 +502,7 @@ def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, pre
     return prepared_sens_dict_rules
 
 
-def prepare_no_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
+def prepare_no_sens_dict_rule(field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
     if field_info.tbl_id not in prepared_no_sens_dict_rules:
         prepared_no_sens_dict_rules[field_info.tbl_id] = {
             "schema": field_info.nspname,
@@ -505,15 +518,13 @@ async def create_dict_impl(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
 
-    fields_info: List[FieldInfo] = await generate_scan_objs(ctx)
+    fields_info: Dict[str, FieldInfo] = await generate_scan_objs(ctx)
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 
-    await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
+    scan_fields_by_names(ctx, fields_info)  # fill ctx.create_dict_sens_matches and ctx.create_dict_no_sens_matches
 
-    # objs_prepared = recordset_to_list(fields_info)
-    random.shuffle(fields_info)
-    fields_info_chunks = list(chunkify(fields_info, ctx.args.threads))
+    fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.threads))
 
     tasks = []
     for idx, fields_info_chunk in enumerate(fields_info_chunks):
@@ -525,7 +536,6 @@ async def create_dict_impl(ctx):
     # create output dict
     prepared_sens_dict_rules = {}
     need_prepare_no_sens_dict: bool = bool(ctx.args.output_no_sens_dict_file)
-    excluded_fields_for_prepared_no_sens_dict = set()
 
     # ============================================================================================
     # Fill results based on processes
@@ -537,17 +547,15 @@ async def create_dict_impl(ctx):
                     ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
                 )
                 if need_prepare_no_sens_dict:
-                    excluded_fields_for_prepared_no_sens_dict.add(field_info.tbl_id)
+                    del fields_info[field_info.obj_id]
 
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
     # ============================================================================================
-    for field_info in ctx.create_dict_matches.values():
+    for field_info in ctx.create_dict_sens_matches.values():
         prepared_sens_dict_rules = prepare_sens_dict_rule(
             ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
         )
-        if need_prepare_no_sens_dict:
-            excluded_fields_for_prepared_no_sens_dict.add(field_info.tbl_id)
     # ============================================================================================
 
     output_sens_dict = {"dictionary": list(prepared_sens_dict_rules.values())}
@@ -558,11 +566,15 @@ async def create_dict_impl(ctx):
     if need_prepare_no_sens_dict:
         prepared_no_sens_dict_rules = {}
 
-        for field_info in fields_info:
-            if field_info.tbl_id not in excluded_fields_for_prepared_no_sens_dict:
-                prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
-                    ctx.meta_dictionary_obj, field_info, prepared_no_sens_dict_rules
-                )
+        for field_info in ctx.create_dict_no_sens_matches.values():
+            prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
+                field_info, prepared_no_sens_dict_rules
+            )
+
+        for field_info in fields_info.values():
+            prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
+                field_info, prepared_no_sens_dict_rules
+            )
 
         output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
         output_no_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_no_sens_dict_file)

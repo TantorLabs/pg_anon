@@ -23,7 +23,8 @@ class Context:
         self.metadata = None  # for restore process
         self.task_results = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
-        self.create_dict_matches = {}  # for create-dict mode
+        self.create_dict_sens_matches = {}  # for create-dict mode
+        self.create_dict_no_sens_matches = {}  # for create-dict mode
         self.exclude_schemas = ["anon_funcs", "columnar_internal"]
         self.logger = None
 
@@ -120,7 +121,7 @@ class Context:
             self.meta_dictionary_obj["funcs"].update(meta_dict["funcs"])
 
         if meta_dict["no_sens_dictionary"]:
-            self.meta_dictionary_obj["no_sens_dictionary"].update(meta_dict["no_sens_dictionary"])
+            self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
 
     def read_meta_dict(self):
         self.meta_dictionary_obj = self._make_meta_dict()
