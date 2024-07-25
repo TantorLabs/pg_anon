@@ -1210,7 +1210,112 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         print(f"<============ Finished comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_02_create_dict")
+        passed_stages.append("test_05_repeat_create_dict_with_no_sens_dict")
+
+    async def test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict(self):
+        self.assertTrue("test_02_create_dict" in passed_stages)
+
+        prepared_no_sens_dict = "test_prepared_no_sens_dict_result.py"
+        target_no_sens_dict = "test_prepared_no_sens_dict_result_repeat.py"
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                "--meta-dict-file=test_meta_dict.py",
+                f"--output-sens-dict-file={self.target_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict}",
+                f"--prepared-sens-dict-file={self.target_sens_dict}",
+                f"--prepared-no-sens-dict-file={prepared_no_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        target_sens_dict_file = os.path.join(parent_dir, "dict", self.target_sens_dict)
+        target_sens_dict_expected_file = os.path.join(parent_dir, "dict", self.target_sens_dict_expected)
+        prepared_no_sens_dict_file = os.path.join(parent_dir, "dict", prepared_no_sens_dict)
+        target_no_sens_dict_file = os.path.join(parent_dir, "dict", target_no_sens_dict)
+
+        self.assertTrue(os.path.exists(target_sens_dict_file))
+        self.assertTrue(os.path.exists(target_no_sens_dict_file))
+
+        # Checking sens dict
+        with (open(target_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_sens_dict_expected_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)["dictionary"]
+            d2 = json.load(file2)["dictionary"]
+
+            def iterate_dict_level_2(data):
+                for k, v in data.items():
+                    yield {k: v}
+
+            def iterate_dict_level_1(data):
+                for item in data:
+                    if "fields" in item:
+                        yield from iterate_dict_level_2(item["fields"])
+                    else:
+                        yield from iterate_dict_level_2(item)
+
+            flag_of_identity = True  # comparing elements of two dictionaries
+            expected_result_list_of_iterate_dict = []
+            result_list_of_iterate_dict = []
+
+            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+            for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                result_list_of_iterate_dict.append(line)
+                if line not in expected_result_list_of_iterate_dict:
+                    flag_of_identity = False
+                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
+
+            if flag_of_identity:
+                for line in iterate_dict_level_1(d2):
+                    if line not in result_list_of_iterate_dict:
+                        flag_of_identity = False
+                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}.py")
+
+            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+        self.assertTrue(flag_of_identity)
+
+        print(f"============> Started comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+        # Checking no-sens dict
+        with (open(prepared_no_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_no_sens_dict_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict")
 
 
 class TmpResults:

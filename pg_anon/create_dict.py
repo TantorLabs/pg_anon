@@ -170,14 +170,38 @@ def prepare_meta_dictionary_obj(ctx):
 
 
 def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
+    """
+    Scanning fields by names and removes matches according to dict rules
+
+    Priorities of rules:
+        - prepared-sens-dict-file
+        - meta-dict-file
+        - prepared-no-sens-dict-file
+    """
+
     for obj_id, field_info in fields_info.copy().items():
         matched: bool = False
 
+        if "dictionary" in ctx.prepared_dictionary_obj:
+            for rule in ctx.prepared_dictionary_obj["dictionary"]:
+                if (rule['schema'] == field_info.nspname and
+                    rule['table'] == field_info.relname and
+                    field_info.column_name in rule['fields']
+                ):
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
+                    break
+
+        if matched:
+            continue
+
         for rule in ctx.meta_dictionary_obj["field"]["rules"]:
             if re.search(rule, field_info.column_name) is not None:
-                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
-                del fields_info[obj_id]
-                ctx.create_dict_sens_matches[obj_id] = field_info
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
                 matched = True
                 break
 
@@ -186,9 +210,10 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
 
         for rule in ctx.meta_dictionary_obj["field"]["constants"]:
             if rule == field_info.column_name:
-                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
-                del fields_info[obj_id]
-                ctx.create_dict_sens_matches[obj_id] = field_info
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
                 matched = True
                 break
 
@@ -200,9 +225,10 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
                 rule['table'] == field_info.relname and
                 field_info.column_name in rule['fields']
             ):
-                ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as insensitive by "{rule}", removed {field_info}')
-                del fields_info[obj_id]
-                ctx.create_dict_no_sens_matches[obj_id] = field_info
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as insensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_no_sens_matches[obj_id] = field_info
                 break
 
 
@@ -524,30 +550,31 @@ async def create_dict_impl(ctx):
 
     scan_fields_by_names(ctx, fields_info)  # fill ctx.create_dict_sens_matches and ctx.create_dict_no_sens_matches
 
-    fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.threads))
-
-    tasks = []
-    for idx, fields_info_chunk in enumerate(fields_info_chunks):
-        tasks.append(
-            asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
-        )
-    await asyncio.wait(tasks)
-
     # create output dict
     prepared_sens_dict_rules = {}
     need_prepare_no_sens_dict: bool = bool(ctx.args.output_no_sens_dict_file)
 
-    # ============================================================================================
-    # Fill results based on processes
-    # ============================================================================================
-    for v in tasks:
-        for res in v.result():
-            for field_info in res.values():
-                prepared_sens_dict_rules = prepare_sens_dict_rule(
-                    ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
-                )
-                if need_prepare_no_sens_dict:
-                    del fields_info[field_info.obj_id]
+    if fields_info:
+        fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.threads))
+
+        tasks = []
+        for idx, fields_info_chunk in enumerate(fields_info_chunks):
+            tasks.append(
+                asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
+            )
+        await asyncio.wait(tasks)
+
+        # ============================================================================================
+        # Fill results based on processes
+        # ============================================================================================
+        for v in tasks:
+            for res in v.result():
+                for field_info in res.values():
+                    prepared_sens_dict_rules = prepare_sens_dict_rule(
+                        ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
+                    )
+                    if need_prepare_no_sens_dict:
+                        del fields_info[field_info.obj_id]
 
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
@@ -592,6 +619,8 @@ async def create_dict(ctx):
     try:
         ctx.read_meta_dict()
         prepare_meta_dictionary_obj(ctx)
+        if ctx.args.prepared_sens_dict_files:
+            ctx.read_prepared_dict()
     except:
         ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
