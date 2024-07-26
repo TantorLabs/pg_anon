@@ -22,16 +22,6 @@ from pg_anon.common import (
 SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
 
-class TaggedFields:
-    def __init__(
-        self, nspname: str, relname: str, column_name: str, column_comment: str
-    ):
-        self.nspname = nspname
-        self.relname = relname
-        self.column_name = column_name
-        self.column_comment = column_comment
-
-
 class FieldInfo:
     def __init__(
         self,
