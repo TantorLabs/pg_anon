@@ -471,7 +471,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
 
     p = aioprocessing.AioProcess(
         target=process_impl,
-        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.processes),
+        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.threads),
     )
     p.start()
     res = None
@@ -546,7 +546,7 @@ async def create_dict_impl(ctx):
     need_prepare_no_sens_dict: bool = bool(ctx.args.output_no_sens_dict_file)
 
     if fields_info:
-        fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.threads))
+        fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.processes))
 
         tasks = []
         for idx, fields_info_chunk in enumerate(fields_info_chunks):
