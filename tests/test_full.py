@@ -179,61 +179,9 @@ class BasicUnitTest:
         )
 
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("init_env")
-        return res
-
-    async def init_env_tag(self):
-        if "init_env_tag" in passed_stages:
-            print("init_env_tag already called")
-            res = PgAnonResult()
-            res.result_code = ResultCode.DONE
-            return res
-
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=postgres",
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
-                "--mode=init",
-                "--debug",
-            ]
-        )
-
-        ctx = Context(args)
-
-        db_conn = await asyncpg.connect(**ctx.conn_params)
-        await DBOperations.init_db(db_conn, params.test_source_db + "_tag")
-        await db_conn.close()
-
-        sourse_db_params = ctx.conn_params.copy()
-        sourse_db_params["database"] = params.test_source_db + "_tag"
-
-        print("============> Started init_env_tag")
-        db_conn = await asyncpg.connect(**sourse_db_params)
-        await DBOperations.init_env(db_conn, "init_env_tag.sql", params.test_scale)
-        await db_conn.close()
-        print("<============ Finished init_env_tag")
-
-        args = parser.parse_args(
-            [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=%s" % params.test_source_db + "_tag",
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
-                "--mode=init",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-
-        res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("init_env_tag")
+        if res.result_code != ResultCode.DONE:
+            raise ValueError("Init env failed")
+        passed_stages.append("init_env")
         return res
 
     async def init_stress_env(self):
@@ -294,8 +242,10 @@ class BasicUnitTest:
         else:
             print("============> Schema 'stress' already exists")
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("init_stress_env")
+        if res.result_code != ResultCode.DONE:
+            raise ValueError("Init stress env failed")
+
+        passed_stages.append("init_stress_env")
         return res
 
     async def check_rows(self, args, schema, table, fields, rows):
@@ -519,14 +469,76 @@ class BasicUnitTest:
         return cmp
 
 
+class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+
+    def test_all_list_arguments_are_empty(self):
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--mode=create-dict",
+            ]
+        )
+        self.assertIsNone(args.meta_dict_files)
+        self.assertIsNone(args.prepared_sens_dict_files)
+        self.assertIsNone(args.prepared_no_sens_dict_files)
+
+    def test_all_list_arguments_filled_with_simple_value(self):
+        meta_dict_file_name = 'test.py'
+        prepared_sens_dict_file_name = 'prepared_sens_dict_file.py'
+        prepared_no_sens_dict_file_name = 'prepared_no_sens_dict_file.py'
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--meta-dict-file={meta_dict_file_name}",
+                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+                f"--prepared-no-sens-dict-file={prepared_no_sens_dict_file_name}",
+            ]
+        )
+        self.assertEqual([meta_dict_file_name], args.meta_dict_files)
+        self.assertEqual([prepared_sens_dict_file_name], args.prepared_sens_dict_files)
+        self.assertEqual([prepared_no_sens_dict_file_name], args.prepared_no_sens_dict_files)
+
+    def test_all_list_arguments_filled_with_list_values(self):
+        meta_dict_file_names = ['test.py', 'meta_dict_file.py']
+        prepared_sens_dict_file_names = ['prepared_sens_dict_file.py', 'another_prepared_sens_dict_file.py']
+        prepared_no_sens_dict_file_names = ['prepared_no_sens_dict_file.py', 'another_prepared_no_sens_dict_file.py']
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--meta-dict-file={','.join(meta_dict_file_names)}",
+                f"--prepared-sens-dict-file={','.join(prepared_sens_dict_file_names)}",
+                f"--prepared-no-sens-dict-file={','.join(prepared_no_sens_dict_file_names)}",
+            ]
+        )
+        self.assertEqual(meta_dict_file_names, args.meta_dict_files)
+        self.assertEqual(prepared_sens_dict_file_names, args.prepared_sens_dict_files)
+        self.assertEqual(prepared_no_sens_dict_file_names, args.prepared_no_sens_dict_files)
+
+
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
         res = await self.init_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_dump(self):
-        if "init_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -537,7 +549,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--dict-file=test.py",
+                "--prepared-sens-dict-file=test.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -546,13 +558,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_02_dump")
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_dump")
 
     async def test_03_restore(self):
-        if "test_02_dump" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_02_dump" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -572,11 +582,10 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_04_dump(self):
-        if "init_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -587,7 +596,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--dict-file=test_exclude.py",
+                "--prepared-sens-dict-file=test_exclude.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -596,13 +605,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_04_dump")
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_04_dump")
 
     async def test_05_restore(self):
-        if "test_04_dump" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_04_dump" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -622,7 +629,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         args = parser.parse_args(
             [
@@ -632,19 +639,17 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--threads=%s" % params.test_threads,
-                "--dict-file=test_exclude.py",
+                "--prepared-sens-dict-file=test_exclude.py",
                 "--verbose=debug",
                 "--debug",
             ]
         )
         res = await MainRoutine(args).validate_target_tables()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_05_restore")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_05_restore")
 
     async def test_06_sync_struct(self):
-        if "test_05_restore" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_05_restore" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -656,7 +661,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--threads=%s" % params.test_threads,
                 "--mode=sync-struct-dump",
-                "--dict-file=test_sync_struct.py",
+                "--prepared-sens-dict-file=test_sync_struct.py",
                 "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
@@ -664,7 +669,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         args = parser.parse_args(
             [
@@ -683,7 +688,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         self.assertTrue(
             await self.check_list_tables(
@@ -703,13 +708,12 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         ]
         self.assertTrue(await self.check_rows_count(args, objs))
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_06_sync_struct")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_06_sync_struct")
 
     async def test_07_sync_data(self):
         # --mode=sync-data-dump ---> --mode=sync-data-restore [3 empty tables already exists]
-        if "test_06_sync_struct" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_06_sync_struct" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -721,7 +725,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--threads=%s" % params.test_threads,
                 "--mode=sync-data-dump",
-                "--dict-file=test_sync_data.py",  # data will be saved to "output/test_sync_data"
+                "--prepared-sens-dict-file=test_sync_data.py",  # data will be saved to "output/test_sync_data"
                 "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
@@ -729,7 +733,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         args = parser.parse_args(
             [
@@ -748,7 +752,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         self.assertTrue(
             await self.check_list_tables(
@@ -777,13 +781,12 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             await self.check_rows(args, "schm_mask_include_1", "tbl_123", None, rows)
         )
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_07_sync_data")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_07_sync_data")
 
     async def test_08_sync_data(self):
         # --mode=sync-data-dump ---> --mode=sync-data-restore [target DB is not empty]
-        if "test_07_sync_data" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_07_sync_data" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -795,7 +798,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--threads=%s" % params.test_threads,
                 "--mode=sync-data-dump",
-                "--dict-file=test_sync_data_2.py",
+                "--prepared-sens-dict-file=test_sync_data_2.py",
                 "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
@@ -803,7 +806,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         args = parser.parse_args(
             [
@@ -828,7 +831,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await db_conn.close()
 
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         objs = [
             ["schm_other_1", "some_tbl", rows_in_init_env * int(params.test_scale)],
@@ -836,14 +839,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         ]
         self.assertTrue(await self.check_rows_count(args, objs))
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_08_sync_data")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_08_sync_data")
 
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_validate(self):
-        if "test_06_sync_struct" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_06_sync_struct" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -854,7 +856,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--dict-file=test.py",
+                "--prepared-sens-dict-file=test.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -865,13 +867,11 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_01_validate")
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_01_validate")
 
     async def test_02_validate_full(self):
-        if "test_01_validate" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_01_validate" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -882,7 +882,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--dict-file=test.py",
+                "--prepared-sens-dict-file=test.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -893,37 +893,40 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_02_validate_full")
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_validate_full")
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    target_dict = "test_meta_dict_result.py"
+    target_sens_dict = "test_prepared_sens_dict_result.py"
+    target_sens_dict_expected = "test_prepared_sens_dict_result_expected.py"
+    
     args = {}
 
     async def test_01_init(self):
         res = await self.init_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_create_dict(self):
-        if "init_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_env" in passed_stages)
+
+        target_no_sens_dict = "test_prepared_no_sens_dict_result.py"
+        target_no_sens_dict_expected = "test_prepared_no_sens_dict_result_expected.py"
 
         parser = Context.get_arg_parser()
         self.args_create_dict = parser.parse_args(
             [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=%s" % params.test_source_db,
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
                 "--mode=create-dict",
                 "--scan-mode=full",
-                "--dict-file=test_meta_dict.py",
-                "--output-dict-file=%s" % self.target_dict,
-                "--threads=%s" % params.test_threads,
-                # '--threads=8',
+                "--meta-dict-file=test_meta_dict.py",
+                f"--output-sens-dict-file={self.target_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict}",
+                f"--threads={params.test_threads}",
                 "--scan-partial-rows=10000",
                 "--verbose=debug",
                 "--debug",
@@ -932,15 +935,17 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         res = await MainRoutine(self.args_create_dict).run()
         parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        with open(
-            os.path.join(parent_dir, "dict", "test_meta_dict_result.py"),
-            "r",
-            encoding="utf-8",
-        ) as file1, open(
-            os.path.join(parent_dir, "dict", "test_meta_dict_result_expected.py"),
-            "r",
-            encoding="utf-8",
-        ) as file2:
+        target_sens_dict_file = os.path.join(parent_dir, "dict", self.target_sens_dict)
+        target_sens_dict_expected_file = os.path.join(parent_dir, "dict", self.target_sens_dict_expected)
+        target_no_sens_dict_file = os.path.join(parent_dir, "dict", target_no_sens_dict)
+        target_no_sens_dict_expected_file = os.path.join(parent_dir, "dict", target_no_sens_dict_expected)
+
+        self.assertTrue(os.path.exists(target_sens_dict_file))
+        self.assertTrue(os.path.exists(target_no_sens_dict_file))
+
+        # Checking sens dict
+        with (open(target_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_sens_dict_expected_file, "r", encoding="utf-8") as file2):
             d1 = json.load(file1)["dictionary"]
             d2 = json.load(file2)["dictionary"]
 
@@ -959,9 +964,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             expected_result_list_of_iterate_dict = []
             result_list_of_iterate_dict = []
 
-            print(
-                "============> Started comparison of test_meta_dict_result.py and test_meta_dict_result_expected.py"
-            )
+            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
 
             for line in iterate_dict_level_1(d2):
                 expected_result_list_of_iterate_dict.append(line)
@@ -970,45 +973,58 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 result_list_of_iterate_dict.append(line)
                 if line not in expected_result_list_of_iterate_dict:
                     flag_of_identity = False
-                    print(
-                        "check_comparison: row %s not found in test_meta_dict_result.py"
-                        % str(line)
-                    )
+                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
 
             if flag_of_identity:
                 for line in iterate_dict_level_1(d2):
                     if line not in result_list_of_iterate_dict:
                         flag_of_identity = False
-                        print(
-                            "check_comparison: row %s not found in test_meta_dict_result_expected.py"
-                            % str(line)
-                        )
+                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}.py")
 
-            print(
-                "<============ Finished comparison of test_meta_dict_result.py and test_meta_dict_result_expected.py"
-            )
+            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
 
         self.assertTrue(flag_of_identity)
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_02_create_dict")
+        print(f"============> Started comparison of {target_no_sens_dict} and {target_no_sens_dict_expected}.py")
+        # Checking no-sens dict
+        with (open(target_no_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_no_sens_dict_expected_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {target_no_sens_dict} and {target_no_sens_dict_expected}.py")
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_create_dict")
 
     async def test_03_dump(self):
-        if "test_02_create_dict" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = copy.deepcopy(
             parser.parse_args(
                 [
-                    "--db-host=%s" % params.test_db_host,
-                    "--db-name=%s" % params.test_source_db,
-                    "--db-user=%s" % params.test_db_user,
-                    "--db-port=%s" % params.test_db_port,
-                    "--db-user-password=%s" % params.test_db_user_password,
+                    f"--db-host={params.test_db_host}",
+                    f"--db-name={params.test_source_db}",
+                    f"--db-user={params.test_db_user}",
+                    f"--db-port={params.test_db_port}",
+                    f"--db-user-password={params.test_db_user_password}",
                     "--mode=dump",
-                    "--dict-file=%s" % self.target_dict,
-                    "--threads=%s" % params.test_threads,
+                    f"--prepared-sens-dict-file={self.target_sens_dict}",
+                    f"--threads={params.test_threads}",
                     "--clear-output-dir",
                     "--verbose=debug",
                     "--debug",
@@ -1017,25 +1033,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         self.args["dump"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_03_dump")
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_03_dump")
 
     async def test_04_restore(self):
-        if "test_03_dump" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_03_dump" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
             [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=%s" % params.test_target_db + "_4",
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
-                "--threads=%s" % params.test_threads,
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_target_db}_4",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--threads={params.test_threads}",
                 "--mode=restore",
-                "--input-dir=%s" % self.target_dict.split(".")[0],
+                f"--input-dir={self.target_sens_dict.split(".")[0]}",
                 "--drop-custom-check-constr",
                 "--verbose=debug",
                 "--debug",
@@ -1043,7 +1057,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         self.args["restore"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         rows = [
             [
@@ -1083,18 +1097,225 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         not_found_in_target = await self.check_list_tables_and_fields(
             self.args["dump"], self.args["restore"]
         )
-        self.assertTrue(len(not_found_in_target) == 3)
-        self.assertTrue(
-            not_found_in_target
-            == [
+        self.assertEqual(len(not_found_in_target), 3)
+        self.assertEqual(not_found_in_target, [
                 ["columnar_internal", "tbl_200", "id"],
                 ["columnar_internal", "tbl_200", "val"],
                 ["columnar_internal", "tbl_200", "val_skip"],
             ]
         )
 
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_04_restore")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_04_restore")
+
+    async def test_05_repeat_create_dict_with_no_sens_dict(self):
+        self.assertTrue("test_02_create_dict" in passed_stages)
+
+        prepared_no_sens_dict = "test_prepared_no_sens_dict_result.py"
+        target_no_sens_dict = "test_prepared_no_sens_dict_result_repeat.py"
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                "--meta-dict-file=test_meta_dict.py",
+                f"--output-sens-dict-file={self.target_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict}",
+                f"--prepared-no-sens-dict-file={prepared_no_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        target_sens_dict_file = os.path.join(parent_dir, "dict", self.target_sens_dict)
+        target_sens_dict_expected_file = os.path.join(parent_dir, "dict", self.target_sens_dict_expected)
+        prepared_no_sens_dict_file = os.path.join(parent_dir, "dict", prepared_no_sens_dict)
+        target_no_sens_dict_file = os.path.join(parent_dir, "dict", target_no_sens_dict)
+
+        self.assertTrue(os.path.exists(target_sens_dict_file))
+        self.assertTrue(os.path.exists(target_no_sens_dict_file))
+
+        # Checking sens dict
+        with (open(target_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_sens_dict_expected_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)["dictionary"]
+            d2 = json.load(file2)["dictionary"]
+
+            def iterate_dict_level_2(data):
+                for k, v in data.items():
+                    yield {k: v}
+
+            def iterate_dict_level_1(data):
+                for item in data:
+                    if "fields" in item:
+                        yield from iterate_dict_level_2(item["fields"])
+                    else:
+                        yield from iterate_dict_level_2(item)
+
+            flag_of_identity = True  # comparing elements of two dictionaries
+            expected_result_list_of_iterate_dict = []
+            result_list_of_iterate_dict = []
+
+            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+            for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                result_list_of_iterate_dict.append(line)
+                if line not in expected_result_list_of_iterate_dict:
+                    flag_of_identity = False
+                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
+
+            if flag_of_identity:
+                for line in iterate_dict_level_1(d2):
+                    if line not in result_list_of_iterate_dict:
+                        flag_of_identity = False
+                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}.py")
+
+            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+        self.assertTrue(flag_of_identity)
+
+        print(f"============> Started comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+        # Checking no-sens dict
+        with (open(prepared_no_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_no_sens_dict_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_05_repeat_create_dict_with_no_sens_dict")
+
+    async def test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict(self):
+        self.assertTrue("test_02_create_dict" in passed_stages)
+
+        prepared_no_sens_dict = "test_prepared_no_sens_dict_result.py"
+        target_no_sens_dict = "test_prepared_no_sens_dict_result_repeat.py"
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                "--meta-dict-file=test_meta_dict.py",
+                f"--output-sens-dict-file={self.target_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict}",
+                f"--prepared-sens-dict-file={self.target_sens_dict}",
+                f"--prepared-no-sens-dict-file={prepared_no_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        target_sens_dict_file = os.path.join(parent_dir, "dict", self.target_sens_dict)
+        target_sens_dict_expected_file = os.path.join(parent_dir, "dict", self.target_sens_dict_expected)
+        prepared_no_sens_dict_file = os.path.join(parent_dir, "dict", prepared_no_sens_dict)
+        target_no_sens_dict_file = os.path.join(parent_dir, "dict", target_no_sens_dict)
+
+        self.assertTrue(os.path.exists(target_sens_dict_file))
+        self.assertTrue(os.path.exists(target_no_sens_dict_file))
+
+        # Checking sens dict
+        with (open(target_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_sens_dict_expected_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)["dictionary"]
+            d2 = json.load(file2)["dictionary"]
+
+            def iterate_dict_level_2(data):
+                for k, v in data.items():
+                    yield {k: v}
+
+            def iterate_dict_level_1(data):
+                for item in data:
+                    if "fields" in item:
+                        yield from iterate_dict_level_2(item["fields"])
+                    else:
+                        yield from iterate_dict_level_2(item)
+
+            flag_of_identity = True  # comparing elements of two dictionaries
+            expected_result_list_of_iterate_dict = []
+            result_list_of_iterate_dict = []
+
+            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+            for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                result_list_of_iterate_dict.append(line)
+                if line not in expected_result_list_of_iterate_dict:
+                    flag_of_identity = False
+                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
+
+            if flag_of_identity:
+                for line in iterate_dict_level_1(d2):
+                    if line not in result_list_of_iterate_dict:
+                        flag_of_identity = False
+                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}.py")
+
+            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}.py")
+
+        self.assertTrue(flag_of_identity)
+
+        print(f"============> Started comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+        # Checking no-sens dict
+        with (open(prepared_no_sens_dict_file, "r", encoding="utf-8") as file1,
+              open(target_no_sens_dict_file, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {target_no_sens_dict} and {prepared_no_sens_dict_file}.py")
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict")
 
 
 class TmpResults:
@@ -1111,11 +1332,10 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
 
     async def test_01_stress_init(self):
         res = await self.init_stress_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_create_dict(self):
-        if "init_stress_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_stress_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         self.args_create_dict = parser.parse_args(
@@ -1127,8 +1347,8 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=create-dict",
                 "--scan-mode=partial",
-                "--dict-file=test_meta_dict.py",
-                "--output-dict-file=stress_%s" % self.target_dict,
+                "--meta-dict-file=test_meta_dict.py",
+                "--output-sens-dict-file=stress_%s" % self.target_dict,
                 # '--threads=%s' % params.test_threads,
                 "--threads=4",
                 "--processes=2",
@@ -1139,13 +1359,12 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         )
 
         res = await MainRoutine(self.args_create_dict).run()
-        if res.result_code == ResultCode.DONE:
-            tmp_results.res_test_02 = res.result_data["elapsed"]
-            passed_stages.append("test_02_create_dict")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        tmp_results.res_test_02 = res.result_data["elapsed"]
+        passed_stages.append("test_02_create_dict")
 
     async def test_03_create_dict(self):
-        if "init_stress_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_stress_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         self.args_create_dict = parser.parse_args(
@@ -1157,8 +1376,8 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=create-dict",
                 "--scan-mode=full",
-                "--dict-file=test_meta_dict.py",
-                "--output-dict-file=stress_%s" % self.target_dict,
+                "--meta-dict-file=test_meta_dict.py",
+                "--output-sens-dict-file=stress_%s" % self.target_dict,
                 # '--threads=%s' % params.test_threads,
                 "--threads=4",
                 "--processes=2",
@@ -1168,16 +1387,12 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         )
 
         res = await MainRoutine(self.args_create_dict).run()
-        if res.result_code == ResultCode.DONE:
-            tmp_results.res_test_03 = res.result_data["elapsed"]
-            passed_stages.append("test_03_create_dict")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        tmp_results.res_test_03 = res.result_data["elapsed"]
+        passed_stages.append("test_03_create_dict")
 
     async def test_04_create_dict(self):
-        if (
-            "test_02_create_dict" not in passed_stages
-            or "test_03_create_dict" not in passed_stages
-        ):
-            self.assertTrue(False)
+        self.assertTrue("test_02_create_dict" in passed_stages and "test_03_create_dict" in passed_stages)
 
         print(
             f"Comparing values: %s < (%s / 5)"
@@ -1189,87 +1404,15 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             float(tmp_results.res_test_02) < float(tmp_results.res_test_03) / 5
         )
 
-
-class PGAnonDictGenTagUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    target_dict = "test_create_dict_tag_result.py"
-    args = {}
-
-    async def test_01_init(self):
-        res = await self.init_env_tag()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-
-    async def test_02_create_dict_tag(self):
-        if "init_env_tag" not in passed_stages:
-            self.assertTrue(False)
-
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                "--db-host=%s" % params.test_db_host,
-                "--db-name=%s" % params.test_source_db + "_tag",
-                "--db-user=%s" % params.test_db_user,
-                "--db-port=%s" % params.test_db_port,
-                "--db-user-password=%s" % params.test_db_user_password,
-                "--mode=create-dict",
-                "--scan-mode=partial",
-                "--dict-file=test_empty_meta_dict.py",
-                "--output-dict-file=%s" % self.target_dict,
-                "--threads=1",
-                "--scan-partial-rows=100",
-            ]
-        )
-
-        res = await MainRoutine(self.args_create_dict).run()
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_02_create_dict_tag")
-
-    async def test_03_comparison_dict_tag(self):
-        if "test_02_create_dict_tag" not in passed_stages:
-            self.assertTrue(False)
-
-        test_create_dict_tag_result_expected = {
-            "dictionary": [
-                {
-                    "schema": "public",
-                    "table": "tbl1",
-                    "fields": {
-                        "description": "anon_funcs.digest(\"description\", 'salt_word', 'md5')",
-                        "extra_info_jsonb": "anon_funcs.digest(\"extra_info_jsonb\", 'salt_word', 'md5')",
-                        "extra_info_json": "anon_funcs.digest(\"extra_info_json\", 'salt_word', 'md5')",
-                        "surname": "anon_funcs.digest(\"surname\", 'salt_word', 'md5')",
-                        "extra_info_charvar": "anon_funcs.digest(\"extra_info_charvar\", 'salt_word', 'md5')",
-                    },
-                }
-            ]
-        }
-
-        with open(
-            os.path.join(
-                os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-                "dict",
-                "test_create_dict_tag_result.py",
-            ),
-            "r",
-            encoding="utf-8",
-        ) as file1:
-            test_create_dict_tag_result = json.load(file1)
-
-        if test_create_dict_tag_result == test_create_dict_tag_result_expected:
-            passed_stages.append("test_03_comparison_dict_tag")
-        else:
-            self.assertTrue(False)
-
-
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     args = {}
 
     async def test_01_init(self):
         res = await self.init_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_mask_dump(self):
-        if "init_env" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -1280,7 +1423,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--dict-file=mask_test.py",
+                "--prepared-sens-dict-file=mask_test.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -1290,13 +1433,11 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.args["dump"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
-        if res.result_code == ResultCode.DONE:
-            passed_stages.append("test_02_mask_dump")
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_mask_dump")
 
     async def test_03_mask_restore(self):
-        if "test_02_mask_dump" not in passed_stages:
-            self.assertTrue(False)
+        self.assertTrue("test_02_mask_dump" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -1317,7 +1458,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.args["restore"] = copy.deepcopy(args)
         res = await MainRoutine(args).run()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
         rows = [[1, round(Decimal(101010), 2)], [2, round(Decimal(101010), 2)]]
         self.assertTrue(
@@ -1342,7 +1483,6 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "PGAnonMaskUnitTest_target_tables", target_tables
             )
         )
-
 
 if __name__ == "__main__":
     unittest.main(exit=False)

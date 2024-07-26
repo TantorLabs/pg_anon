@@ -1,10 +1,9 @@
 import asyncio
 import json
 import os
-import random
 import re
 import time
-from typing import List, Optional
+from typing import List, Dict
 
 import aioprocessing
 import asyncpg
@@ -21,16 +20,6 @@ from pg_anon.common import (
 
 
 SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
-
-
-class TaggedFields:
-    def __init__(
-        self, nspname: str, relname: str, column_name: str, column_comment: str
-    ):
-        self.nspname = nspname
-        self.relname = relname
-        self.column_name = column_name
-        self.column_comment = column_comment
 
 
 class FieldInfo:
@@ -66,49 +55,8 @@ class FieldInfo:
         )
 
 
-async def get_tagged_fields(conn_params) -> List[TaggedFields]:
-    """Get fields tagged sens and nosens."""
-    query = """
-    SELECT
-        nspname AS schema_name,
-        relname AS table_name,
-        attname AS column_name,
-        description AS column_comment
-    FROM
-        pg_description
-        JOIN pg_attribute ON pg_description.objoid = pg_attribute.attrelid
-                           AND pg_description.objsubid = pg_attribute.attnum
-        JOIN pg_class ON pg_class.oid = pg_attribute.attrelid
-        JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-    WHERE
-        pg_class.relkind = 'r' AND pg_attribute.attnum > 0 AND NOT pg_attribute.attisdropped
-        and (description like '%:sens%' OR description like '%:nosens%')
-    ORDER BY
-        nspname,
-        relname,
-        attname;
-    """
-    db_conn = await asyncpg.connect(**conn_params)
-    try:
-        query_res = await db_conn.fetch(query)
-    finally:
-        await db_conn.close()
-    tagged_fields = [
-        TaggedFields(
-            nspname=record["schema_name"],
-            relname=record["table_name"],
-            column_name=record["column_name"],
-            column_comment=record["column_comment"],
-        )
-        for record in query_res
-    ]
-    return tagged_fields
-
-
 def check_skip_fields(ctx, fld):
-    if "skip_rules" not in ctx.dictionary_obj:
-        return True
-    for v in ctx.dictionary_obj["skip_rules"]:
+    for v in ctx.meta_dictionary_obj["skip_rules"]:
         schema_match = False
         tbl_match = False
         fld_match = False
@@ -188,50 +136,91 @@ async def generate_scan_objs(ctx):
     query_res = await db_conn.fetch(query)
     await db_conn.close()
 
-    return [
-        FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
-    ]
+    return {
+        fld['obj_id']: FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
+    }
 
 
-async def prepare_dictionary_obj(ctx):
-    ctx.dictionary_obj["data_const"]["constants"] = set(
-        ctx.dictionary_obj["data_const"]["constants"]
+def prepare_meta_dictionary_obj(ctx):
+    ctx.meta_dictionary_obj["data_const"]["constants"] = set(
+        ctx.meta_dictionary_obj["data_const"]["constants"]
     )
 
     regex_for_compile = []
-    for v in ctx.dictionary_obj["data_regex"]["rules"]:
+    for v in ctx.meta_dictionary_obj["data_regex"]["rules"]:
         regex_for_compile.append(re.compile(v))
 
-    ctx.dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
+    ctx.meta_dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
 
     regex_for_compile = []
-    for v in ctx.dictionary_obj["field"]["rules"]:
+    for v in ctx.meta_dictionary_obj["field"]["rules"]:
         regex_for_compile.append(re.compile(v))
 
-    ctx.dictionary_obj["field"]["rules"] = regex_for_compile.copy()
+    ctx.meta_dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
 
-async def check_sensitive_fld_names(ctx, fields_info: List[FieldInfo]):
-    for field_info in fields_info:
-        if "rules" in ctx.dictionary_obj["field"]:
-            for rule in ctx.dictionary_obj["field"]["rules"]:
-                if re.search(rule, field_info.column_name) is not None:
-                    ctx.logger.debug(
-                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                        % (str(rule), str(field_info))
-                    )
-                    # objs.remove(v)
-                    ctx.create_dict_matches[field_info.obj_id] = field_info
+def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
+    """
+    Scanning fields by names and removes matches according to dict rules
 
-        if "constants" in ctx.dictionary_obj["field"]:
-            for rule in ctx.dictionary_obj["field"]["constants"]:
-                if rule == field_info.column_name:
-                    ctx.logger.debug(
-                        '!!! ------> check_sensitive_fld_names: match by "%s", removed %s'
-                        % (str(rule), str(field_info))
-                    )
-                    fields_info.remove(field_info)
-                    ctx.create_dict_matches[field_info.obj_id] = field_info
+    Priorities of rules:
+        - prepared-sens-dict-file
+        - meta-dict-file
+        - prepared-no-sens-dict-file
+    """
+
+    for obj_id, field_info in fields_info.copy().items():
+        matched: bool = False
+
+        if "dictionary" in ctx.prepared_dictionary_obj:
+            for rule in ctx.prepared_dictionary_obj["dictionary"]:
+                if (rule['schema'] == field_info.nspname and
+                    rule['table'] == field_info.relname and
+                    field_info.column_name in rule['fields']
+                ):
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
+                    matched = True
+                    break
+
+        if matched:
+            continue
+
+        for rule in ctx.meta_dictionary_obj["field"]["rules"]:
+            if re.search(rule, field_info.column_name) is not None:
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
+                matched = True
+                break
+
+        if matched:
+            continue
+
+        for rule in ctx.meta_dictionary_obj["field"]["constants"]:
+            if rule == field_info.column_name:
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_sens_matches[obj_id] = field_info
+                matched = True
+                break
+
+        if matched:
+            continue
+
+        for rule in ctx.meta_dictionary_obj["no_sens_dictionary"]:
+            if (rule['schema'] == field_info.nspname and
+                rule['table'] == field_info.relname and
+                field_info.column_name in rule['fields']
+            ):
+                if obj_id in fields_info:
+                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as insensitive by "{rule}", removed {field_info}')
+                    del fields_info[obj_id]
+                    ctx.create_dict_no_sens_matches[obj_id] = field_info
+                break
 
 
 def check_sensitive_data_in_fld(
@@ -305,7 +294,6 @@ async def scan_obj_func(
     ctx,
     pool,
     field_info: FieldInfo,
-    tagged_fields: List[Optional[TaggedFields]],
     scan_mode: ScanMode,
     dictionary_obj,
     scan_partial_rows,
@@ -322,21 +310,9 @@ async def scan_obj_func(
         return None
 
     res = {}
-    scanning_flag = True
     try:
-        for field in tagged_fields:
-            if (
-                field.nspname == field_info.nspname
-                and field.relname == field_info.relname
-                and field.column_name == field_info.column_name
-            ):
-                if ":sens" in field.column_comment:
-                    res[field_info.obj_id] = field_info
-                scanning_flag = False
-                break
-
         async with pool.acquire() as db_conn:
-            if scan_mode == ScanMode.PARTIAL and scanning_flag:
+            if scan_mode == ScanMode.PARTIAL:
                 fld_data = await db_conn.fetch(
                     """
                         SELECT distinct(substring(\"%s\"::text, 1, 8196))
@@ -356,11 +332,11 @@ async def scan_obj_func(
                     ctx,
                     name,
                     dictionary_obj,
-                    ctx.create_dict_matches,
+                    ctx.create_dict_sens_matches,
                     field_info,
                     setof_to_list(fld_data),
                 )
-            elif scan_mode == ScanMode.FULL and scanning_flag:
+            elif scan_mode == ScanMode.FULL:
                 async with db_conn.transaction():
                     cur = await db_conn.cursor(
                         """
@@ -382,7 +358,7 @@ async def scan_obj_func(
                             ctx,
                             name,
                             dictionary_obj,
-                            ctx.create_dict_matches,
+                            ctx.create_dict_sens_matches,
                             field_info,
                             setof_to_list(fld_data),
                         )
@@ -428,7 +404,6 @@ def process_impl(
         ctx.logger.info(
             "============> Started collecting list_tagged_fields in mode: create-dict"
         )
-        tagged_fields = await get_tagged_fields(conn_params)
         ctx.logger.info(
             "<============ Finished collecting list_tagged_fields in mode: create-dict"
         )
@@ -448,9 +423,8 @@ def process_impl(
                     ctx,
                     pool,
                     field_info,
-                    tagged_fields,
                     ctx.args.scan_mode,
-                    ctx.dictionary_obj,
+                    ctx.meta_dictionary_obj,
                     ctx.args.scan_partial_rows,
                 )
             )
@@ -497,7 +471,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
 
     p = aioprocessing.AioProcess(
         target=process_impl,
-        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.processes),
+        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.threads),
     )
     p.start()
     res = None
@@ -519,12 +493,12 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
     return res
 
 
-def add_metadict_rule(dictionary_obj: dict, field_info: FieldInfo, anon_rules: dict):
+def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
     hash_func = (
         "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
     )
 
-    for fld_type, func in dictionary_obj["funcs"].items():
+    for fld_type, func in meta_dictionary_obj["funcs"].items():
         if str(field_info.type).find(fld_type) > -1:
             hash_func = func
 
@@ -532,72 +506,98 @@ def add_metadict_rule(dictionary_obj: dict, field_info: FieldInfo, anon_rules: d
         hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
     )
 
-    if field_info.tbl_id not in anon_rules:
-        anon_rules[field_info.tbl_id] = {
+    if field_info.tbl_id not in prepared_sens_dict_rules:
+        prepared_sens_dict_rules[field_info.tbl_id] = {
             "schema": field_info.nspname,
             "table": field_info.relname,
             "fields": {field_info.column_name: res_hash_func},
         }
     else:
-        anon_rules[field_info.tbl_id]["fields"].update(
+        prepared_sens_dict_rules[field_info.tbl_id]["fields"].update(
             {field_info.column_name: res_hash_func}
         )
-    return anon_rules
+    return prepared_sens_dict_rules
+
+
+def prepare_no_sens_dict_rule(field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
+    if field_info.tbl_id not in prepared_no_sens_dict_rules:
+        prepared_no_sens_dict_rules[field_info.tbl_id] = {
+            "schema": field_info.nspname,
+            "table": field_info.relname,
+            "fields": [field_info.column_name],
+        }
+    else:
+        prepared_no_sens_dict_rules[field_info.tbl_id]["fields"].append(field_info.column_name)
+    return prepared_no_sens_dict_rules
 
 
 async def create_dict_impl(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
 
-    fields_info: List[FieldInfo] = await generate_scan_objs(ctx)
+    fields_info: Dict[str, FieldInfo] = await generate_scan_objs(ctx)
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 
-    await check_sensitive_fld_names(ctx, fields_info)  # fill ctx.create_dict_matches
-
-    # objs_prepared = recordset_to_list(fields_info)
-    random.shuffle(fields_info)
-    fields_info_chunks = list(chunkify(fields_info, ctx.args.threads))
-
-    tasks = []
-    for idx, fields_info_chunk in enumerate(fields_info_chunks):
-        tasks.append(
-            asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
-        )
-    await asyncio.wait(tasks)
+    scan_fields_by_names(ctx, fields_info)  # fill ctx.create_dict_sens_matches and ctx.create_dict_no_sens_matches
 
     # create output dict
-    output_dict = {}
-    output_dict["dictionary"] = []
-    anon_dict_rules = {}
+    prepared_sens_dict_rules = {}
+    need_prepare_no_sens_dict: bool = bool(ctx.args.output_no_sens_dict_file)
 
-    # ============================================================================================
-    # Fill results based on processes
-    # ============================================================================================
-    for v in tasks:
-        for res in v.result():
-            for field_info in res.values():
-                anon_dict_rules = add_metadict_rule(
-                    ctx.dictionary_obj, field_info, anon_dict_rules
-                )
+    if fields_info:
+        fields_info_chunks = list(chunkify(list(fields_info.values()), ctx.args.processes))
+
+        tasks = []
+        for idx, fields_info_chunk in enumerate(fields_info_chunks):
+            tasks.append(
+                asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
+            )
+        await asyncio.wait(tasks)
+
+        # ============================================================================================
+        # Fill results based on processes
+        # ============================================================================================
+        for v in tasks:
+            for res in v.result():
+                for field_info in res.values():
+                    prepared_sens_dict_rules = prepare_sens_dict_rule(
+                        ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
+                    )
+                    if need_prepare_no_sens_dict:
+                        del fields_info[field_info.obj_id]
 
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
     # ============================================================================================
-    for field_info in ctx.create_dict_matches.values():
-        anon_dict_rules = add_metadict_rule(
-            ctx.dictionary_obj, field_info, anon_dict_rules
+    for field_info in ctx.create_dict_sens_matches.values():
+        prepared_sens_dict_rules = prepare_sens_dict_rule(
+            ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
         )
     # ============================================================================================
 
-    for _, v in anon_dict_rules.items():
-        output_dict["dictionary"].append(v)
+    output_sens_dict = {"dictionary": list(prepared_sens_dict_rules.values())}
+    output_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_sens_dict_file)
+    with open(output_sens_dict_file_name, "w") as file:
+        file.write(json.dumps(output_sens_dict, indent=4))
 
-    output_dict_file = open(
-        os.path.join(ctx.current_dir, "dict", ctx.args.output_dict_file), "w"
-    )
-    output_dict_file.write(json.dumps(output_dict, indent=4))
-    output_dict_file.close()
+    if need_prepare_no_sens_dict:
+        prepared_no_sens_dict_rules = {}
+
+        for field_info in ctx.create_dict_no_sens_matches.values():
+            prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
+                field_info, prepared_no_sens_dict_rules
+            )
+
+        for field_info in fields_info.values():
+            prepared_no_sens_dict_rules = prepare_no_sens_dict_rule(
+                field_info, prepared_no_sens_dict_rules
+            )
+
+        output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
+        output_no_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_no_sens_dict_file)
+        with open(output_no_sens_dict_file_name, "w") as file:
+            file.write(json.dumps(output_no_sens_dict, indent=4))
 
     return result
 
@@ -608,13 +608,10 @@ async def create_dict(ctx):
     ctx.logger.info("-------------> Started create_dict mode")
 
     try:
-        dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
-        )
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        ctx.dictionary_obj = eval(ctx.dictionary_content)
-        await prepare_dictionary_obj(ctx)
+        ctx.read_meta_dict()
+        prepare_meta_dictionary_obj(ctx)
+        if ctx.args.prepared_sens_dict_files:
+            ctx.read_prepared_dict()
     except:
         ctx.logger.error("<------------- create_dict failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL

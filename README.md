@@ -193,25 +193,31 @@ python pg_anon.py --mode init \
 To create the dictionary:
 
 ```commandline
-python pg_anon.py --mode create-dict \
-                  --db-user postgres \
-                  --db-user-password postgres \
-                  --db-name test_source_db \
-                  --dict-file test_meta_dict.py \
-                  --output-dict-file test_dict_output.py \
+python pg_anon.py --mode=create-dict \
+                  --db-user=postgres \
+                  --db-user-password=postgres \
+                  --db-name=test_source_db \
+                  --meta-dict-file=test_meta_dict.py \
+                  --prepared-sens-dict-file=test_sens_dict_output_previous_use.py \
+                  --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
+                  --output-sens-dict-file=test_sens_dict_output.py \
+                  --output-no-sens-dict-file=test_no_sens_dict_output.py \
                   --processes 2
 ```
 
-| Option                | Description                                                                                 |
-|-----------------------|---------------------------------------------------------------------------------------------|
-| `--dict-file`         | Specify the dictionary file with data about anonymization                                   |
-| `--output-dict-file`  | Output file will be saved to this value                                                     |
-| `--scan-mode`         | defines whether to scan all data or only part of it ["full", "partial"] (default "partial") |
-| `--scan-partial-rows` | In `--scan-mode partial` defines amount of rows to scan (default 10000)                     |
+| Option                         | Description                                                                                                                                                  |
+|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--meta-dict-file`             | Input file or file list with scan rules of sensitive and not sensitive fields. In collision case, priority has first file in list                            |
+| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually (Optional)        |
+| `--prepared-no-sens-dict-file` | Input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually (Optional) |
+| `--output-sens-dict-file`      | Output file with sensitive fields will be saved to this value                                                                                                |
+| `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                                 |
+| `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                                  |
+| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000)                                                                                      |
 
-#### Requirements for input --dict-file (metadict):
+#### Requirements for input --meta-dict-file (metadict):
 
-Input metadict .py file should contain that type of structure:
+Input metadict.py file should contain that type of structure:
 ```python
 var = {
     "field": {  # Which fields to anonymize without scanning the content
@@ -280,7 +286,7 @@ var = {
                      --db-user postgres \
                      --db-user-password postgres \
                      --db-name test_source_db \
-                     --dict-file test_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 2. To create only structure dump:
@@ -292,7 +298,7 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_struct_dump \
-                     --dict-file test_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 3. To create only data dump:
@@ -304,20 +310,21 @@ var = {
                      --db-user-password postgres \
                      --db-name test_source_db \
                      --output-dir test_sync_data_dump \
-                     --dict-file test_dict_output.py
+                     --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
    This mode could be useful for scheduling the database synchronization, for example with `cron`.
 
 Possible options in mode=dump:
 
-| Option               | Description                                                                                  |
-|----------------------|----------------------------------------------------------------------------------------------|
-| `--validate-dict`    | Validate dictionary, show the tables and run SQL queries without data export (default false) |
-| `--validate-full`    | Same as `--validate-dict` + data export with limit (default false)                           |
-| `--clear-output-dir` | In dump mode clears output dict from previous dump or another files. (default true)          |
-| `--pg-dump`          | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                            |
-| `--output-dir`       | Output directory for dump files. (default "")                                                |
+| Option                         | Description                                                                                                                                       |
+|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually        |
+| `--validate-dict`              | Validate dictionary, show the tables and run SQL queries without data export (default false)                                                      |
+| `--validate-full`              | Same as `--validate-dict` + data export with limit (default false)                                                                                |
+| `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                               |
+| `--pg-dump`                    | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                 |
+| `--output-dir`                 | Output directory for dump files. (default "")                                                                                                     |
 
 ### Run restore mode
 

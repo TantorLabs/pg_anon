@@ -407,17 +407,12 @@ async def validate_restore(ctx):
     ctx.logger.info("-------------> Started validate_restore")
 
     try:
-        dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
-        )
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        dictionary_obj = eval(ctx.dictionary_content)
+        ctx.read_prepared_dict()
     except:
         ctx.logger.error(exception_helper(show_traceback=True))
         return [], {}
 
-    if "validate_tables" in dictionary_obj:
+    if "validate_tables" in ctx.prepared_dictionary_obj:
         db_conn = await asyncpg.connect(**ctx.conn_params)
         db_objs = await db_conn.fetch(
             """
@@ -436,7 +431,7 @@ async def validate_restore(ctx):
             tables_in_target_db.append(item[0] + "." + item[1])
 
         tables_in_dict = []
-        for d in dictionary_obj["validate_tables"]:
+        for d in ctx.prepared_dictionary_obj["validate_tables"]:
             tables_in_dict.append(d["schema"] + "." + d["table"])
 
         diff_l = list(set(tables_in_target_db) - set(tables_in_dict))

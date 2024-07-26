@@ -29,7 +29,7 @@ async def run_pg_dump(ctx, section):
     specific_tables = []
     if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
         tmp_list = []
-        for v in ctx.dictionary_obj["dictionary"]:
+        for v in ctx.prepared_dictionary_obj["dictionary"]:
             tmp_list.append(["-t", '"%s"."%s"' % (v["schema"], v["table"])])
         specific_tables = [item for sublist in tmp_list for item in sublist]
 
@@ -200,14 +200,14 @@ async def generate_dump_queries(ctx, db_conn):
         table_name_full = f'"{table_schema}"."{table_name}"'
 
         a_obj = find_obj_in_dict(
-            ctx.dictionary_obj["dictionary"], table_schema, table_name
+            ctx.prepared_dictionary_obj["dictionary"], table_schema, table_name
         )
         found_white_list = not (a_obj is None)
 
         # dictionary_exclude has the highest priority
-        if "dictionary_exclude" in ctx.dictionary_obj:
+        if "dictionary_exclude" in ctx.prepared_dictionary_obj:
             exclude_obj = find_obj_in_dict(
-                ctx.dictionary_obj["dictionary_exclude"], table_schema, table_name
+                ctx.prepared_dictionary_obj["dictionary_exclude"], table_schema, table_name
             )
             found = not (exclude_obj is None)
             if found and not found_white_list:
@@ -396,10 +396,13 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     metadata["seq_lastvals"] = seq_res_dict
     metadata["pg_version"] = ctx.pg_version
     metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-    metadata["dictionary_content_hash"] = sha256(
-        ctx.dictionary_content.encode("utf-8")
-    ).hexdigest()
-    metadata["dict_file"] = ctx.args.dict_file
+
+    metadata["dictionary_content_hash"] = {}
+    for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
+        metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
+            dictionary_content.encode("utf-8")
+        ).hexdigest()
+    metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
 
     for v in zipped_list:
         files[v[1]].update({"rows": ctx.task_results[v[0]]})
@@ -428,28 +431,18 @@ async def make_dump(ctx):
     ctx.logger.info("-------------> Started dump mode")
 
     try:
-        dictionary_file = open(
-            os.path.join(ctx.current_dir, "dict", ctx.args.dict_file), "r"
-        )
-        ctx.dictionary_content = dictionary_file.read()
-        dictionary_file.close()
-        ctx.dictionary_obj = eval(ctx.dictionary_content)
+        ctx.read_prepared_dict()
     except:
         ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
         result.result_code = ResultCode.FAIL
         return result
 
     try:
-        if (
-            ctx.args.output_dir.find("""/""") != -1
-            or ctx.args.output_dir.find("""\\""") != -1
-        ):
-            output_dir = ctx.args.output_dir
         if len(ctx.args.output_dir) > 1:
             output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
         else:
             output_dir = os.path.join(
-                ctx.current_dir, "output", os.path.splitext(ctx.args.dict_file)[0]
+                ctx.current_dir, "output", os.path.splitext(ctx.args.prepared_sens_dict_files[0])[0]
             )
 
         ctx.args.output_dir = output_dir
@@ -519,15 +512,20 @@ async def make_dump(ctx):
         metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         metadata["pg_version"] = ctx.pg_version
         metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
-        metadata["dictionary_content_hash"] = sha256(
-            ctx.dictionary_content.encode("utf-8")
-        ).hexdigest()
-        metadata["dict_file"] = ctx.args.dict_file
+
+        metadata["dictionary_content_hash"] = {}
+        for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
+            metadata["dictionary_content_hash"][dictionary_file_name] = sha256(
+                dictionary_content.encode("utf-8")
+            ).hexdigest()
+
+        metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
+
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
 
         tmp_list = []
-        for v in ctx.dictionary_obj["dictionary"]:
+        for v in ctx.prepared_dictionary_obj["dictionary"]:
             tmp_list.append(v["schema"])
         metadata["schemas"] = list(set(tmp_list))
 

@@ -99,12 +99,21 @@ class MainRoutine:
 
             if self.args.mode == AnonMode.INIT:
                 log_file = str(self.args.mode) + ".log"
+            elif self.args.mode == AnonMode.CREATE_DICT:
+                log_file = "%s_%s.log" % (
+                    str(self.args.mode),
+                    str(
+                        os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
+                        if self.args.meta_dict_files
+                        else os.path.basename(self.args.input_dir)
+                    ),
+                )
             else:
                 log_file = "%s_%s.log" % (
                     str(self.args.mode),
                     str(
-                        os.path.splitext(os.path.basename(self.args.dict_file))[0]
-                        if self.args.dict_file != ""
+                        os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
+                        if self.args.prepared_sens_dict_files
                         else os.path.basename(self.args.input_dir)
                     ),
                 )

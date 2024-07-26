@@ -6,6 +6,7 @@ import subprocess
 import sys
 import traceback
 from enum import Enum
+from typing import List, Optional
 
 from pkg_resources import parse_version as version
 
@@ -152,3 +153,10 @@ def to_json(obj, formatted=False):
         )
     else:
         return json.dumps(obj, default=type_adapter, ensure_ascii=False).encode("utf8")
+
+
+def parse_comma_separated_list(value: str = None) -> Optional[List[str]]:
+    if not value:
+        return None
+
+    return [item for item in value.split(',')]
