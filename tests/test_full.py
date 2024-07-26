@@ -154,6 +154,8 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db + "_4")
         await DBOperations.init_db(db_conn, params.test_target_db + "_5")
         await DBOperations.init_db(db_conn, params.test_target_db + "_6")
+        await DBOperations.init_db(db_conn, params.test_target_db + "_7")  # for PGAnonValidateUnitTest 04
+        await DBOperations.init_db(db_conn, params.test_target_db + "_8")  # for PGAnonValidateUnitTest 05
         await db_conn.close()
 
         sourse_db_params = ctx.conn_params.copy()
@@ -844,9 +846,55 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_validate(self):
-        self.assertTrue("test_06_sync_struct" in passed_stages)
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertTrue(res.result_code == ResultCode.DONE)
 
+    async def test_02_sync_struct_for_validate(self):
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--threads=%s" % params.test_threads,
+                "--mode=sync-struct-dump",
+                "--dict-file=test_sync_struct.py",
+                "--verbose=debug",
+                "--clear-output-dir",
+                "--debug",
+                "--output-dir=test_02_sync_struct_for_validate",
+            ]
+        )
+
+        res_dump = await MainRoutine(args).run()
+        self.assertTrue(res_dump.result_code == ResultCode.DONE)
+
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_target_db + "_7",
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--threads=%s" % params.test_threads,
+                "--mode=sync-struct-restore",
+                "--input-dir=test_02_sync_struct_for_validate",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res_restore = await MainRoutine(args).run()
+        if res_restore.result_code == ResultCode.DONE and res_dump.result_code == ResultCode.DONE:
+            passed_stages.append("test_02_sync_struct_for_validate")
+        self.assertTrue(res_restore.result_code == ResultCode.DONE)
+
+    async def test_03_validate_dict(self):
+        if "test_02_sync_struct_for_validate" not in passed_stages:
+            self.assertTrue(False)
         parser = Context.get_arg_parser()
         args = parser.parse_args(
             [
@@ -861,18 +909,19 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--clear-output-dir",
                 "--verbose=debug",
                 "--debug",
-                "--validate-dict",
-                "--output-dir=test_01_validate",
+                "--dbg-stage-1-validate-dict",
+                "--output-dir=test_03_validate_dict",
             ]
         )
 
         res = await MainRoutine(args).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_01_validate")
+        passed_stages.append("test_03_validate_dict")
 
-    async def test_02_validate_full(self):
-        self.assertTrue("test_01_validate" in passed_stages)
 
+    async def test_04_validate_data(self):
+        if "test_03_validate_dict" not in passed_stages:
+            self.assertTrue(False)
         parser = Context.get_arg_parser()
         args = parser.parse_args(
             [
@@ -887,14 +936,81 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--clear-output-dir",
                 "--verbose=debug",
                 "--debug",
-                "--validate-full",
-                "--output-dir=test_02_validate_full",
+                "--dbg-stage-2-validate-data",
+                "--output-dir=test_04_validate_data",
             ]
         )
 
-        res = await MainRoutine(args).run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_02_validate_full")
+        res_dump = await MainRoutine(args).run()
+        self.assertTrue(res_dump.result_code == ResultCode.DONE)
+
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_target_db + "_7",
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=sync-data-restore",
+                "--threads=%s" % params.test_threads,
+                "--verbose=debug",
+                "--debug",
+                "--input-dir=test_04_validate_data",
+            ]
+        )
+
+        res_restore = await MainRoutine(args).run()
+        self.assertTrue(res_restore.result_code == ResultCode.DONE)
+
+        if res_dump.result_code == ResultCode.DONE and res_restore.result_code == ResultCode.DONE:
+            passed_stages.append("test_04_validate_data")
+
+    async def test_05_validate_full(self):
+        if "test_04_validate_data" not in passed_stages:
+            self.assertTrue(False)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=dump",
+                "--dict-file=test.py",
+                "--threads=%s" % params.test_threads,
+                "--clear-output-dir",
+                "--verbose=debug",
+                "--debug",
+                "--dbg-stage-3-validate-full",
+                "--output-dir=test_05_validate_full",
+            ]
+        )
+
+        res_dump = await MainRoutine(args).run()
+        self.assertTrue(res_dump.result_code == ResultCode.DONE)
+
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_target_db + "_8",
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=restore",
+                "--threads=%s" % params.test_threads,
+                "--verbose=debug",
+                "--debug",
+                "--input-dir=test_05_validate_full",
+            ]
+        )
+
+        res_restore = await MainRoutine(args).run()
+        self.assertTrue(res_restore.result_code == ResultCode.DONE)
+
+        if res_dump.result_code == ResultCode.DONE and res_restore.result_code == ResultCode.DONE:
+            passed_stages.append("test_05_validate_full")
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -1049,7 +1165,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user-password={params.test_db_user_password}",
                 f"--threads={params.test_threads}",
                 "--mode=restore",
-                f"--input-dir={self.target_sens_dict.split(".")[0]}",
+                f"--input-dir={self.target_sens_dict.split('.')[0]}",
                 "--drop-custom-check-constr",
                 "--verbose=debug",
                 "--debug",
