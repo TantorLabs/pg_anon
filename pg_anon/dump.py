@@ -403,8 +403,6 @@ async def make_dump_impl(ctx, db_conn, sn_id):
             dictionary_content.encode("utf-8")
         ).hexdigest()
     metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
-    if ctx.args.prepared_no_sens_dict_files:
-        metadata["prepared_no_sens_dict_files"] = ','.join(ctx.args.prepared_no_sens_dict_files)
 
     for v in zipped_list:
         files[v[1]].update({"rows": ctx.task_results[v[0]]})
