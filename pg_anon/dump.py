@@ -520,8 +520,6 @@ async def make_dump(ctx):
             ).hexdigest()
 
         metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
-        if ctx.args.prepared_no_sens_dict_files:
-            metadata["prepared_no_sens_dict_files"] = ','.join(ctx.args.prepared_no_sens_dict_files)
 
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
