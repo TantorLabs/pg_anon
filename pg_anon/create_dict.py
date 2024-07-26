@@ -181,6 +181,7 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
                     ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
                     del fields_info[obj_id]
                     ctx.create_dict_sens_matches[obj_id] = field_info
+                    matched = True
                     break
 
         if matched:
