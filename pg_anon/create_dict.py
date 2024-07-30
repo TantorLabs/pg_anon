@@ -3,7 +3,7 @@ import json
 import os
 import re
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional, Callable
 
 import aioprocessing
 import asyncpg
@@ -16,6 +16,7 @@ from pg_anon.common import (
     chunkify,
     exception_helper,
     setof_to_list,
+    get_dict_rule_for_table,
 )
 
 
@@ -23,6 +24,8 @@ SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
 
 class FieldInfo:
+    hash_func: Optional[Callable] = None  # uses for --mode=create-dict with --prepared-sens-dict-file
+
     def __init__(
         self,
         nspname: str,
@@ -171,18 +174,40 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
 
     for obj_id, field_info in fields_info.copy().items():
         matched: bool = False
+        include_rule: Optional[Dict] = None
+        exclude_rule: Optional[Dict] = None
 
         if "dictionary" in ctx.prepared_dictionary_obj:
-            for rule in ctx.prepared_dictionary_obj["dictionary"]:
-                if (rule['schema'] == field_info.nspname and
-                    rule['table'] == field_info.relname and
-                    field_info.column_name in rule['fields']
-                ):
-                    ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
-                    del fields_info[obj_id]
-                    ctx.create_dict_sens_matches[obj_id] = field_info
-                    matched = True
-                    break
+            include_rule = get_dict_rule_for_table(
+                dictionary_obj=ctx.prepared_dictionary_obj["dictionary"],
+                schema=field_info.nspname,
+                table=field_info.relname,
+            )
+
+        if "dictionary_exclude" in ctx.prepared_dictionary_obj:
+            exclude_rule = get_dict_rule_for_table(
+                dictionary_obj=ctx.prepared_dictionary_obj["dictionary_exclude"],
+                schema=field_info.nspname,
+                table=field_info.relname,
+            )
+
+        # include_rule + has field in include_rule => sensitive field
+        # not include_rule + exclude_rule => not sensitive field
+        # not include_rule + not exclude_rule => unknown. Go to next rules priority -> check by meta-dict
+        if include_rule and field_info.column_name in include_rule['fields']:
+            ctx.logger.debug(
+                f'!!! ------> check_sensitive_fld_names: match as sensitive by "{include_rule}", removed {field_info}')
+            del fields_info[obj_id]
+            field_info.hash_func = include_rule['fields'][field_info.column_name]
+            ctx.create_dict_sens_matches[obj_id] = field_info
+            matched = True
+
+        elif exclude_rule:
+            ctx.logger.debug(
+                f'!!! ------> check_sensitive_fld_names: match as insensitive by "{exclude_rule}", removed {field_info}')
+            del fields_info[obj_id]
+            ctx.create_dict_no_sens_matches[obj_id] = field_info
+            matched = True
 
         if matched:
             continue
@@ -494,17 +519,16 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
 
 
 def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
-    hash_func = (
-        "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
-    )
+    res_hash_func = field_info.hash_func
 
-    for fld_type, func in meta_dictionary_obj["funcs"].items():
-        if str(field_info.type).find(fld_type) > -1:
-            hash_func = func
+    if res_hash_func is None:
+        hash_func = "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
 
-    res_hash_func = (
-        hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
-    )
+        for fld_type, func in meta_dictionary_obj["funcs"].items():
+            if str(field_info.type).find(fld_type) > -1:
+                hash_func = func
+
+        res_hash_func = hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
 
     if field_info.tbl_id not in prepared_sens_dict_rules:
         prepared_sens_dict_rules[field_info.tbl_id] = {

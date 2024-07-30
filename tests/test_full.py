@@ -1049,7 +1049,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user-password={params.test_db_user_password}",
                 f"--threads={params.test_threads}",
                 "--mode=restore",
-                f"--input-dir={self.target_sens_dict.split(".")[0]}",
+                f"--input-dir={self.target_sens_dict.split('.')[0]}",
                 "--drop-custom-check-constr",
                 "--verbose=debug",
                 "--debug",
