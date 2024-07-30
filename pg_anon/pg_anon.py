@@ -195,7 +195,9 @@ class MainRoutine:
                 AnonMode.SYNC_STRUCT_RESTORE,
             ):
                 result = await make_restore(self.ctx)
-                if self.ctx.args.mode != AnonMode.SYNC_STRUCT_RESTORE:
+                if (self.ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE)
+                        and not self.ctx.metadata["dbg_stage_2_validate_data"]
+                        and not self.ctx.metadata["dbg_stage_3_validate_full"]):
                     await run_analyze(self.ctx)
             elif self.ctx.args.mode == AnonMode.INIT:
                 result = await make_init(self.ctx)

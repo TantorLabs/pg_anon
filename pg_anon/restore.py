@@ -119,6 +119,8 @@ async def restore_table_data(
     table_name: str,
     sn_id: str,
 ):
+    if table_name == 'some_tbl':
+        x = 1
     ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
     if dump_file.endswith('.bin.gz'):
         extracted_file = f"{dump_file[:-7]}.bin"
@@ -147,6 +149,7 @@ async def restore_table_data(
             f"Exception in restore_obj_func:"
             f" {schema_name=}"
             f" {table_name=}"
+            f" {extracted_file=}"
             f"\n{exc=}"
         )
     finally:
@@ -357,6 +360,8 @@ async def make_restore(ctx):
         await run_pg_restore(ctx, "post-data")
 
     if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
+            # and not ctx.metadata["dbg_stage_2_validate_data"]
+            # and not ctx.metadata["dbg_stage_3_validate_full"]):
         await seq_init(ctx)
 
     await db_conn.close()
@@ -371,6 +376,7 @@ async def run_custom_query(ctx, pool, query):
     try:
         async with pool.acquire() as db_conn:
             await db_conn.execute(query)
+            ctx.logger.info("Execute query: %s" % query)
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
         raise Exception("Can't execute query: %s" % query)

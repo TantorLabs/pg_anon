@@ -79,6 +79,9 @@ async def run_pg_dump(ctx, section):
 async def get_dump_table(ctx, query: str, file_name: str, db_conn, output_dir: str):
     full_file_name = os.path.join(output_dir, file_name.split(".")[0])
     try:
+        if ctx.args.dbg_stage_1_validate_dict:
+            result = await db_conn.execute(query)
+            return result
         result = await db_conn.copy_from_query(
             query, output=f"{full_file_name}.bin", format="binary"
         )
@@ -380,8 +383,11 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     for v in seq_res:
         seq_name = v[3] + "." + v[4]
         seq_val = await db_conn.fetchval(
-            """select last_value from \"""" + v[3] + """\".\"""" + v[4] + '"'
+            f'select last_value from "{v[3]}"."{v[4]}"'
         )
+        if ((ctx.args.dbg_stage_2_validate_data or ctx.args.dbg_stage_3_validate_full)
+                and seq_val > int(ctx.validate_limit.split()[1])):
+            seq_val = 100
 
         for _, f in files.items():
             if v[0] == f["schema"] and v[1] == f["table"]:
@@ -434,8 +440,9 @@ async def make_dump_impl(ctx, db_conn, sn_id):
     else:
         metadata["dbg_stage_3_validate_full"] = False
 
-    with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
-        out_file.write(json.dumps(metadata, indent=4))
+    if not ctx.args.dbg_stage_1_validate_dict:
+        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
+            out_file.write(json.dumps(metadata, indent=4))
 
 
 async def make_dump(ctx):
