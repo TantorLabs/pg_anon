@@ -265,7 +265,7 @@ class Context:
             "--dbg-stage-2-validate-data",
             action="store_true",
             default=False,
-            help="""Validate data, show the tables and run SQL queries with data export""",
+            help="""Validate data, show the tables and run SQL queries with data export in prepared database""",
         )
         parser.add_argument(
             "--dbg-stage-3-validate-full",

@@ -848,7 +848,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
         res = await self.init_env()
-        self.assertTrue(res.result_code == ResultCode.DONE)
+        self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_sync_struct_for_validate(self):
         self.assertTrue("init_env" in passed_stages)
@@ -868,6 +868,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--clear-output-dir",
                 "--debug",
                 "--output-dir=test_02_sync_struct_for_validate",
+                "--dbg-stage-3-validate-full"  # for not allowing post-data
             ]
         )
 
@@ -952,9 +953,8 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=sync-data-restore",
-                # "--threads=%s" % params.test_threads,
-                "--processes=1",
-                "--threads=1",
+                "--threads=%s" % params.test_threads,
+                # "--threads=1",
                 "--verbose=debug",
                 "--debug",
                 "--input-dir=test_04_validate_data",
@@ -967,8 +967,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_04_validate_data")
 
     async def test_05_validate_full(self):
-        self.assertTrue("test_04_validate_data" not in passed_stages)
-        return
+        self.assertTrue("test_04_validate_data" in passed_stages)
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -979,7 +978,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--db-port=%s" % params.test_db_port,
                 "--db-user-password=%s" % params.test_db_user_password,
                 "--mode=dump",
-                "--prepared-sens-dict-file=test.py",
+                "--prepared-sens-dict-file=test_dbg_stages.py",
                 "--threads=%s" % params.test_threads,
                 "--clear-output-dir",
                 "--verbose=debug",
@@ -1520,6 +1519,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             float(tmp_results.res_test_02) < float(tmp_results.res_test_03) / 5
         )
 
+
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     args = {}
 
@@ -1599,6 +1599,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "PGAnonMaskUnitTest_target_tables", target_tables
             )
         )
+
 
 if __name__ == "__main__":
     unittest.main(exit=False)

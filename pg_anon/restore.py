@@ -119,9 +119,7 @@ async def restore_table_data(
     table_name: str,
     sn_id: str,
 ):
-    if table_name == 'some_tbl':
-        x = 1
-    ctx.logger.info(f"{'>':=>20} Started task copy_to_table {table_name}")
+    ctx.logger.info(f"{'>':=>20} Started task copy_to_table {schema_name}.{table_name}")
     if dump_file.endswith('.bin.gz'):
         extracted_file = f"{dump_file[:-7]}.bin"
     else:
@@ -132,8 +130,7 @@ async def restore_table_data(
 
     try:
         async with pool.acquire() as db_conn:
-            async with db_conn.transaction():
-                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            async with db_conn.transaction(isolation='repeatable_read'):
                 await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
 
                 result = await db_conn.copy_to_table(
@@ -155,7 +152,7 @@ async def restore_table_data(
     finally:
         os.remove(extracted_file)
 
-    ctx.logger.info(f"{'>':=>20} Finished task {str(table_name)}")
+    ctx.logger.info(f"{'>':=>20} Finished task {schema_name}.{str(table_name)}")
 
 
 async def make_restore_impl(ctx, sn_id):
@@ -360,8 +357,6 @@ async def make_restore(ctx):
         await run_pg_restore(ctx, "post-data")
 
     if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
-            # and not ctx.metadata["dbg_stage_2_validate_data"]
-            # and not ctx.metadata["dbg_stage_3_validate_full"]):
         await seq_init(ctx)
 
     await db_conn.close()
