@@ -6,7 +6,7 @@ import subprocess
 import sys
 import traceback
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from pkg_resources import parse_version as version
 
@@ -160,3 +160,45 @@ def parse_comma_separated_list(value: str = None) -> Optional[List[str]]:
         return None
 
     return [item for item in value.split(',')]
+
+
+def get_dict_rule_for_table(dictionary_obj: List[Dict], schema: str, table: str) -> Optional[Dict]:
+    result = None
+
+    for rule in dictionary_obj:
+        schema_matched = False
+        table_matched = False
+        schema_mask_matched = False
+        table_mask_matched = False
+
+        if "schema" in rule and schema == rule["schema"]:
+            schema_matched = True
+
+        if "table" in rule and table == rule["table"]:
+            table_matched = True
+
+        if schema_matched and table_matched:
+            return rule
+
+        if "schema_mask" in rule:
+            if rule["schema_mask"] == "*":
+                schema_mask_matched = True
+            elif re.search(rule["schema_mask"], schema) is not None:
+                schema_mask_matched = True
+
+        if "table_mask" in rule:
+            if rule["table_mask"] == "*":
+                table_mask_matched = True
+            elif re.search(rule["table_mask"], table) is not None:
+                table_mask_matched = True
+
+        if schema_mask_matched and table_matched:
+            result = rule
+
+        if schema_matched and table_mask_matched:
+            result = rule
+
+        if schema_mask_matched and table_mask_matched:
+            result = rule
+
+    return result

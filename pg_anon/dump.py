@@ -17,6 +17,7 @@ from pg_anon.common import (
     VerboseOptions,
     exception_helper,
     get_pg_util_version,
+    get_dict_rule_for_table,
 )
 
 DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
@@ -121,55 +122,6 @@ async def dump_obj_func(ctx, pool, task, sn_id, file_name):
     ctx.logger.info("<================ Finished task %s" % str(task))
 
 
-def find_obj_in_dict(dictionary_obj, schema, table):
-    result = None
-    for v in dictionary_obj:
-        schema_matched = False
-        table_matched = False
-        schema_mask_matched = False
-        table_mask_matched = False
-
-        if "schema" in v and schema == v["schema"]:
-            schema_matched = True
-
-        if "table" in v and table == v["table"]:
-            table_matched = True
-
-        if schema_matched and table_matched:
-            return v
-
-        if (
-                "schema_mask" in v
-                and v["schema_mask"] != "*"
-                and re.search(v["schema_mask"], schema) is not None
-        ):
-            schema_mask_matched = True
-
-        if (
-                "table_mask" in v
-                and v["table_mask"] != "*"
-                and re.search(v["table_mask"], table) is not None
-        ):
-            table_mask_matched = True
-
-        if "schema_mask" in v and v["schema_mask"] == "*":
-            schema_mask_matched = True
-
-        if "table_mask" in v and v["table_mask"] == "*":
-            table_mask_matched = True
-
-        if schema_mask_matched and table_matched:
-            result = v
-
-        if schema_matched and table_mask_matched:
-            result = v
-
-        if schema_mask_matched and table_mask_matched:
-            result = v
-
-    return result
-
-
 async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection):
     excluded_schemas_str = ", ".join(
         [f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]]
@@ -182,14 +134,11 @@ async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection
                 table_type = 'BASE TABLE'
         """
     db_objs = await db_conn.fetch(query_db_obj)
-    table_names = [
-        f'"{table_schema}"."{table_name}"' for table_schema, table_name in db_objs
-    ]
     return db_objs
 
 
 async def generate_dump_queries(ctx, db_conn):
-    db_objs = await get_tables_to_dump(
+    tables = await get_tables_to_dump(
         excluded_schemas=ctx.exclude_schemas, db_conn=db_conn
     )
     queries = []
@@ -198,24 +147,24 @@ async def generate_dump_queries(ctx, db_conn):
     included_objs = []  # for debug purposes
     excluded_objs = []  # for debug purposes
 
-    for table_schema, table_name in db_objs:
+    for table_schema, table_name in tables:
         table_name_full = f'"{table_schema}"."{table_name}"'
 
-        a_obj = find_obj_in_dict(
+        table_rule = get_dict_rule_for_table(
             ctx.prepared_dictionary_obj["dictionary"], table_schema, table_name
         )
-        found_white_list = not (a_obj is None)
+        found_white_list = table_rule is not None
 
         # dictionary_exclude has the highest priority
         if "dictionary_exclude" in ctx.prepared_dictionary_obj:
-            exclude_obj = find_obj_in_dict(
+            exclude_rule = get_dict_rule_for_table(
                 ctx.prepared_dictionary_obj["dictionary_exclude"], table_schema, table_name
             )
-            found = not (exclude_obj is None)
+            found = exclude_rule is not None
             if found and not found_white_list:
                 excluded_objs.append(
                     [
-                        exclude_obj,
+                        exclude_rule,
                         table_schema,
                         table_name,
                         "if found and not found_white_list",
@@ -232,7 +181,7 @@ async def generate_dump_queries(ctx, db_conn):
 
         if not found_white_list:
             included_objs.append(
-                [a_obj, table_schema, table_name, "if not found_white_list"]
+                [table_rule, table_schema, table_name, "if not found_white_list"]
             )
             # there is no table in the dictionary, so it will be transferred "as is"
             if (ctx.args.dbg_stage_1_validate_dict
@@ -247,21 +196,19 @@ async def generate_dump_queries(ctx, db_conn):
                 queries.append(query)
         else:
             included_objs.append(
-                [a_obj, table_schema, table_name, "if found_white_list"]
+                [table_rule, table_schema, table_name, "if found_white_list"]
             )
             # table found in dictionary
-            if "raw_sql" in a_obj:
+            if "raw_sql" in table_rule:
                 # the table is transferred using "raw_sql"
                 if (ctx.args.dbg_stage_1_validate_dict
                         or ctx.args.dbg_stage_2_validate_data
                         or ctx.args.dbg_stage_3_validate_full):
-                    query = a_obj["raw_sql"] + " " + ctx.validate_limit
+                    query = table_rule["raw_sql"] + " " + ctx.validate_limit
                     ctx.logger.info(str(query))
                     queries.append(query)
                 else:
-                    query = "%s" % (
-                        a_obj["raw_sql"]
-                    )
+                    query = table_rule["raw_sql"]
                     ctx.logger.info(str(query))
                     queries.append(query)
             else:
@@ -278,8 +225,8 @@ async def generate_dump_queries(ctx, db_conn):
                 sql_expr = ""
 
                 def check_fld(fld_name):
-                    if fld_name in a_obj["fields"]:
-                        return fld_name, a_obj["fields"][fld_name]
+                    if fld_name in table_rule["fields"]:
+                        return fld_name, table_rule["fields"][fld_name]
                     return None, None
 
                 for cnt, column_info in enumerate(fields_list):
