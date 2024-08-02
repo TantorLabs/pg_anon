@@ -177,10 +177,10 @@ Database configuration options:
 To init schema "anon_funcs", run pg_anon in 'init' mode:
 
 ```commandline
-python pg_anon.py --mode init \
-                  --db-user postgres \
-                  --db-user-password postgres \
-                  --db-name test_source_db
+python pg_anon.py --mode=init \
+                  --db-user=postgres \
+                  --db-user-password=postgres \
+                  --db-name=test_source_db
 ```
 
 ### Run create_dict mode
@@ -202,7 +202,7 @@ python pg_anon.py --mode=create-dict \
                   --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
                   --output-sens-dict-file=test_sens_dict_output.py \
                   --output-no-sens-dict-file=test_no_sens_dict_output.py \
-                  --processes 2
+                  --processes=2
 ```
 
 | Option                         | Description                                                                                                                                                  |
@@ -281,35 +281,35 @@ var = {
 1. To create the structure dump and data dump:
 
    ```commandline
-   python pg_anon.py --mode dump \
+   python pg_anon.py --mode=dump \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_source_db \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
                      --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 2. To create only structure dump:
 
    ```commandline
-   python pg_anon.py --mode sync-struct-dump \
+   python pg_anon.py --mode=sync-struct-dump \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_source_db \
-                     --output-dir test_sync_struct_dump \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_sync_struct_dump \
                      --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
 3. To create only data dump:
 
    ```commandline
-   python pg_anon.py --mode sync-data-dump \
+   python pg_anon.py --mode=sync-data-dump \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_source_db \
-                     --output-dir test_sync_data_dump \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_sync_data_dump \
                      --prepared-sens-dict-file=test_sens_dict_output.py
    ```
 
@@ -317,14 +317,15 @@ var = {
 
 Possible options in mode=dump:
 
-| Option                         | Description                                                                                                                                       |
-|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually        |
-| `--validate-dict`              | Validate dictionary, show the tables and run SQL queries without data export (default false)                                                      |
-| `--validate-full`              | Same as `--validate-dict` + data export with limit (default false)                                                                                |
-| `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                               |
-| `--pg-dump`                    | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                 |
-| `--output-dir`                 | Output directory for dump files. (default "")                                                                                                     |
+| Option                         | Description                                                                                                                                |
+|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
+| `--dbg-stage-1-validate-dict`  | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
+| `--dbg-stage-2-validate-data`  | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
+| `--dbg-stage-3-validate-full`  | Makes all logic with "limit" in SQL queries (default false)                                                                                |
+| `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
+| `--pg-dump`                    | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
+| `--output-dir`                 | Output directory for dump files. (default "")                                                                                              |
 
 ### Run restore mode
 
@@ -338,39 +339,39 @@ Possible options in mode=dump:
    _This mode requires the dump output, created in `--mode=dump`._
 
    ```commandline
-   python pg_anon.py --mode restore \
+   python pg_anon.py --mode=restore \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_target_db \
-                     --input-dir test_dict_output \
-                     --verbose debug
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db \
+                     --input-dir=test_dict_output \
+                     --verbose=debug
    ```
 
 2. Restore structure only:  
    _This mode requires the dump output, created in `--mode=sync-struct-dump`._
 
    ```commandline
-   python pg_anon.py --mode sync-struct-restore \
+   python pg_anon.py --mode=sync-struct-restore \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_target_db \
-                     --input-dir test_sync_struct_dump \
-                     --verbose debug
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db \
+                     --input-dir=test_sync_struct_dump \
+                     --verbose=debug
    ```
 
 3. Restore data only:  
    _This mode requires the dump output, created in `--mode=sync-data-dump`._
 
    ```commandline
-   python pg_anon.py --mode sync-data-restore \
+   python pg_anon.py --mode=sync-data-restore \
                      --db-host=127.0.0.1 \
-                     --db-user postgres \
-                     --db-user-password postgres \
-                     --db-name test_target_db \
-                     --input-dir test_sync_data_dump \
-                     --verbose debug
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db \
+                     --input-dir=test_sync_data_dump \
+                     --verbose=debug
    ```
 
 Possible options in `--mode restore`:
@@ -428,6 +429,141 @@ from (
 	    }
 	]
 ```
+
+### Debug stages in dump and restore modes
+
+#### Debug stages:
+
+1. Stage 1: validate dict
+
+This stage validate dictionary, show the tables and run SQL queries without data export into the disk or database.
+So if program works without errors => the stage is passed.
+
+```commandline
+   python pg_anon.py --mode=dump \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_dbg_stages \
+                     --prepared-sens-dict-file=test_dbg_stages.py \
+                     --clear-output-dir \
+                     --verbose=debug \
+                     --debug \
+                     --dbg-stage-1-validate-dict
+   ```
+
+2. Stage 2: validate data
+
+Validate data, show the tables and run SQL queries with data export and limit 100 in prepared database.
+This stage requires database with all structure with only pre-data condition, which described in --prepared-sens-dict-file.
+
+- If you want to create the database with required structure, just run:
+
+One-time structure dump:
+
+```commandline
+   python pg_anon.py --mode=sync-struct-dump \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_stage_2 \
+                     --prepared-sens-dict-file=test_dbg_stages.py \
+                     --clear-output-dir \
+                     --verbose=debug \
+                     --debug \
+                     --dbg-stage-3-validate-full
+   ```
+
+And then as many times as you want structure restore:
+
+```commandline
+   su - postgres -c "psql -U postgres -d postgres -c \"DROP DATABASE IF EXISTS test_target_db_7\""
+   su - postgres -c "psql -U postgres -d postgres -c \"CREATE DATABASE test_target_db_7\""
+   python pg_anon.py --mode=sync-struct-restore \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db_7 \
+                     --input-dir=test_stage_2 \
+                     --verbose=debug \
+                     --debug 
+   ```
+
+- Validate data stage in dump:
+
+```commandline
+   python pg_anon.py --mode=dump \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_dbg_stages \
+                     --prepared-sens-dict-file=test_dbg_stages.py \
+                     --clear-output-dir \
+                     --verbose=debug \
+                     --debug \
+                     --dbg-stage-2-validate-data
+   ```
+
+- Validate data stage in data-restore:
+
+```commandline
+   python pg_anon.py --mode=sync-data-restore \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db_7 \
+                     --input-dir=test_dbg_stages \
+                     --verbose=debug \
+                     --debug 
+   
+   # And for example view all data in every table:
+   su - postgres -c "psql -U postgres -d test_target_db_7 -c \"SELECT * FROM public.contracts\""
+   ```
+
+3. Stage 3: validate full
+
+Makes all logic with "limit 100" in SQL queries. In this stage you don't need prepared database, just run:
+
+```commandline
+   su - postgres -c "psql -U postgres -d postgres -c \"DROP DATABASE IF EXISTS test_target_db_8\""
+   su - postgres -c "psql -U postgres -d postgres -c \"CREATE DATABASE test_target_db_8\""
+   ```
+
+- Validate full stage in dump:
+
+```commandline
+   python pg_anon.py --mode=dump \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --output-dir=test_dbg_stages \
+                     --prepared-sens-dict-file=test_dbg_stages.py \
+                     --clear-output-dir \
+                     --verbose=debug \
+                     --debug \
+                     --dbg-stage-3-validate-full
+   ```
+
+- Validate full stage in restore:
+
+```commandline
+   python pg_anon.py --mode=restore \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_target_db_8 \
+                     --input-dir=test_dbg_stages \
+                     --verbose=debug \
+                     --debug 
+   
+   # And for example view all data in every table:
+   su - postgres -c "psql -U postgres -d test_target_db_8 -c \"SELECT * FROM public.contracts\""
+   ```
+
 
 ### How to escape/unescape complex names of objects
 
