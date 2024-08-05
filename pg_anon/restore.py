@@ -164,7 +164,7 @@ async def make_restore_impl(ctx, sn_id):
     tasks = set()
     for file_name, target in ctx.metadata["files"].items():
         full_path = os.path.join(
-            ctx.current_dir, "output", ctx.args.input_dir, file_name
+            ctx.args.input_dir, file_name
         )
         if len(tasks) >= ctx.args.threads:
             # Wait for some restore to finish before adding a new one
@@ -249,7 +249,7 @@ async def make_restore(ctx):
         raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
 
     metadata_file = open(
-        os.path.join(ctx.current_dir, "dict", ctx.args.input_dir, "metadata.json"), "r"
+        os.path.join(ctx.args.input_dir, "metadata.json"), "r"
     )
     metadata_content = metadata_file.read()
     metadata_file.close()
