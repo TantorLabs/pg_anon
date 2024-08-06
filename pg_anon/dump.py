@@ -404,12 +404,14 @@ async def make_dump(ctx):
         return result
 
     try:
-        if len(ctx.args.output_dir) > 1:
-            output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
-        else:
+        if not ctx.args.output_dir:
             output_dir = os.path.join(
                 ctx.current_dir, "output", os.path.splitext(ctx.args.prepared_sens_dict_files[0])[0]
             )
+        elif ctx.args.output_dir.find("""/""") == -1 and ctx.args.output_dir.find("""\\""") == -1:
+            output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
+        else:
+            output_dir = ctx.args.output_dir
 
         ctx.args.output_dir = output_dir
         dir_exists = os.path.exists(output_dir)
