@@ -367,4 +367,26 @@ class Context:
             default=False,
             help="In 'view-fields' mode output in JSON format. By default using table output",
         )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=100,
+            help="In 'view-data' mode how much rows to display",
+        )
+        parser.add_argument(
+            "--offset",
+            type=int,
+            default=0,
+            help="In 'view-data' mode which part of --limit rows will be displayed",
+        )
+        parser.add_argument(
+            "--schema-name",
+            type=str,
+            help="Schema name in mode 'view'",
+        )
+        parser.add_argument(
+            "--table-name",
+            type=str,
+            help="Table name in mode 'view'",
+        )
         return parser
