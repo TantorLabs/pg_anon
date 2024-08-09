@@ -1601,6 +1601,38 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
 
+class PGAnonViewTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_view_data(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=view-data",
+                "--prepared-sens-dict-file=test_prepared_sens_dict_result_expected.py",
+                "--schema-name=public",
+                "--table-name=contracts",
+                "--limit=10",
+                "--offset=0",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(args).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_view_data")
+
+
 if __name__ == "__main__":
     unittest.main(exit=False)
     # loader = unittest.TestLoader()

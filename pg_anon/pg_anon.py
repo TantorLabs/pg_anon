@@ -22,6 +22,7 @@ from pg_anon.create_dict import create_dict
 from pg_anon.context import Context
 from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
+from pg_anon.view import view_data
 from pg_anon.version import __version__
 
 
@@ -203,6 +204,8 @@ class MainRoutine:
                 result = await make_init(self.ctx)
             elif self.ctx.args.mode == AnonMode.CREATE_DICT:
                 result = await create_dict(self.ctx)
+            elif self.ctx.args.mode == AnonMode.VIEW_DATA:
+                result = await view_data(self.ctx)
             else:
                 raise Exception("Unknown mode: " + self.ctx.args.mode)
 
