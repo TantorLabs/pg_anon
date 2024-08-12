@@ -72,7 +72,8 @@ class MainRoutine:
         self.close_logger_handlers()
 
     def setup_logger(self):
-        log_level = 'NOTSET'
+        log_level = logging.NOTSET
+
         if self.args.verbose == VerboseOptions.INFO:
             log_level = logging.INFO
         elif self.args.verbose == VerboseOptions.DEBUG:

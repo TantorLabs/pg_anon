@@ -221,7 +221,7 @@ class Context:
             dest="verbose",
             type=VerboseOptions,
             choices=list(VerboseOptions),
-            default=VerboseOptions.INFO,
+            default=None,
             help="Enable verbose output",
         )
         parser.add_argument(
