@@ -5,46 +5,9 @@ import re
 import subprocess
 import sys
 import traceback
-from enum import Enum
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 
 from pkg_resources import parse_version as version
-
-
-class ResultCode(Enum):
-    DONE = "done"
-    FAIL = "fail"
-    UNKNOWN = "unknown"
-
-
-class PgAnonResult:
-    params = None  # JSON
-    result_code = ResultCode.UNKNOWN
-    result_data = None
-
-
-class VerboseOptions(Enum):
-    INFO = "info"
-    DEBUG = "debug"
-    ERROR = "error"
-
-
-class AnonMode(Enum):
-    DUMP = "dump"  # dump table contents to files using dictionary
-    RESTORE = "restore"  # create tables in target database and load data from files
-    INIT = "init"  # create a schema with anonymization helper functions
-    SYNC_DATA_DUMP = (
-        "sync-data-dump"  # synchronize the contents of one or more tables (dump stage)
-    )
-    SYNC_DATA_RESTORE = "sync-data-restore"  # synchronize the contents of one or more tables (restore stage)
-    SYNC_STRUCT_DUMP = "sync-struct-dump"  # synchronize the structure of one or more tables (dump stage)
-    SYNC_STRUCT_RESTORE = "sync-struct-restore"  # synchronize the structure of one or more tables (restore stage)
-    CREATE_DICT = "create-dict"  # create dictionary
-
-
-class ScanMode(Enum):
-    FULL = "full"
-    PARTIAL = "partial"
 
 
 def get_pg_util_version(util_name):
@@ -162,10 +125,15 @@ def parse_comma_separated_list(value: str = None) -> Optional[List[str]]:
     return [item for item in value.split(',')]
 
 
-def get_dict_rule_for_table(dictionary_obj: List[Dict], schema: str, table: str) -> Optional[Dict]:
-    result = None
-
-    for rule in dictionary_obj:
+def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: str) -> Optional[Union[List[Dict], Dict]]:
+    """
+    Find matches rules for field in prepared dictionary
+    :param dictionary_rules: prepared dictionary rules
+    :param schema: schema of table which needs to be checked
+    :param table: table name which needs to be checked
+    :return: matched rule
+    """
+    for rule in dictionary_rules:
         schema_matched = False
         table_matched = False
         schema_mask_matched = False
@@ -193,12 +161,13 @@ def get_dict_rule_for_table(dictionary_obj: List[Dict], schema: str, table: str)
                 table_mask_matched = True
 
         if schema_mask_matched and table_matched:
-            result = rule
+            return rule
 
         if schema_matched and table_mask_matched:
-            result = rule
+            return rule
 
         if schema_mask_matched and table_mask_matched:
-            result = rule
+            return rule
 
-    return result
+    return None
+

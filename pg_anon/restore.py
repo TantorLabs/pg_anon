@@ -8,15 +8,14 @@ import subprocess
 
 import asyncpg
 
-from pg_anon.common import (
-    AnonMode,
-    PgAnonResult,
-    ResultCode,
+from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
     get_pg_util_version,
     pretty_size,
 )
+from pg_anon.common.enums import ResultCode, AnonMode
+from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 
 

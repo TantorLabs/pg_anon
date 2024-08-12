@@ -3,59 +3,25 @@ import json
 import os
 import re
 import time
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional
 
 import aioprocessing
 import asyncpg
 import nest_asyncio
 
-from pg_anon.common import (
-    PgAnonResult,
-    ResultCode,
-    ScanMode,
+from pg_anon.common.db.utils import get_scan_fields_list
+from pg_anon.common.dto import FieldInfo
+from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.enums import ResultCode, ScanMode
+from pg_anon.common.utils import (
     chunkify,
     exception_helper,
     setof_to_list,
     get_dict_rule_for_table,
 )
-
+from pg_anon.context import Context
 
 SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
-
-
-class FieldInfo:
-    hash_func: Optional[Callable] = None  # uses for --mode=create-dict with --prepared-sens-dict-file
-
-    def __init__(
-        self,
-        nspname: str,
-        relname: str,
-        column_name: str,
-        type: str,
-        oid: int,
-        attnum: int,
-        obj_id: str,
-        tbl_id: str,
-    ):
-        self.nspname = nspname
-        self.relname = relname
-        self.column_name = column_name
-        self.type = type
-        self.oid = oid
-        self.attnum = attnum
-        self.obj_id = obj_id
-        self.tbl_id = tbl_id
-
-    def __str__(self):
-        return (
-            f"nspname={self.nspname}, "
-            f"relname={self.relname}, "
-            f"column_name={self.column_name}, "
-            f"type={self.type}, oid={self.oid}, "
-            f"attnum={self.attnum}, "
-            f"obj_id={self.obj_id}, "
-            f"tbl_id={self.tbl_id}"
-        )
 
 
 def check_skip_fields(ctx, fld):
@@ -89,58 +55,16 @@ def check_skip_fields(ctx, fld):
     return True
 
 
-async def generate_scan_objs(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params)
-    query = """
-    -- generate task queue
-    SELECT DISTINCT
-        n.nspname,
-        c.relname,
-        a.attname AS column_name,
-        format_type(a.atttypid, a.atttypmod) as type,
-        -- a.*
-        c.oid, a.attnum,
-        anon_funcs.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
-        anon_funcs.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
-    FROM pg_class c
-    JOIN pg_namespace n on c.relnamespace = n.oid
-    JOIN pg_attribute a ON a.attrelid = c.oid
-    JOIN pg_type t ON a.atttypid = t.oid
-    LEFT JOIN pg_index i ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-    WHERE
-        a.attnum > 0
-        AND c.relkind IN ('r', 'p')
-        AND a.atttypid = t.oid
-        AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
-        AND coalesce(i.indisprimary, false) = false
-        AND row(c.oid, a.attnum) not in (
-            SELECT
-                t.oid,
-                a.attnum --,
-                -- pn_t.nspname,
-                -- t.relname AS table_name,
-                -- a.attname AS column_name
-            FROM pg_class AS t
-            JOIN pg_attribute AS a ON a.attrelid = t.oid
-            JOIN pg_depend AS d ON d.refobjid = t.oid AND d.refobjsubid = a.attnum
-            JOIN pg_class AS s ON s.oid = d.objid
-            JOIN pg_namespace AS pn_t ON pn_t.oid = t.relnamespace
-            WHERE
-                t.relkind IN ('r', 'p')
-                AND s.relkind = 'S'
-                AND d.deptype = 'a'
-                AND d.classid = 'pg_catalog.pg_class'::regclass
-                AND d.refclassid = 'pg_catalog.pg_class'::regclass
-        )
-        -- AND c.relname = '_reference405'  -- debug
-        -- and a.attname = '_fld80650'
-    ORDER BY 1, 2, a.attnum
+async def get_fields_for_scan(ctx: Context) -> Dict[str, FieldInfo]:
     """
-    query_res = await db_conn.fetch(query)
-    await db_conn.close()
+    Get scanning fields for create dictionary mode
+    :param ctx: context for db connection and meta dictionary rules
+    :return: dict of fields with key by obj_id for create dictionary mode
+    """
+    fields_list = await get_scan_fields_list(ctx.conn_params)
 
     return {
-        fld['obj_id']: FieldInfo(**fld) for fld in query_res if check_skip_fields(ctx, fld)
+        field['obj_id']: FieldInfo(**field) for field in fields_list if check_skip_fields(ctx, field)
     }
 
 
@@ -179,14 +103,14 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
 
         if "dictionary" in ctx.prepared_dictionary_obj:
             include_rule = get_dict_rule_for_table(
-                dictionary_obj=ctx.prepared_dictionary_obj["dictionary"],
+                dictionary_rules=ctx.prepared_dictionary_obj["dictionary"],
                 schema=field_info.nspname,
                 table=field_info.relname,
             )
 
         if "dictionary_exclude" in ctx.prepared_dictionary_obj:
             exclude_rule = get_dict_rule_for_table(
-                dictionary_obj=ctx.prepared_dictionary_obj["dictionary_exclude"],
+                dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
                 schema=field_info.nspname,
                 table=field_info.relname,
             )
@@ -559,7 +483,7 @@ async def create_dict_impl(ctx):
     result = PgAnonResult()
     result.result_code = ResultCode.DONE
 
-    fields_info: Dict[str, FieldInfo] = await generate_scan_objs(ctx)
+    fields_info: Dict[str, FieldInfo] = await get_fields_for_scan(ctx)
     if not fields_info:
         raise Exception("No objects for create dictionary!")
 

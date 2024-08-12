@@ -7,13 +7,13 @@ from decimal import Decimal
 
 import asyncpg
 
-from pg_anon.common import (
-    PgAnonResult,
-    ResultCode,
+from pg_anon.common.utils import (
     exception_helper,
     recordset_to_list_flat,
     to_json,
 )
+from pg_anon.common.enums import ResultCode
+from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 
 from pg_anon import MainRoutine
