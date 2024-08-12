@@ -68,10 +68,15 @@ class ViewFieldsMode:
                 table=field.relname,
             )
 
-            if include_rule and field.column_name in include_rule['fields']:
-                field.hash_func = include_rule['fields'][field.column_name]
-                field.dict_file_name = include_rule["dict_file_name"]
-                fields_with_find_rules.append(field)
+            if include_rule:
+                if field.column_name in include_rule.get('fields', {}):
+                    field.hash_func = include_rule['fields'][field.column_name]
+                    field.dict_file_name = include_rule["dict_file_name"]
+                    fields_with_find_rules.append(field)
+                elif include_rule.get('raw_sql'):
+                    field.hash_func = include_rule['raw_sql']
+                    field.dict_file_name = include_rule["dict_file_name"]
+                    fields_with_find_rules.append(field)
             elif not self.context.args.view_only_sensitive_fields:
                 field.hash_func = '---'
                 field.dict_file_name = '---'
@@ -109,8 +114,8 @@ class ViewFieldsMode:
             raise ValueError("Not found fields for view!")
 
         fields_count = len(fields)
-        if fields_count > self._processing_fields_limit:
-            self.context.logger.info(f'You try to get too many fields ({fields_count} fields).'
+        if fields_count > self._processing_fields_limit and not self.context.args.json:
+            print(f'You try to get too many fields ({fields_count} fields).'
                              f' Will processed for output only first {self._processing_fields_limit} fields.'
                              f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce it')
         fields = fields[:self._processing_fields_limit]
