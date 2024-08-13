@@ -340,26 +340,22 @@ class Context:
         )
         parser.add_argument(
             "--schema-name",
-            action="store_true",
-            default=False,
+            type=str,
             help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
         )
         parser.add_argument(
             "--schema-mask",
-            action="store_true",
-            default=False,
+            type=str,
             help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
         )
         parser.add_argument(
             "--table-name",
-            action="store_true",
-            default=False,
+            type=str,
             help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
         )
         parser.add_argument(
             "--table-mask",
-            action="store_true",
-            default=False,
+            type=str,
             help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
         )
         parser.add_argument(

@@ -1,22 +1,26 @@
 import copy
 import json
 import os
+import re
 import sys
 import unittest
 from decimal import Decimal
+from typing import Dict, Set
+from unittest.mock import patch
 
 import asyncpg
 
+from pg_anon import MainRoutine
+from pg_anon.common.db.utils import get_scan_fields_count
+from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import (
     exception_helper,
     recordset_to_list_flat,
-    to_json,
+    to_json, get_dict_rule_for_table,
 )
-from pg_anon.common.enums import ResultCode
-from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
-
-from pg_anon import MainRoutine
+from pg_anon.view_fields import ViewFieldsMode
 
 input_args = None
 passed_stages = []
@@ -1599,6 +1603,277 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "PGAnonMaskUnitTest_target_tables", target_tables
             )
         )
+
+
+class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+
+    @staticmethod
+    def _count_fields_by_type(executor: ViewFieldsMode) -> Dict[str, int]:
+        counters = {
+            'in_dict': 0,
+            'not_in_dict': 0,
+        }
+
+        for field in executor.fields:
+            if field.hash_func != '---':
+                # if field has hash-function, we expect, what this field in dictionary, but we need check it
+                dict_rule = get_dict_rule_for_table(
+                    dictionary_rules=executor.context.prepared_dictionary_obj['dictionary'],
+                    schema=field.nspname,
+                    table=field.relname
+                )
+
+                if dict_rule and (field.column_name in dict_rule.get('fields', {}) or dict_rule.get('raw_sql')):
+                    counters['in_dict'] += 1
+            else:
+                # if field hasn't hash-function, we sure, what this field not in dictionary
+                counters['not_in_dict'] += 1
+
+        return counters
+
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_view_fields_full(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        all_rows_count = await get_scan_fields_count(context.conn_params)
+        self.assertEqual(len(executor.table.rows), all_rows_count)
+
+        fields_counters = self._count_fields_by_type(executor)
+        self.assertEqual(all_rows_count, fields_counters['in_dict'] + fields_counters['not_in_dict'])
+
+        passed_stages.append("test_02_view_fields_full")
+
+    async def test_03_view_fields_full_by_schema(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        schema_name: str = 'public'
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                f"--schema-name={schema_name}",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        for field in executor.fields:
+            self.assertEqual(field.nspname, schema_name)
+
+        passed_stages.append("test_03_view_fields_full_by_schema")
+
+    async def test_04_view_fields_full_by_schema_mask(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        schema_mask: str = '^pub.*'
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                f"--schema-mask={schema_mask}",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        for field in executor.fields:
+            match = re.search(schema_mask, field.nspname)
+            self.assertIsNotNone(match)
+
+        passed_stages.append("test_04_view_fields_full_by_schema_mask")
+
+    async def test_05_view_fields_full_by_table(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        table_name: str = 'inn_info'
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                f"--table-name={table_name}",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        for field in executor.fields:
+            self.assertEqual(field.relname, table_name)
+
+        passed_stages.append("test_05_view_fields_full_by_table")
+
+    async def test_06_view_fields_full_by_table_mask(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        table_mask: str = '.*\\d$'
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                f"--table-mask={table_mask}",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        for field in executor.fields:
+            match = re.search(table_mask, field.relname)
+            self.assertIsNotNone(match)
+
+        passed_stages.append("test_06_view_fields_full_by_table_mask")
+
+    @patch.object(ViewFieldsMode, '_print_cut_notice')
+    async def test_07_view_fields_full_with_cut_output_and_notice(self, mock):
+        self.assertTrue("init_env" in passed_stages)
+
+        fields_scan_length: int = 5
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        executor._processing_fields_limit = 5
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        all_rows_count = await get_scan_fields_count(context.conn_params)
+        self.assertNotEqual(len(executor.table.rows), all_rows_count)
+        self.assertEqual(len(executor.table.rows), fields_scan_length)
+        self.assertEqual(len(executor.fields), fields_scan_length)
+        self.assertTrue(executor.fields_cut_by_limit)
+        self.assertTrue(mock.called)
+
+        passed_stages.append("test_07_view_fields_full_with_cut_output")
+
+    async def test_08_view_fields_with_only_sensitive_fields(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        parser = Context.get_arg_parser()
+
+        # Full executor run
+        args_full = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+            ]
+        )
+        context_full = MainRoutine(args_full).ctx  # Setup for context reusing only
+        executor_full = ViewFieldsMode(context_full)
+        res_full = await executor_full.run()
+        self.assertEqual(res_full.result_code, ResultCode.DONE)
+
+        # Only sensitive executor run
+        args_only_sensitive = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                "--view-only-sensitive-fields",
+            ]
+        )
+        context_only_sensitive = MainRoutine(args_only_sensitive).ctx  # Setup for context reusing only
+        executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
+        res_only_sensitive = await executor_only_sensitive.run()
+        self.assertEqual(res_only_sensitive.result_code, ResultCode.DONE)
+
+        all_rows_count = await get_scan_fields_count(context_full.conn_params)
+        self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
+        self.assertEqual(len(executor_full.table.rows), all_rows_count)
+        self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count)
+
+        sensitive_fields_in_full_executor: Set[str] = {
+            str(field) for field in executor_full.fields if field.hash_func != '---'
+        }
+
+        executor_only_sensitive_fields_set: Set[str] = {
+            str(field) for field in executor_only_sensitive.fields
+        }
+
+        self.assertEqual(sensitive_fields_in_full_executor, executor_only_sensitive_fields_set)
+
+        passed_stages.append("test_08_view_fields_with_only_sensitive_fields")
 
 
 if __name__ == "__main__":
