@@ -384,6 +384,33 @@ Possible options in `--mode restore`:
 | `--drop-custom-check-constr` | Drop all CHECK constrains containing user-defined procedures to avoid performance degradation at the data loading stage.               |
 | `--pg-restore`               | Path to the `pg_dump` Postgres tool.                                                                                                   |
 
+### Run view-fields mode
+
+#### Prerequisites:
+- output dict file with meta information about database fields, and it's anonymization should be created.
+  See [--mode create-dict](#run-create_dict-mode)
+
+#### To see fields in database and anonymization rules by prepared dictionary:
+```commandline
+   python pg_anon.py --mode=view-fields \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --prepared-sens-dict-file=test_sens_dict_output.py
+   ```
+
+| Option                         | Description                                                                                                                                |
+|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
+| `--view-only-sensitive-fields` | For return only sensitive fields. By default results contains all db fields                                                                |
+| `--json`                       | For return results in JSON format                                                                                                          |
+| `--schema-name`                | Filter by schema name. _This mode can process only 5000 fields without filters, for performance purpose_                                   |
+| `--schema-mask`                | Filter by schema mask. Can receive regexp. _This mode can process only 5000 fields without filters, for performance purpose_               |
+| `--table-name`                 | Filter by table name. _This mode can process only 5000 fields without filters, for performance purpose_                                    |
+| `--table-mask`                 | Filter by table mask. Can receive regexp. _This mode can process only 5000 fields without filters, for performance purpose_                |
+
+
 ### Generate dictionary from table rows
 
 If you have a table that contains objects and fields for anonymization, you can use this SQL query to generate a dictionary in json format:

@@ -150,6 +150,9 @@ class Context:
             self._append_meta_dict(prepared_meta_dict)
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
+        if not self.args.prepared_sens_dict_files:
+            raise ValueError("No prepared sens dict files specified")
+
         self.prepared_dictionary_obj = {
             "dictionary": [],
             "dictionary_exclude": [],
