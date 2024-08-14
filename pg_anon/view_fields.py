@@ -75,15 +75,12 @@ class ViewFieldsMode:
 
         return result
 
-    def _print_cut_notice(self, fields_count: int):
-        print(f'You try to get too many fields ({fields_count} fields).'
-              f' Will processed for output only first {self._processing_fields_limit} fields.'
-              f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce it')
-
     def _process_fields_by_limits(self):
         fields_count = len(self.fields)
         if fields_count > self._processing_fields_limit and not self.context.args.json:
-            self._print_cut_notice(fields_count)
+            print(f'You try to get too many fields ({fields_count} fields).'
+                  f' Will processed for output only first {self._processing_fields_limit} fields.'
+                  f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce it')
             self.fields = self.fields[:self._processing_fields_limit]
             self.fields_cut_by_limit = True
 

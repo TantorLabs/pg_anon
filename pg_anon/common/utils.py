@@ -131,8 +131,10 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
     :param dictionary_rules: prepared dictionary rules
     :param schema: schema of table which needs to be checked
     :param table: table name which needs to be checked
-    :return: matched rule
+    :return: last matched rule
     """
+    result = None
+
     for rule in dictionary_rules:
         schema_matched = False
         table_matched = False
@@ -161,13 +163,10 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
                 table_mask_matched = True
 
         if schema_mask_matched and table_matched:
-            return rule
-
+            result = rule
         if schema_matched and table_mask_matched:
-            return rule
-
+            result = rule
         if schema_mask_matched and table_mask_matched:
-            return rule
+            result = rule
 
-    return None
-
+    return result
