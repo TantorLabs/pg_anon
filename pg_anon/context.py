@@ -344,7 +344,8 @@ class Context:
         parser.add_argument(
             "--schema-name",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            default="",
+            help="In 'view-fields' and 'view-data' mode output only sensitive fields.",
         )
         parser.add_argument(
             "--schema-mask",
@@ -354,7 +355,8 @@ class Context:
         parser.add_argument(
             "--table-name",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            default="",
+            help="In 'view-fields' and 'view-data' mode output only sensitive fields.",
         )
         parser.add_argument(
             "--table-mask",
@@ -378,15 +380,5 @@ class Context:
             type=int,
             default=0,
             help="In 'view-data' mode which part of --limit rows will be displayed",
-        )
-        parser.add_argument(
-            "--schema-name",
-            type=str,
-            help="Schema name in mode 'view'",
-        )
-        parser.add_argument(
-            "--table-name",
-            type=str,
-            help="Table name in mode 'view'",
         )
         return parser

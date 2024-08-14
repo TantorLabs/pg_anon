@@ -20,7 +20,7 @@ from pg_anon.create_dict import create_dict
 from pg_anon.context import Context
 from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
-from pg_anon.view import view_data
+from pg_anon.view_data import view_data
 from pg_anon.version import __version__
 from pg_anon.view_fields import ViewFieldsMode
 
