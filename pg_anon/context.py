@@ -2,11 +2,10 @@ import argparse
 import os
 from typing import Dict, Optional
 
-from pg_anon.common import (
+from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
+from pg_anon.common.utils import (
     exception_handler,
-    AnonMode,
-    VerboseOptions,
-    ScanMode, parse_comma_separated_list,
+    parse_comma_separated_list,
 )
 
 
@@ -150,7 +149,10 @@ class Context:
             prepared_meta_dict = self._make_meta_dict(meta_dict_data)
             self._append_meta_dict(prepared_meta_dict)
 
-    def read_prepared_dict(self):
+    def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
+        if not self.args.prepared_sens_dict_files:
+            raise ValueError("No prepared sens dict files specified")
+
         self.prepared_dictionary_obj = {
             "dictionary": [],
             "dictionary_exclude": [],
@@ -175,8 +177,11 @@ class Context:
             if not isinstance(dict_data, dict):
                 raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
 
-            if dictionary := dict_data.get("dictionary", []):
-                self.prepared_dictionary_obj["dictionary"].extend(dictionary)
+            if dictionary_rules := dict_data.get("dictionary", []):
+                if save_dict_file_name_for_each_rule:
+                    for dictionary_rule in dictionary_rules:
+                        dictionary_rule['dict_file_name'] = dict_file
+                self.prepared_dictionary_obj["dictionary"].extend(dictionary_rules)
 
             if dictionary := dict_data.get("dictionary_exclude", []):
                 self.prepared_dictionary_obj["dictionary_exclude"].extend(dictionary)
@@ -227,7 +232,7 @@ class Context:
             dest='meta_dict_files',
             type=parse_comma_separated_list,
             default=None,
-            help="In '--create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
+            help="In 'create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
         )
         parser.add_argument(
             "--threads",
@@ -299,35 +304,73 @@ class Context:
             type=ScanMode,
             choices=list(ScanMode),
             default=ScanMode.PARTIAL.value,
-            help="In '--create-dict' mode defines whether to scan all data or only part of it",
+            help="In 'create-dict' mode defines whether to scan all data or only part of it",
         )
         parser.add_argument(
             "--output-sens-dict-file",
             type=str,
             default="output-sens-dict-file.py",
-            help="In '--create-dict' mode output file with sensitive fields will be saved to this value",
+            help="In 'create-dict' mode output file with sensitive fields will be saved to this value",
         )
         parser.add_argument(
             "--output-no-sens-dict-file",
             type=str,
-            help="In '--create-dict' mode output file with not sensitive fields will be saved to this value",
+            help="In 'create-dict' mode output file with not sensitive fields will be saved to this value",
         )
         parser.add_argument(
             "--prepared-sens-dict-file",
             dest='prepared_sens_dict_files',
             type=parse_comma_separated_list,
-            help="In '--create-dict' mode input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually",
+            help="In 'create-dict' mode input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually",
         )
         parser.add_argument(
             "--prepared-no-sens-dict-file",
             dest="prepared_no_sens_dict_files",
             type=parse_comma_separated_list,
-            help="In '--create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
+            help="In 'create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
         )
         parser.add_argument(
             "--scan-partial-rows",
             type=int,
             default=10000,
-            help="In '--create-dict=partial' mode how much rows to scan",
+            help="In '--scan-mode=partial' sets how much rows to scan",
+        )
+        parser.add_argument(
+            "--view-only-sensitive-fields",
+            action="store_true",
+            default=False,
+            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+        )
+        parser.add_argument(
+            "--schema-name",
+            type=str,
+            help="In 'view-fields' mode filter fields by schema name. By default output all db fields",
+        )
+        parser.add_argument(
+            "--schema-mask",
+            type=str,
+            help="In 'view-fields' mode filter fields by schema mask. By default output all db fields",
+        )
+        parser.add_argument(
+            "--table-name",
+            type=str,
+            help="In 'view-fields' mode filter fields by table name. By default output all db fields",
+        )
+        parser.add_argument(
+            "--table-mask",
+            type=str,
+            help="In 'view-fields' mode filter fields by table mask. By default output all db fields",
+        )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            default=False,
+            help="In 'view-fields' mode output in JSON format. By default using table output",
+        )
+        parser.add_argument(
+            "--fields-count",
+            type=int,
+            default=5000,
+            help="In 'view-fields' mode specify how many fields will be processed for output. By default = 5000",
         )
         return parser

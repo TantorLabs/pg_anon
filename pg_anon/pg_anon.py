@@ -10,19 +10,18 @@ from logging.handlers import RotatingFileHandler
 import asyncpg
 
 
-from pg_anon.common import (
-    AnonMode,
-    PgAnonResult,
-    ResultCode,
-    VerboseOptions,
+from pg_anon.common.utils import (
     check_pg_util,
     exception_helper,
 )
+from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
+from pg_anon.common.dto import PgAnonResult
 from pg_anon.create_dict import create_dict
 from pg_anon.context import Context
 from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
 from pg_anon.version import __version__
+from pg_anon.view_fields import ViewFieldsMode
 
 
 async def make_init(ctx):
@@ -73,12 +72,15 @@ class MainRoutine:
         self.close_logger_handlers()
 
     def setup_logger(self):
-        if self.args.verbose == VerboseOptions.INFO:
-            log_level = logging.INFO
-        if self.args.verbose == VerboseOptions.DEBUG:
-            log_level = logging.DEBUG
-        if self.args.verbose == VerboseOptions.ERROR:
-            log_level = logging.ERROR
+        log_level = logging.NOTSET
+
+        if self.args.mode != AnonMode.VIEW_FIELDS:
+            if self.args.verbose == VerboseOptions.INFO:
+                log_level = logging.INFO
+            elif self.args.verbose == VerboseOptions.DEBUG:
+                log_level = logging.DEBUG
+            elif self.args.verbose == VerboseOptions.ERROR:
+                log_level = logging.ERROR
 
         self.logger = logging.getLogger(os.path.basename(__file__))
         # if len(self.logger.handlers):
@@ -98,25 +100,20 @@ class MainRoutine:
                 os.makedirs(os.path.join(self.current_dir, "log"))
 
             if self.args.mode == AnonMode.INIT:
-                log_file = str(self.args.mode) + ".log"
+                log_file = f"{self.args.mode}.log"
             elif self.args.mode == AnonMode.CREATE_DICT:
-                log_file = "%s_%s.log" % (
-                    str(self.args.mode),
-                    str(
-                        os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
-                        if self.args.meta_dict_files
-                        else os.path.basename(self.args.input_dir)
-                    ),
-                )
+                if self.args.meta_dict_files:
+                    base_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
+                else:
+                    base_file_name = os.path.basename(self.args.input_dir)
+                log_file = f"{self.args.mode}_{base_file_name}.log"
             else:
-                log_file = "%s_%s.log" % (
-                    str(self.args.mode),
-                    str(
-                        os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
-                        if self.args.prepared_sens_dict_files
-                        else os.path.basename(self.args.input_dir)
-                    ),
-                )
+                if self.args.prepared_sens_dict_files:
+                    base_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
+                else:
+                    base_file_name = os.path.basename(self.args.input_dir)
+
+                log_file = f"{self.args.mode}_{base_file_name}.log"
 
             f_handler = RotatingFileHandler(
                 os.path.join(self.current_dir, "log", log_file),
@@ -203,24 +200,20 @@ class MainRoutine:
                 result = await make_init(self.ctx)
             elif self.ctx.args.mode == AnonMode.CREATE_DICT:
                 result = await create_dict(self.ctx)
+            elif self.ctx.args.mode == AnonMode.VIEW_FIELDS:
+                result = await ViewFieldsMode(self.ctx).run()
             else:
                 raise Exception("Unknown mode: " + self.ctx.args.mode)
 
-            self.ctx.logger.info(
-                "MainRoutine.run result_code = %s" % result.result_code
-            )
+            self.ctx.logger.info(f"MainRoutine.run result_code = {result.result_code}")
         except:
             self.ctx.logger.error(exception_helper(show_traceback=True))
         finally:
             end_t = time.time()
+            result.elapsed = round(end_t - start_t, 2)
             self.ctx.logger.info(
-                "<============ Finished MainRoutine.run in mode: %s, elapsed: %s sec"
-                % (self.ctx.args.mode, str(round(end_t - start_t, 2)))
+                f"<============ Finished MainRoutine.run in mode: {self.ctx.args.mode}, elapsed: {result.elapsed} sec"
             )
-            if result.result_data is None:
-                result.result_data = {"elapsed": str(round(end_t - start_t, 2))}
-            else:
-                result.result_data["elapsed"] = str(round(end_t - start_t, 2))
 
             return result
 

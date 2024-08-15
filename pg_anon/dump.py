@@ -10,15 +10,13 @@ from hashlib import sha256
 
 import asyncpg
 
-from pg_anon.common import (
-    AnonMode,
-    PgAnonResult,
-    ResultCode,
-    VerboseOptions,
+from pg_anon.common.utils import (
     exception_helper,
     get_pg_util_version,
     get_dict_rule_for_table,
 )
+from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
+from pg_anon.common.dto import PgAnonResult
 
 DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
 
@@ -151,14 +149,18 @@ async def generate_dump_queries(ctx, db_conn):
         table_name_full = f'"{table_schema}"."{table_name}"'
 
         table_rule = get_dict_rule_for_table(
-            ctx.prepared_dictionary_obj["dictionary"], table_schema, table_name
+            dictionary_rules=ctx.prepared_dictionary_obj["dictionary"],
+            schema=table_schema,
+            table=table_name,
         )
         found_white_list = table_rule is not None
 
         # dictionary_exclude has the highest priority
         if "dictionary_exclude" in ctx.prepared_dictionary_obj:
             exclude_rule = get_dict_rule_for_table(
-                ctx.prepared_dictionary_obj["dictionary_exclude"], table_schema, table_name
+                dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
+                schema=table_schema,
+                table=table_name,
             )
             found = exclude_rule is not None
             if found and not found_white_list:
