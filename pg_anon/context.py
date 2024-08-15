@@ -344,22 +344,22 @@ class Context:
         parser.add_argument(
             "--schema-name",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            help="In 'view-fields' mode filter fields by schema name. By default output all db fields",
         )
         parser.add_argument(
             "--schema-mask",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            help="In 'view-fields' mode filter fields by schema mask. By default output all db fields",
         )
         parser.add_argument(
             "--table-name",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            help="In 'view-fields' mode filter fields by table name. By default output all db fields",
         )
         parser.add_argument(
             "--table-mask",
             type=str,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+            help="In 'view-fields' mode filter fields by table mask. By default output all db fields",
         )
         parser.add_argument(
             "--json",
