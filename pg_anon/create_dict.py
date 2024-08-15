@@ -9,9 +9,8 @@ import aioprocessing
 import asyncpg
 import nest_asyncio
 
-from pg_anon.common.db.utils import get_scan_fields_list
-from pg_anon.common.dto import FieldInfo
-from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.db_utils import get_scan_fields_list
+from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode, ScanMode
 from pg_anon.common.utils import (
     chunkify,
@@ -122,7 +121,7 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
             ctx.logger.debug(
                 f'!!! ------> check_sensitive_fld_names: match as sensitive by "{include_rule}", removed {field_info}')
             del fields_info[obj_id]
-            field_info.hash_func = include_rule['fields'][field_info.column_name]
+            field_info.rule = include_rule['fields'][field_info.column_name]
             ctx.create_dict_sens_matches[obj_id] = field_info
             matched = True
 
@@ -443,7 +442,7 @@ async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
 
 
 def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
-    res_hash_func = field_info.hash_func
+    res_hash_func = field_info.rule
 
     if res_hash_func is None:
         hash_func = "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt

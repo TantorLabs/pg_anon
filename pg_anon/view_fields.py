@@ -4,9 +4,8 @@ from typing import List, Dict
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db.utils import get_scan_fields_list
-from pg_anon.common.dto import FieldInfo
-from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.db_utils import get_scan_fields_list, get_scan_fields_count
+from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
 from pg_anon.context import Context
@@ -14,16 +13,17 @@ from pg_anon.context import Context
 
 class ViewFieldsMode:
     context: Context
-    _processing_fields_limit: int
+    _processing_fields_limit: int = 5000
     _filter_dict_rule: Dict = None
     fields: List[FieldInfo] = None
     table: PrettyTable = None
     json: str = None
-    fields_cut_by_limit: bool = False
+    fields_cut_by_limits: bool = False
 
-    def __init__(self, context: Context, processing_fields_limit: int = 5000):
+    def __init__(self, context: Context):
         self.context = context
-        self._processing_fields_limit = processing_fields_limit
+        if context.args.fields_count is not None:
+            self._processing_fields_limit = context.args.fields_count
         self._init_filter_dict_rule()
 
     def _init_filter_dict_rule(self):
@@ -65,7 +65,7 @@ class ViewFieldsMode:
         Get scanning fields for view mode
         :return: list of fields for view mode
         """
-        fields_list = await get_scan_fields_list(self.context.conn_params)
+        fields_list = await get_scan_fields_list(self.context.conn_params, limit=self._processing_fields_limit)
 
         result = []
         for field in fields_list:
@@ -75,14 +75,14 @@ class ViewFieldsMode:
 
         return result
 
-    def _process_fields_by_limits(self):
-        fields_count = len(self.fields)
+    async def _make_notice_fields_cut_by_limits(self):
+        fields_count = await get_scan_fields_count(self.context.conn_params)
         if fields_count > self._processing_fields_limit and not self.context.args.json:
             print(f'You try to get too many fields ({fields_count} fields).'
                   f' Will processed for output only first {self._processing_fields_limit} fields.'
-                  f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce it')
-            self.fields = self.fields[:self._processing_fields_limit]
-            self.fields_cut_by_limit = True
+                  f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce fields amount.'
+                  f' Also you can use --fields-count to extend limit.')
+            self.fields_cut_by_limits = True
 
     def _prepare_fields_for_view(self):
         fields_with_find_rules = []
@@ -96,18 +96,18 @@ class ViewFieldsMode:
 
             if include_rule:
                 if field.column_name in include_rule.get('fields', {}):
-                    field.hash_func = include_rule['fields'][field.column_name]
+                    field.rule = include_rule['fields'][field.column_name]
                     field.dict_file_name = include_rule["dict_file_name"]
                     fields_with_find_rules.append(field)
                     continue
                 elif include_rule.get('raw_sql'):
-                    field.hash_func = include_rule['raw_sql']
+                    field.rule = include_rule['raw_sql']
                     field.dict_file_name = include_rule["dict_file_name"]
                     fields_with_find_rules.append(field)
                     continue
 
             if not self.context.args.view_only_sensitive_fields:
-                field.hash_func = '---'
+                field.rule = '---'
                 field.dict_file_name = '---'
                 fields_with_find_rules.append(field)
 
@@ -120,7 +120,7 @@ class ViewFieldsMode:
             'field',
             'type',
             'dict_file_name',
-            'hash_function',
+            'rule',
         ], align='l')
         self.table.set_style(SINGLE_BORDER)
 
@@ -131,18 +131,19 @@ class ViewFieldsMode:
                 field.column_name,
                 field.type,
                 field.dict_file_name,
-                field.hash_func,
+                field.rule,
             ])
 
     def _prepare_json(self):
         self.json = json.dumps([asdict(field) for field in self.fields])
 
     async def _output_fields(self):
+        await self._make_notice_fields_cut_by_limits()
+
         self.fields = await self._get_fields_for_view()
         if not self.fields:
             raise ValueError("Not found fields for view!")
 
-        self._process_fields_by_limits()
         self._prepare_fields_for_view()
 
         if not self.fields:
@@ -159,6 +160,14 @@ class ViewFieldsMode:
         result = PgAnonResult()
         result.result_code = ResultCode.DONE
         self.context.logger.info("-------------> Started view_fields mode")
+
+        try:
+            if self._processing_fields_limit < 1:
+                raise ValueError("Processing fields limit must be greater than zero!")
+        except ValueError:
+            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
+            result.result_code = ResultCode.FAIL
+            return result
 
         try:
             self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)

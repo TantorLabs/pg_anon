@@ -10,7 +10,7 @@ from typing import Dict, Set
 import asyncpg
 
 from pg_anon import MainRoutine
-from pg_anon.common.db.utils import get_scan_fields_count
+from pg_anon.common.db_utils import get_scan_fields_count
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import (
@@ -1614,7 +1614,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         }
 
         for field in executor.fields:
-            if field.hash_func != '---':
+            if field.rule != '---':
                 # if field has hash-function, we expect, what this field in dictionary, but we need check it
                 dict_rule = get_dict_rule_for_table(
                     dictionary_rules=executor.context.prepared_dictionary_obj['dictionary'],
@@ -1785,7 +1785,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_07_view_fields_full_with_cut_output_and_notice(self):
         self.assertTrue("init_env" in passed_stages)
 
-        fields_scan_length: int = 5
+        fields_scan_length = 5
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -1797,13 +1797,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user-password={params.test_db_user_password}",
                 "--mode=view-fields",
                 "--prepared-sens-dict-file=test.py",
+                f"--fields-count={fields_scan_length}",
             ]
         )
 
         context = MainRoutine(args).ctx  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        executor._processing_fields_limit = fields_scan_length
         res = await executor.run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
@@ -1811,7 +1811,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertNotEqual(len(executor.table.rows), all_rows_count)
         self.assertEqual(len(executor.table.rows), fields_scan_length)
         self.assertEqual(len(executor.fields), fields_scan_length)
-        self.assertTrue(executor.fields_cut_by_limit)
+        self.assertTrue(executor.fields_cut_by_limits)
 
         passed_stages.append("test_07_view_fields_full_with_cut_output")
 
@@ -1819,23 +1819,6 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
-
-        # Full executor run
-        args_full = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                "--mode=view-fields",
-                "--prepared-sens-dict-file=test.py",
-            ]
-        )
-        context_full = MainRoutine(args_full).ctx  # Setup for context reusing only
-        executor_full = ViewFieldsMode(context_full)
-        res_full = await executor_full.run()
-        self.assertEqual(res_full.result_code, ResultCode.DONE)
 
         # Only sensitive executor run
         args_only_sensitive = parser.parse_args(
@@ -1855,13 +1838,30 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res_only_sensitive = await executor_only_sensitive.run()
         self.assertEqual(res_only_sensitive.result_code, ResultCode.DONE)
 
+        # Full executor run
+        args_full = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+            ]
+        )
+        context_full = MainRoutine(args_full).ctx  # Setup for context reusing only
+        executor_full = ViewFieldsMode(context_full)
+        res_full = await executor_full.run()
+        self.assertEqual(res_full.result_code, ResultCode.DONE)
+
         all_rows_count = await get_scan_fields_count(context_full.conn_params)
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
         self.assertEqual(len(executor_full.table.rows), all_rows_count)
         self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count)
 
         sensitive_fields_in_full_executor: Set[str] = {
-            str(field) for field in executor_full.fields if field.hash_func != '---'
+            str(field) for field in executor_full.fields if field.rule != '---'
         }
 
         executor_only_sensitive_fields_set: Set[str] = {
@@ -1872,66 +1872,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_08_view_fields_with_only_sensitive_fields")
 
-    async def test_09_view_fields_zero_fields(self):
-        self.assertTrue("init_env" in passed_stages)
-
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                "--mode=view-fields",
-                "--prepared-sens-dict-file=test.py",
-            ]
-        )
-
-        context = MainRoutine(args).ctx  # Setup for context reusing only
-
-        executor = ViewFieldsMode(context)
-        executor._processing_fields_limit = 0
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
-
-        self.assertEqual(len(executor.fields), 0)
-        self.assertIsNone(executor.table)
-        self.assertTrue(executor.fields_cut_by_limit)
-
-        passed_stages.append("test_09_view_fields_json")
-
-    async def test_10_view_filter_to_zero_fields(self):
-        self.assertTrue("init_env" in passed_stages)
-
-        schema_name: str = 'not_exists_schema_name'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                "--mode=view-fields",
-                "--prepared-sens-dict-file=test.py",
-                f"--schema-name={schema_name}",
-            ]
-        )
-
-        context = MainRoutine(args).ctx  # Setup for context reusing only
-
-        executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
-
-        self.assertEqual(len(executor.fields), 0)
-        self.assertIsNone(executor.table)
-        self.assertFalse(executor.fields_cut_by_limit)
-
-        passed_stages.append("test_10_view_filter_to_zero_fields")
-
-    async def test_11_view_filter_json_output(self):
+    async def test_09_view_filter_json_output(self):
         self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
@@ -1964,7 +1905,65 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_11_view_filter_json_output")
 
-    async def test_12_view_with_empty_prepared_dictionary(self):
+    async def test_10_view_fields_exception_on_zero_fields(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                "--fields-count=0",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+        self.assertIsNone(executor.fields)
+        self.assertIsNone(executor.table)
+
+        passed_stages.append("test_09_view_fields_json")
+
+    async def test_10_view_fields_exception_on_filter_to_zero_fields(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        schema_name: str = 'not_exists_schema_name'
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-fields",
+                "--prepared-sens-dict-file=test.py",
+                f"--schema-name={schema_name}",
+            ]
+        )
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewFieldsMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+        self.assertEqual(len(executor.fields), 0)
+        self.assertIsNone(executor.table)
+        self.assertFalse(executor.fields_cut_by_limits)
+
+        passed_stages.append("test_10_view_filter_to_zero_fields")
+
+    async def test_12_view_fields_exception_on_empty_prepared_dictionary(self):
         self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()
@@ -1988,7 +1987,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 
-    async def test_13_view_without_prepared_dictionary(self):
+    async def test_13_view_fields_exception_on_no_prepared_dictionary(self):
         self.assertTrue("init_env" in passed_stages)
 
         parser = Context.get_arg_parser()

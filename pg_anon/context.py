@@ -2,11 +2,11 @@ import argparse
 import os
 from typing import Dict, Optional
 
+from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 from pg_anon.common.utils import (
     exception_handler,
     parse_comma_separated_list,
 )
-from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 
 
 class Context:
@@ -224,7 +224,7 @@ class Context:
             dest="verbose",
             type=VerboseOptions,
             choices=list(VerboseOptions),
-            default=None,
+            default=VerboseOptions.INFO,
             help="Enable verbose output",
         )
         parser.add_argument(
@@ -366,5 +366,11 @@ class Context:
             action="store_true",
             default=False,
             help="In 'view-fields' mode output in JSON format. By default using table output",
+        )
+        parser.add_argument(
+            "--fields-count",
+            type=int,
+            default=5000,
+            help="In 'view-fields' mode specify how many fields will be processed for output. By default = 5000",
         )
         return parser

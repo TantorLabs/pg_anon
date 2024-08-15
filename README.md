@@ -399,16 +399,20 @@ Possible options in `--mode restore`:
                      --db-name=test_source_db \
                      --prepared-sens-dict-file=test_sens_dict_output.py
    ```
+#### Warning
+- This mode can process only limited count of fields without filters, for performance purpose. It specified by `--fields-count` option with default value = 5000 fields. For avoid it, use filters (`--schema-name`, `--schema-mask`, `--table-name`, `--table-mask`) or `--fields-count` option.
+- If output will be cut, you will be noticed about it. But with `--json` option this notice turn off.  
 
 | Option                         | Description                                                                                                                                |
 |--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
 | `--view-only-sensitive-fields` | For return only sensitive fields. By default results contains all db fields                                                                |
-| `--json`                       | For return results in JSON format                                                                                                          |
-| `--schema-name`                | Filter by schema name. _This mode can process only 5000 fields without filters, for performance purpose_                                   |
-| `--schema-mask`                | Filter by schema mask. Can receive regexp. _This mode can process only 5000 fields without filters, for performance purpose_               |
-| `--table-name`                 | Filter by table name. _This mode can process only 5000 fields without filters, for performance purpose_                                    |
-| `--table-mask`                 | Filter by table mask. Can receive regexp. _This mode can process only 5000 fields without filters, for performance purpose_                |
+| `--json`                       | For return results in JSON format. Output can be cut if                                                                                    |
+| `--fields-count`               | Specify how many fields will be processed for output. By default = 5000                                                                    |
+| `--schema-name`                | Filter by schema name                                                                                                                      |
+| `--schema-mask`                | Filter by schema mask. Can receive regexp                                                                                                  |
+| `--table-name`                 | Filter by table name                                                                                                                       |
+| `--table-mask`                 | Filter by table mask. Can receive regexp                                                                                                   |
 
 
 ### Generate dictionary from table rows

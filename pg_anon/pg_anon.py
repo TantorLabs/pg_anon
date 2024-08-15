@@ -74,12 +74,13 @@ class MainRoutine:
     def setup_logger(self):
         log_level = logging.NOTSET
 
-        if self.args.verbose == VerboseOptions.INFO:
-            log_level = logging.INFO
-        elif self.args.verbose == VerboseOptions.DEBUG:
-            log_level = logging.DEBUG
-        elif self.args.verbose == VerboseOptions.ERROR:
-            log_level = logging.ERROR
+        if self.args.mode != AnonMode.VIEW_FIELDS:
+            if self.args.verbose == VerboseOptions.INFO:
+                log_level = logging.INFO
+            elif self.args.verbose == VerboseOptions.DEBUG:
+                log_level = logging.DEBUG
+            elif self.args.verbose == VerboseOptions.ERROR:
+                log_level = logging.ERROR
 
         self.logger = logging.getLogger(os.path.basename(__file__))
         # if len(self.logger.handlers):
