@@ -19,6 +19,7 @@ from pg_anon.common.utils import (
     to_json, get_dict_rule_for_table,
 )
 from pg_anon.context import Context
+from pg_anon.view_data import ViewDataMode
 from pg_anon.view_fields import ViewFieldsMode
 
 input_args = None
@@ -1602,6 +1603,98 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "PGAnonMaskUnitTest_target_tables", target_tables
             )
         )
+
+
+class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_view_data_print(self):
+        self.assertTrue("init_env" in passed_stages)
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=view-data",
+                "--prepared-sens-dict-file=test_prepared_sens_dict_result_expected.py",
+                "--schema-name=public",
+                "--table-name=contracts",
+                "--limit=10",
+                "--offset=0",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+        res = await MainRoutine(args).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        passed_stages.append("test_02_view_data_print")
+
+    async def test_03_view_data_json(self):
+        self.assertTrue("init_env" in passed_stages)
+        parser = Context.get_arg_parser()
+        args = parser.parse_args(
+            [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--json",
+                "--mode=view-data",
+                "--prepared-sens-dict-file=test_prepared_sens_dict_result_expected.py",
+                "--schema-name=public",
+                "--table-name=contracts",
+                "--limit=10",
+                "--offset=0",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewDataMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        row_len = set(len(row) for row in list(json.loads(executor.json).values()))
+        self.assertEqual(len(row_len), 1)  # all fields have equal length of rows
+
+        passed_stages.append("test_03_view_data_json")
+
+    async def test_04_view_data_null(self):
+        self.assertTrue("init_env" in passed_stages)
+        parser = Context.get_arg_parser()
+        args = [
+                "--db-host=%s" % params.test_db_host,
+                "--db-name=%s" % params.test_source_db,
+                "--db-user=%s" % params.test_db_user,
+                "--db-port=%s" % params.test_db_port,
+                "--db-user-password=%s" % params.test_db_user_password,
+                "--mode=view-data",
+                "--prepared-sens-dict-file=test_prepared_sens_dict_result_expected.py",
+                "--schema-name=schm_mask_ext_exclude_2",
+                "--table-name=card_numbers",
+                "--limit=10",
+                "--offset=30235",
+                "--verbose=debug",
+                "--debug",
+            ]
+        args_print = parser.parse_args(args)
+        res_print = await MainRoutine(args_print).run()
+        self.assertEqual(res_print.result_code, ResultCode.DONE)
+
+        args.append("--json")
+        args_json = parser.parse_args(args)
+        res_json = await MainRoutine(args_json).run()
+        self.assertEqual(res_json.result_code, ResultCode.DONE)
+
+        passed_stages.append("test_04_view_data_null")
 
 
 class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):

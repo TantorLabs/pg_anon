@@ -407,13 +407,45 @@ Possible options in `--mode restore`:
 |--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
 | `--view-only-sensitive-fields` | For return only sensitive fields. By default results contains all db fields                                                                |
-| `--json`                       | For return results in JSON format. Output can be cut if                                                                                    |
+| `--json`                       | For return results in JSON format. By default using table output                                                                           |
 | `--fields-count`               | Specify how many fields will be processed for output. By default = 5000                                                                    |
 | `--schema-name`                | Filter by schema name                                                                                                                      |
 | `--schema-mask`                | Filter by schema mask. Can receive regexp                                                                                                  |
 | `--table-name`                 | Filter by table name                                                                                                                       |
 | `--table-mask`                 | Filter by table mask. Can receive regexp                                                                                                   |
 
+### Run view-data mode
+
+#### Prerequisites:
+- output dict file with meta information about database fields, and it's anonymization should be created.
+  See [--mode create-dict](#run-create_dict-mode)
+
+#### To see table in database with anonymization fields by prepared dictionary:
+```commandline
+   python pg_anon.py --mode=view-fields \
+                     --db-host=127.0.0.1 \
+                     --db-user=postgres \
+                     --db-user-password=postgres \
+                     --db-name=test_source_db \
+                     --prepared-sens-dict-file=test_prepared_sens_dict_result_expected.py \
+                     --schema-name=public \
+                     --table-name=contracts \
+                     --limit=10 \
+                     --offset=0
+   ```
+#### Warning
+- This mode can process only limited count of fields, for performance purpose. It specified by `--limit` with default value = 100 and `--offset` with default value = 0.
+- In this mode you must specify the name of the schema `--schema-name` and table `--table-name`.
+- If output will be cut, you will be noticed about it. But with `--json` option this notice turn off.  
+
+| Option                      | Description                                                                                                                                |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file` | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
+| `--json`                    | For return results in JSON format. By default using table output                                                                           |
+| `--schema-name`             | Schema name                                                                                                                                |
+| `--table-name`              | Table name                                                                                                                                 |
+| `--limit`                   | How many rows will be shown. By default limit=100                                                                                          |
+| `--offset`                  | Which part of data will be shown. By default offset=0                                                                                      |
 
 ### Generate dictionary from table rows
 
