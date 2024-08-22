@@ -22,6 +22,7 @@ from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
 from pg_anon.version import __version__
 from pg_anon.view_fields import ViewFieldsMode
+from pg_anon.view_data import ViewDataMode
 
 
 async def make_init(ctx):
@@ -202,6 +203,8 @@ class MainRoutine:
                 result = await create_dict(self.ctx)
             elif self.ctx.args.mode == AnonMode.VIEW_FIELDS:
                 result = await ViewFieldsMode(self.ctx).run()
+            elif self.ctx.args.mode == AnonMode.VIEW_DATA:
+                result = await ViewDataMode(self.ctx).run()
             else:
                 raise Exception("Unknown mode: " + self.ctx.args.mode)
 

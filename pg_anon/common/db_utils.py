@@ -19,3 +19,18 @@ async def get_scan_fields_count(connection_params: Dict) -> int:
     count = await db_conn.fetchval(query)
     await db_conn.close()
     return count
+
+
+async def get_fields_list(connection_params: Dict, table_schema: str, table_name: str) -> List:
+    db_conn = await asyncpg.connect(**connection_params)
+    fields_list = await db_conn.fetch(
+        """
+            SELECT column_name, udt_name FROM information_schema.columns
+            WHERE table_schema = '%s' AND table_name='%s'
+            ORDER BY ordinal_position ASC
+        """
+        % (table_schema.replace("'", "''"), table_name.replace("'", "''"))
+    )
+    await db_conn.close()
+    return fields_list
+

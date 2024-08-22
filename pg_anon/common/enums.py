@@ -25,6 +25,7 @@ class AnonMode(Enum):
     SYNC_STRUCT_RESTORE = "sync-struct-restore"  # synchronize the structure of one or more tables (restore stage)
     CREATE_DICT = "create-dict"  # create dictionary
     VIEW_FIELDS = "view-fields"  # view fields
+    VIEW_DATA = "view-data"  # view data using prepared-sens-dict-file
 
 
 class ScanMode(Enum):

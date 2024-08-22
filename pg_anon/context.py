@@ -344,7 +344,7 @@ class Context:
         parser.add_argument(
             "--schema-name",
             type=str,
-            help="In 'view-fields' mode filter fields by schema name. By default output all db fields",
+            help="In 'view-fields' and 'view-data' modes filter fields by schema name.",
         )
         parser.add_argument(
             "--schema-mask",
@@ -354,7 +354,7 @@ class Context:
         parser.add_argument(
             "--table-name",
             type=str,
-            help="In 'view-fields' mode filter fields by table name. By default output all db fields",
+            help="In 'view-fields' and 'view-data' modes filter fields by table name.",
         )
         parser.add_argument(
             "--table-mask",
@@ -372,5 +372,17 @@ class Context:
             type=int,
             default=5000,
             help="In 'view-fields' mode specify how many fields will be processed for output. By default = 5000",
+        )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=100,
+            help="In 'view-data' mode how much rows to display. By default = 100",
+        )
+        parser.add_argument(
+            "--offset",
+            type=int,
+            default=0,
+            help="In 'view-data' mode which part of --limit rows will be displayed. By default = 0",
         )
         return parser
