@@ -288,3 +288,13 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
                     table_name_full,
                 )
                 return query
+
+
+def get_file_name_from_path(path: str) -> str:
+    """
+    Extract file name without extension from path
+    :param path: file path
+    :return: only file_name without extension
+    """
+    file_name = os.path.basename(path)
+    return os.path.splitext(file_name)[0]
