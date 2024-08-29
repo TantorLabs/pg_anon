@@ -330,8 +330,7 @@ async def make_restore(ctx):
     result.result_code = ResultCode.DONE
     if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
         try:
-            async with db_conn.transaction():
-                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            async with db_conn.transaction(isolation='repeatable_read'):
                 await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
                 sn_id = await db_conn.fetchval("select pg_export_snapshot()")
                 await make_restore_impl(ctx, sn_id)

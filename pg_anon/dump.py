@@ -102,8 +102,7 @@ async def dump_obj_func(ctx, pool, task, sn_id, file_name):
 
     try:
         async with pool.acquire() as db_conn:
-            async with db_conn.transaction():
-                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                 await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
                 res = await get_dump_table(
                     ctx,
@@ -362,8 +361,7 @@ async def make_dump(ctx):
     if ctx.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP):
         db_conn = await asyncpg.connect(**ctx.conn_params)
         try:
-            async with db_conn.transaction():
-                await db_conn.execute("BEGIN ISOLATION LEVEL REPEATABLE READ;")
+            async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                 sn_id = await db_conn.fetchval("select pg_export_snapshot()")
                 await make_dump_impl(ctx, db_conn, sn_id)
         except:
