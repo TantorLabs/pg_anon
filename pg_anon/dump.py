@@ -14,7 +14,8 @@ from pg_anon.common.utils import (
     exception_helper,
     get_pg_util_version,
     get_dict_rule_for_table,
-    get_dump_query
+    get_dump_query,
+    get_file_name_from_path,
 )
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.dto import PgAnonResult
@@ -303,18 +304,15 @@ async def make_dump(ctx):
 
     try:
         if not ctx.args.output_dir:
-            output_dir = os.path.join(
-                ctx.current_dir, "output", os.path.splitext(ctx.args.prepared_sens_dict_files[0])[0]
-            )
+            prepared_dict_name = get_file_name_from_path(ctx.args.prepared_sens_dict_files[0])
+            output_dir = os.path.join(ctx.current_dir, "output", prepared_dict_name)
         elif ctx.args.output_dir.find("""/""") == -1 and ctx.args.output_dir.find("""\\""") == -1:
             output_dir = os.path.join(ctx.current_dir, "output", ctx.args.output_dir)
         else:
             output_dir = ctx.args.output_dir
 
         ctx.args.output_dir = output_dir
-        dir_exists = os.path.exists(output_dir)
-        if not dir_exists:
-            os.makedirs(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
         if not ctx.args.dbg_stage_1_validate_dict:
             dir_empty = True

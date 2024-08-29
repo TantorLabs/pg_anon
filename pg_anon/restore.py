@@ -225,7 +225,7 @@ async def make_restore(ctx):
         ctx.args.input_dir = os.path.join(ctx.current_dir, "output", ctx.args.input_dir)
 
     if not os.path.exists(ctx.args.input_dir):
-        msg = "ERROR: input directory %s does not exists" % ctx.args.input_dir
+        msg = f"ERROR: input directory {ctx.args.input_dir} does not exists"
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 

@@ -100,7 +100,7 @@ def recordset_to_list_flat(rs):
     return res
 
 
-def setof_to_list(rs):
+def setof_to_list(rs) -> List:
     res = []
     for rec in rs:
         for _, v in dict(rec).items():
@@ -183,7 +183,7 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
     found_white_list = table_rule is not None
 
     # dictionary_exclude has the highest priority
-    if "dictionary_exclude" in ctx.prepared_dictionary_obj:
+    if ctx.prepared_dictionary_obj.get("dictionary_exclude"):
         exclude_rule = get_dict_rule_for_table(
             dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
             schema=table_schema,

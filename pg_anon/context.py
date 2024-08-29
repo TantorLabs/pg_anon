@@ -66,8 +66,13 @@ class Context:
             isinstance(meta_dict["field"]["rules"], list) and
             isinstance(meta_dict["field"]["constants"], list) and
             isinstance(meta_dict["skip_rules"], list) and
+            isinstance(meta_dict["include_rules"], list) and
             isinstance(meta_dict["data_regex"]["rules"], list) and
             isinstance(meta_dict["data_const"]["constants"], list) and
+            isinstance(meta_dict["data_const"]["partial_constants"], list) and
+            isinstance(meta_dict["data_func"], dict) and
+            isinstance(meta_dict["data_sql_condition"], list) and
+            isinstance(meta_dict["sens_pg_types"], list) and
             isinstance(meta_dict["funcs"], dict) and
             isinstance(meta_dict["no_sens_dictionary"], list)
         ):
@@ -80,15 +85,20 @@ class Context:
         result_dict = {
           "field": {
             "rules": meta_dict_data.get('field', {}).get('rules', []) if meta_dict_data else [],
-            "constants": meta_dict_data.get('field', {}).get('constants', []) if meta_dict_data else []
+            "constants": meta_dict_data.get('field', {}).get('constants', []) if meta_dict_data else [],
           },
           "skip_rules": meta_dict_data.get('skip_rules', []) if meta_dict_data else [],
+          "include_rules": meta_dict_data.get('include_rules', []) if meta_dict_data else [],
           "data_regex": {
-            "rules": meta_dict_data.get('data_regex', {}).get('rules', []) if meta_dict_data else []
+            "rules": meta_dict_data.get('data_regex', {}).get('rules', []) if meta_dict_data else [],
           },
           "data_const": {
-            "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else []
+            "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else [],
+            "partial_constants": meta_dict_data.get('data_const', {}).get('partial_constants', []) if meta_dict_data else [],
           },
+          "data_func": meta_dict_data.get('data_func', {}) if meta_dict_data else {},
+          "data_sql_condition": meta_dict_data.get('data_sql_condition', []) if meta_dict_data else [],
+          "sens_pg_types": meta_dict_data.get('sens_pg_types', []) if meta_dict_data else [],
           "funcs": meta_dict_data.get('funcs', {}) if meta_dict_data else {},
           "no_sens_dictionary": meta_dict_data.get('no_sens_dictionary', []) if meta_dict_data else [],
         }
@@ -115,6 +125,18 @@ class Context:
 
         if meta_dict["data_const"]["constants"]:
             self.meta_dictionary_obj["data_const"]["constants"].extend(meta_dict["data_const"]["constants"])
+
+        if meta_dict["data_const"]["partial_constants"]:
+            self.meta_dictionary_obj["data_const"]["partial_constants"].extend(meta_dict["data_const"]["partial_constants"])
+
+        if meta_dict["data_func"]:
+            self.meta_dictionary_obj["data_func"].update(meta_dict["data_func"])
+
+        if meta_dict["data_sql_condition"]:
+            self.meta_dictionary_obj["data_sql_condition"].extend(meta_dict["data_sql_condition"])
+
+        if meta_dict["sens_pg_types"]:
+            self.meta_dictionary_obj["sens_pg_types"].extend(meta_dict["sens_pg_types"])
 
         if meta_dict["funcs"]:
             self.meta_dictionary_obj["funcs"].update(meta_dict["funcs"])

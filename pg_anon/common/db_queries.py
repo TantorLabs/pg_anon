@@ -1,3 +1,9 @@
+from pg_anon.common.dto import FieldInfo
+
+
+def get_query_limit(limit: int) -> str:
+    return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
+
 
 def get_query_get_scan_fields(limit: int = None, count_only: bool = False):
     if not count_only:
@@ -16,7 +22,7 @@ def get_query_get_scan_fields(limit: int = None, count_only: bool = False):
         fields = "SELECT COUNT(*)"
         order_by = ''
 
-    limit_str = f"LIMIT {limit}" if limit is not None and limit > 0 else ""
+    query_limit = get_query_limit(limit)
 
     return f"""
     {fields}
@@ -48,5 +54,54 @@ def get_query_get_scan_fields(limit: int = None, count_only: bool = False):
                 AND d.refclassid = 'pg_catalog.pg_class'::regclass
         )
     {order_by}
-    {limit_str}
+    {query_limit}
     """
+
+
+def get_data_from_field(field_info: FieldInfo, limit: int = None, condition: str = None, not_null: bool = True) -> str:
+    """
+    Build query for receiving data from table
+    :param field_info: Field info
+    :param limit: batch size
+    :param condition: specific WHERE condition for receiving data
+    :param not_null: filter for receiving only not null values
+    :return: Returns raw SQL query
+    """
+
+    conditions = []
+    query_condition = ''
+    need_where = True
+
+    if condition:
+        if condition.upper().startswith('WHERE'):
+            need_where = False
+        conditions.append(condition)
+
+    if not_null:
+        conditions.append(f'\"{field_info.column_name}\" is NOT NULL')
+
+    if conditions:
+        query_condition = 'WHERE ' if need_where else ''
+        query_condition += ' and '.join(conditions)
+
+    query_limit = get_query_limit(limit)
+
+    query = f"""
+    SELECT distinct(substring(\"{field_info.column_name}\"::text, 1, 8196))
+    FROM \"{field_info.nspname}\".\"{field_info.relname}\"
+    {query_condition}
+    {query_limit}
+    """
+
+    return query
+
+
+def prepare_data_scan_func_query(scan_func: str, value, field_info: FieldInfo) -> str:
+    """
+    Build query for scan in data by custom DB functions
+    :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
+    :param value: Data value from field
+    :param field_info: Field info
+    :return: prepared query for scanning
+    """
+    return f'{scan_func}({value}, {field_info.nspname}, {field_info.relname}, {field_info.column_name})'
