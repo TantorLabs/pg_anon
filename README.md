@@ -13,8 +13,9 @@ The tool comes in handy when it is necessary to transfer the database contents f
 |---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Personal (sensitive) data       | Data containing information that must not be transferred to other storage recipients or third parties and that constitutes a trade secret.                                                                                                                                                                                                                  |
 | Prepared sensitive dict file    | A file with a *.py extension containing an object that describes tables, fields, and methods for replacing the values of these fields. The dictionary file can be manually written by a developer or generated automatically.                                                                                                                               |
+| Prepared no sensitive dict file | A *.py file contains a list of objects structured as schema, table, and fields. This dictionary is used for re-scanning in create-dict mode and can be either manually created by a developer or generated automatically.                                                                                                                                   |
 | Meta-dictionary                 | A file with a *.py extension containing an object that describes rules for identifying personal (sensitive) data. The meta-dictionary is created manually by the user. Based on the meta-dictionary, the prepared sensitive dict file is then created. The process of automatically creating a dictionary is called "exploration." or `--mode=create-dict`. |
-| Dump                            | The process of writing the contents of a source database into files using a specified dictionary. The dump can be partial or complete.                                                                                                                                                                                                                      |
+| Dump                            | The process of writing the contents of a source database into files using a specified dictionary. The dump can be partial or complete. In fact, this is the stage where masking takes place.                                                                                                                                                                |
 | Restore                         | The process of loading data from files into the target database. The target database should not contain any objects.                                                                                                                                                                                                                                        |
 | Anonymization (masking)         | The process of cloning a database, consisting of the steps dump -> restore, during which sensitive data will be replaced with random or hashed values.                                                                                                                                                                                                      |
 | Anonymization function          | A built-in PostgreSQL function or a function from the anon_funcs schema that changes the input value to a random or hashed one. The anon_funcs schema contains a ready-made library of functions. New functions can be added to this schema to transform fields subject to anonymization for subsequent use in dictionaries.                                |
@@ -48,7 +49,7 @@ The diagram below shows both dictionary creation processes.
 `pg_anon` works in several modes:
 
 - **`init`**: Creates `anon_funcs` schema with anonymization functions.
-- **`create-dict`**: Scans the DB data and creates a metadict with an anonymization profile.
+  - **`create-dict`**: Scans the DB data and creates a prepared sens dict file with an anonymization profile and a prepared no sens dict file for faster work in other time in mode `create-dict`.
 - **`view-fields`**: Show table with `schema`, `table`, `field`, `type`, `dict_file_name`, `rule` fields which are based on a prepared sensitive dictionary. 
 - **`view-data`**: Show adjusted table with applied anonymization rules from prepared sensitive dictionary file.
 - **`dump`**: Creates a database structure dump using Postgres `pg_dump` tool, and data dumps using `COPY ...` queries with anonymization functions. The data dump step saves data locally in `*.bin.gz` format. During this step, the data is anonymized on the database side by `anon_funcs`.
@@ -461,7 +462,7 @@ Possible options in `--mode restore`:
 
 #### To see table in database with anonymization fields by prepared dictionary:
 ```commandline
-   python pg_anon.py --mode=view-fields \
+   python pg_anon.py --mode=view-data \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -737,25 +738,26 @@ python3 setup.py sdist
 
 Main directories:
 - `dict/`: Dir with meta-dict, prepared-sens-dict-file and prepared-no-sens-dict-file files.
-- `docker/`: Dir with docker
-- `pg_anon/`: Main python modules
-- `tests/`: Contains test_full.py - main testing module
+- `docker/`: Dir with docker.
+- `pg_anon/`: Main python modules.
+- `tests/`: Contains test_full.py - main testing module.
 
 
-Main logic of pg_anon contains in that *.py modules:
-- pg_anon/pg_anon.py
-- pg_anon/context.py
-- pg_anon/create_dict.py
-- pg_anon/dump.py
-- pg_anon/restore.py
-- pg_anon/view_fields.py
-- pg_anon/view_data.py
+The main logic of pg_anon is contained within the following Python modules:
+
+- `pg_anon/pg_anon.py`: Creates an instance of the Context class and directs the program to the appropriate module.
+- `pg_anon/context.py`: Contains the Context class (ctx).
+- `pg_anon/create_dict.py`: Logic for `--mode=create-dict`.
+- `pg_anon/dump.py`: Logic for `--mode=dump`, `--mode=sync-struct-dump`, and `--mode=sync-data-dump`.
+- `pg_anon/restore.py`: Logic for `--mode=restore`, `--mode=sync-struct-restore`, and `--mode=sync-data-restore`.
+- `pg_anon/view_fields.py`: Logic for `--mode=view-fields`.
+- `pg_anon/view_data.py`: Logic for `--mode=view-data`.
 
 `tree pg_anon/ -L 3`:
 
 ```commandline
 pg_anon/
-├── dict
+├── dict  # Dir with meta-dict, prepared-sens-dict-file and prepared-no-sens-dict-file files.
 │   ├── mask_test.py
 │   ├── test_dbg_stages.py
 │   ├── test_empty_dictionary.py
@@ -768,7 +770,7 @@ pg_anon/
 │   ├── test_sync_data_2.py
 │   ├── test_sync_data.py
 │   └── test_sync_struct.py
-├── docker
+├── docker  # Dir with docker
 │   ├── Dockerfile
 │   ├── entrypoint_dbg.sh
 │   ├── entrypoint.sh
@@ -782,7 +784,7 @@ pg_anon/
 │   └── README.md
 ├── __init__.py
 ├── init.sql
-├── pg_anon
+├── pg_anon  # Main python modules
 │   ├── common
 │   │   ├── db_queries.py
 │   │   ├── db_utils.py
@@ -806,7 +808,7 @@ pg_anon/
 ├── README.md
 ├── requirements.txt
 ├── setup.py
-├── tests
+├── tests  # Contains test_full.py - main testing module
 │   ├── init_env.sql
 │   ├── __init__.py
 │   ├── init_stress_env.sql
