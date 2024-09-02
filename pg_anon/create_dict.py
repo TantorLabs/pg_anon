@@ -10,8 +10,8 @@ import asyncpg
 import nest_asyncio
 from asyncpg import Connection
 
-from pg_anon.common.db_queries import get_data_from_field, prepare_data_scan_func_query
-from pg_anon.common.db_utils import get_scan_fields_list
+from pg_anon.common.db_queries import get_data_from_field
+from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query
 from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode, ScanMode
 from pg_anon.common.utils import (
@@ -238,7 +238,7 @@ def check_data_by_partial_constants(
     return False
 
 
-def check_data_by_functions(
+async def check_data_by_functions(
         ctx: Context,
         connection: Connection,
         name: str,
@@ -249,28 +249,30 @@ def check_data_by_functions(
     if not dictionary_obj["data_func"]:
         return False
 
-    rules = dictionary_obj["data_func"].get(field_info.type, [])
-    rules.extend(dictionary_obj["data_func"].get('anyelement', []))
-    for rule in rules:
-        matched_count = 0
-        for value in fld_data:
-            if value is None:
-                continue
+    rules_by_type = dictionary_obj["data_func"].get(field_info.type, [])
+    rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
 
-            query = prepare_data_scan_func_query(
-                scan_func=rule["scan_func"],
-                value=value,
-                field_info=field_info
-            )
-            if matched := connection.fetchval(query):
-                matched_count += 1
+    for rules in [rules_by_type, rules_for_anyelements]:
+        for rule in rules:
+            matched_count = 0
+            for value in fld_data:
+                if value is None:
+                    continue
 
-                if matched_count == rule["n_count"]:
-                    field_info.rule = rule["anon_func"]
-                    ctx.logger.debug(
-                        f"========> Process[{name}]: check_sensitive_data: match by data scan func {rule["scan_func"]} , {field_info}")
-                    return True
-    
+                if matched := await exec_data_scan_func_query(
+                    connection=connection,
+                    scan_func=rule["scan_func"],
+                    value=value,
+                    field_info=field_info
+                ):
+                    matched_count += 1
+
+                    if matched_count == rule["n_count"]:
+                        field_info.rule = rule["anon_func"]
+                        ctx.logger.debug(
+                            f"========> Process[{name}]: check_sensitive_data: match by data scan func {rule["scan_func"]} , {field_info}")
+                        return True
+
     return False
 
 
@@ -297,7 +299,7 @@ def check_data_by_regexp(
     return False
 
 
-def check_sensitive_data_in_fld(
+async def check_sensitive_data_in_fld(
         ctx: Context,
         connection: Connection,
         name: str,
@@ -310,7 +312,7 @@ def check_sensitive_data_in_fld(
     result = {field_info.obj_id: field_info}
     matched = False
 
-    if not matched and check_data_by_functions(
+    if not matched and await check_data_by_functions(
         ctx=ctx,
         connection=connection,
         name=name,
@@ -385,13 +387,14 @@ async def scan_obj_func(
 
     res = {}
     condition = None
-    if ctx.prepared_dictionary_obj.get("data_sql_condition"):
+    if ctx.meta_dictionary_obj.get("data_sql_condition"):
         rule = get_dict_rule_for_table(
-            dictionary_rules=ctx.prepared_dictionary_obj["data_sql_condition"],
+            dictionary_rules=ctx.meta_dictionary_obj["data_sql_condition"],
             schema=field_info.nspname,
             table=field_info.relname,
         )
-        condition = rule.get('sql_condition')
+        if rule:
+            condition = rule.get('sql_condition')
 
     try:
         async with pool.acquire() as db_conn:
@@ -402,7 +405,7 @@ async def scan_obj_func(
                     condition=condition
                 )
                 fld_data = await db_conn.fetch(query)
-                res = check_sensitive_data_in_fld(
+                res = await check_sensitive_data_in_fld(
                     ctx=ctx,
                     connection=db_conn,
                     name=name,
@@ -421,7 +424,7 @@ async def scan_obj_func(
                     next_rows = True
                     while next_rows:
                         fld_data = await cursor.fetch(scan_partial_rows)
-                        res = check_sensitive_data_in_fld(
+                        res = await check_sensitive_data_in_fld(
                             ctx=ctx,
                             connection=db_conn,
                             name=name,

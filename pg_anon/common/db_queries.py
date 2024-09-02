@@ -1,3 +1,5 @@
+import re
+
 from pg_anon.common.dto import FieldInfo
 
 
@@ -73,7 +75,8 @@ def get_data_from_field(field_info: FieldInfo, limit: int = None, condition: str
     need_where = True
 
     if condition:
-        if condition.upper().startswith('WHERE'):
+        condition_without_special_characters = re.sub('[^A-Z0-9]+', '', condition.upper())
+        if condition_without_special_characters.startswith('WHERE'):
             need_where = False
         conditions.append(condition)
 
@@ -94,14 +97,3 @@ def get_data_from_field(field_info: FieldInfo, limit: int = None, condition: str
     """
 
     return query
-
-
-def prepare_data_scan_func_query(scan_func: str, value, field_info: FieldInfo) -> str:
-    """
-    Build query for scan in data by custom DB functions
-    :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
-    :param value: Data value from field
-    :param field_info: Field info
-    :return: prepared query for scanning
-    """
-    return f'{scan_func}({value}, {field_info.nspname}, {field_info.relname}, {field_info.column_name})'

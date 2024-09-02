@@ -11,9 +11,16 @@ The tool comes in handy when it is necessary to transfer the database contents f
 `pg_anon` works in several modes:
 
 - **`init`**: Creates `anon_funcs` schema with anonymization functions.
-- **`create_dict`**: Scans the DB data and creates a metadict with an anonymization profile.
+- **`create-dict`**: Scans the DB data and creates a metadict with an anonymization profile.
+- **`view-fields`**: Renders table with fields which will be anonymized and which rules will be used for this
+- **`view-data`**: Renders data from specific table with anonymized data
 - **`dump`**: Creates a database structure dump using Postgres `pg_dump` tool, and data dumps using `COPY ...` queries with anonymization functions. The data dump step saves data locally in `*.bin.gz` format. During this step, the data is anonymized on the database side by `anon_funcs`.
 - **`restore`**: Restores database structure using Postgres `pg_restore` tool and data from the dump to the target DB. `restore` mode can separately restore database structure or data.
+- **`sync-struct-dump`**: Creates a database structure dump using Postgres `pg_dump` tool
+- **`sync-data-dump`**: Creates a database data dump using `COPY ...` queries with anonymization functions. The data dump step saves data locally in `*.bin.gz` format. During this step, the data is anonymized on the database side by `anon_funcs`.
+- **`sync-struct-restore`**: Restores database structure using Postgres `pg_restore` tool
+- **`sync-data-restore`**: Restores database data from the dump to the target DB.
+
 
 ## Requirements & Dependencies
 
@@ -238,6 +245,14 @@ var = {
             "fields": ["val_skip"]  # Optional. If there are no "fields", the entire table will be skipped.
         }
     ],
+    "include_rules": [ # List of schemas, tables, and fields which will be scanning
+        {
+            # possibly you need specific fields for scanning or you can debug some functions on specific field
+            "schema": "schm_other_2", # Required. Schema specification is mandatory
+            "table": "tbl_test_anon_functions", # Optional. If there is no "table", the entire schema will be included.
+            "fields": ["fld_5_email"] # Optional. If there are no "fields", the entire table will be included.             
+        }
+    ],
     "data_regex": {  # List of regular expressions to search for sensitive data
         "rules": [
             """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
@@ -249,8 +264,32 @@ var = {
         "constants": [  # When reading the meta-dictionary, the values of this list are placed in a set container
             "simpson",
             "account"
+        ],
+        # List of partial constants. If field value has substring from this list, it will considered as sensitive
+        "partial_constants": [ # When reading the meta-dictionary, the values of this list are placed in a set container
+            "@example.com",
+            "login_"
         ]
     },
+    "data_func": { # List of functions for specific field types  
+        "text": [ # Field type, which will be checked by functions bellow. Can use custom types. Also, can use common type "anyelement" for all field types. Rules for "anyelement" will be added for all types rules after their own rules.
+            {
+                "scan_func": "my_custom_functions.check_by_users_table", # Function for scanning field value. Scan function has fixed call signature: (value, schema_name, table_name, field_name). Also , this function must return boolean result. 
+                "anon_func": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')", # Function will be called for anonymization in dump step
+                "n_count": 100, # How many times "scan_func" have to returns "True" by values in one field. If this count will be reached, then this field will be anonymized by "anon_func" 
+            },
+        ],
+    },
+    "data_sql_condition": [ # List of rules for define data sampling for specific tables by custom conditions
+        {
+           "schema": "schm_mask_ext_exclude_2", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+           "table_mask": "*", # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+           "sql_condition": # Condition in raw SQL format. For example, we need data sample created by 2024 year
+           """
+           WHERE created > '2024-01-01' AND created < '2024-12-31'
+           """
+        }
+    ],
     "sens_pg_types": [
         # List of field types which should be checked (other types won't be checked). If this massive is empty program set default SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json"]
         "text",

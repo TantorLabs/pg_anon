@@ -120,6 +120,9 @@ class Context:
         if meta_dict["skip_rules"]:
             self.meta_dictionary_obj["skip_rules"].extend(meta_dict["skip_rules"])
 
+        if meta_dict["include_rules"]:
+            self.meta_dictionary_obj["include_rules"].extend(meta_dict["include_rules"])
+
         if meta_dict["data_regex"]["rules"]:
             self.meta_dictionary_obj["data_regex"]["rules"].extend(meta_dict["data_regex"]["rules"])
 

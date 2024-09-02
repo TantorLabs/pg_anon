@@ -439,10 +439,17 @@ class BasicUnitTest:
 
         return source_tables, target_tables
 
+    @property
+    def test_expected_results_path(self) -> str:
+        return os.path.join(os.getcwd(), 'tests', 'expected_results')
+
     @staticmethod
     def get_test_dict_path(dict_name: str, output: bool = False) -> str:
         type = 'output' if output else 'input'
         return os.path.join(os.getcwd(), 'tests', f'{type}_dict', dict_name)
+
+    def get_test_expected_dict_path(self, dict_name: str) -> str:
+        return os.path.join(self.test_expected_results_path, dict_name)
 
     @staticmethod
     def get_test_output_path(dir_name: str) -> str:
@@ -453,7 +460,7 @@ class BasicUnitTest:
         os.makedirs(saved_results_file_path, exist_ok=True)
         saved_results_file = os.path.join(saved_results_file_path, file_name)
 
-        expected_results_file = os.path.join(os.getcwd(), 'tests', 'expected_results', file_name + '.result')
+        expected_results_file = os.path.join(self.test_expected_results_path, file_name + '.result')
         to_json(list_objects, formatted=True)
 
         with open(saved_results_file, "w") as out_file:
@@ -1077,10 +1084,88 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.target_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result.py", output=True)
-        self.target_sens_dict_expected = self.get_test_dict_path("test_prepared_sens_dict_result_expected.py")
+        self.target_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_expected.py")
         self.target_no_sens_dict = self.get_test_dict_path("test_prepared_no_sens_dict_result.py", output=True)
-        self.target_no_sens_dict_expected = self.get_test_dict_path("test_prepared_no_sens_dict_result_expected.py")
-    
+        self.target_no_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_no_sens_dict_result_expected.py")
+
+    def assert_sens_dicts(self, prepared_sens_dict: str, prepared_sens_dict_expected: str):
+        """
+        Comparing sens dicts
+        :param prepared_sens_dict: output prepared sens dict
+        :param prepared_sens_dict_expected: prepared sens dict for comparison
+        :raise AssertError: if dicts are not identical
+        """
+        with (open(prepared_sens_dict, "r", encoding="utf-8") as file1,
+              open(prepared_sens_dict_expected, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)["dictionary"]
+            d2 = json.load(file2)["dictionary"]
+
+            def iterate_dict_level_2(data):
+                for k, v in data.items():
+                    yield {k: v}
+
+            def iterate_dict_level_1(data):
+                for item in data:
+                    if "fields" in item:
+                        yield from iterate_dict_level_2(item["fields"])
+                    else:
+                        yield from iterate_dict_level_2(item)
+
+            flag_of_identity = True  # comparing elements of two dictionaries
+            expected_result_list_of_iterate_dict = []
+            result_list_of_iterate_dict = []
+
+            print(f"============> Started comparison of {prepared_sens_dict} and {prepared_sens_dict_expected}")
+
+            for line in iterate_dict_level_1(d2):
+                expected_result_list_of_iterate_dict.append(line)
+
+            for line in iterate_dict_level_1(d1):
+                result_list_of_iterate_dict.append(line)
+                if line not in expected_result_list_of_iterate_dict:
+                    flag_of_identity = False
+                    print(f"check_comparison: row {line} not found in {prepared_sens_dict}")
+
+            if flag_of_identity:
+                for line in iterate_dict_level_1(d2):
+                    if line not in result_list_of_iterate_dict:
+                        flag_of_identity = False
+                        print(f"check_comparison: row {line} not found in {prepared_sens_dict_expected}")
+
+            print(f"<============ Finished comparison of {prepared_sens_dict} and {prepared_sens_dict_expected}")
+
+        self.assertTrue(flag_of_identity)
+
+    def assert_no_sens_dicts(self, prepared_no_sens_dict: str, prepared_no_sens_dict_expected: str) -> bool:
+        """
+        Comparing no sens dicts
+        :param prepared_no_sens_dict: output prepared no sens dict
+        :param prepared_no_sens_dict_expected: prepared no sens dict for comparison
+        :raise AssertError: if dicts are not identical
+        """
+
+        print(f"============> Started comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
+        # Checking no-sens dict
+        with (open(prepared_no_sens_dict, "r", encoding="utf-8") as file1,
+              open(prepared_no_sens_dict_expected, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
+
     args = {}
 
     async def test_01_init(self):
@@ -1116,69 +1201,8 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(os.path.exists(self.target_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
-        # Checking sens dict
-        with (open(self.target_sens_dict, "r", encoding="utf-8") as file1,
-              open(self.target_sens_dict_expected, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)["dictionary"]
-            d2 = json.load(file2)["dictionary"]
-
-            def iterate_dict_level_2(data):
-                for k, v in data.items():
-                    yield {k: v}
-
-            def iterate_dict_level_1(data):
-                for item in data:
-                    if "fields" in item:
-                        yield from iterate_dict_level_2(item["fields"])
-                    else:
-                        yield from iterate_dict_level_2(item)
-
-            flag_of_identity = True  # comparing elements of two dictionaries
-            expected_result_list_of_iterate_dict = []
-            result_list_of_iterate_dict = []
-
-            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-            for line in iterate_dict_level_1(d2):
-                expected_result_list_of_iterate_dict.append(line)
-
-            for line in iterate_dict_level_1(d1):
-                result_list_of_iterate_dict.append(line)
-                if line not in expected_result_list_of_iterate_dict:
-                    flag_of_identity = False
-                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
-
-            if flag_of_identity:
-                for line in iterate_dict_level_1(d2):
-                    if line not in result_list_of_iterate_dict:
-                        flag_of_identity = False
-                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}")
-
-            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-        self.assertTrue(flag_of_identity)
-
-        print(f"============> Started comparison of {self.target_no_sens_dict} and {self.target_no_sens_dict_expected}")
-        # Checking no-sens dict
-        with (open(self.target_no_sens_dict, "r", encoding="utf-8") as file1,
-              open(self.target_no_sens_dict_expected, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)
-            d2 = json.load(file2)
-
-            # Checking fields count first
-            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
-
-            # Sorting fields for next comparison
-            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-
-            # Comparing fields between dicts
-            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
-                self.assertEqual(d1_field['schema'], d2_field['schema'])
-                self.assertEqual(d1_field['table'], d2_field['table'])
-                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
-
-        print(f"<============ Finished comparison of {self.target_no_sens_dict} and {self.target_no_sens_dict_expected}")
+        self.assert_sens_dicts(self.target_sens_dict, self.target_sens_dict_expected)
+        self.assert_no_sens_dicts(self.target_no_sens_dict, self.target_no_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_create_dict")
@@ -1292,7 +1316,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_02_create_dict" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
-        target_no_sens_dict = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
+        target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
         parser = Context.get_arg_parser()
         self.args_create_dict = parser.parse_args(
@@ -1306,7 +1330,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict_file}",
                 f"--output-sens-dict-file={self.target_sens_dict}",
-                f"--output-no-sens-dict-file={self.target_no_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
                 f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
                 f"--threads={params.test_threads}",
                 "--scan-partial-rows=10000",
@@ -1317,71 +1341,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         res = await MainRoutine(self.args_create_dict).run()
         self.assertTrue(os.path.exists(self.target_sens_dict))
-        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+        self.assertTrue(os.path.exists(target_no_sens_dict_repeat))
 
-        # Checking sens dict
-        with (open(self.target_sens_dict, "r", encoding="utf-8") as file1,
-              open(self.target_sens_dict_expected, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)["dictionary"]
-            d2 = json.load(file2)["dictionary"]
-
-            def iterate_dict_level_2(data):
-                for k, v in data.items():
-                    yield {k: v}
-
-            def iterate_dict_level_1(data):
-                for item in data:
-                    if "fields" in item:
-                        yield from iterate_dict_level_2(item["fields"])
-                    else:
-                        yield from iterate_dict_level_2(item)
-
-            flag_of_identity = True  # comparing elements of two dictionaries
-            expected_result_list_of_iterate_dict = []
-            result_list_of_iterate_dict = []
-
-            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-            for line in iterate_dict_level_1(d2):
-                expected_result_list_of_iterate_dict.append(line)
-
-            for line in iterate_dict_level_1(d1):
-                result_list_of_iterate_dict.append(line)
-                if line not in expected_result_list_of_iterate_dict:
-                    flag_of_identity = False
-                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
-
-            if flag_of_identity:
-                for line in iterate_dict_level_1(d2):
-                    if line not in result_list_of_iterate_dict:
-                        flag_of_identity = False
-                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}")
-
-            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-        self.assertTrue(flag_of_identity)
-
-        print(f"============> Started comparison of {self.target_no_sens_dict} and {self.target_no_sens_dict}")
-        # Checking no-sens dict
-        with (open(self.target_no_sens_dict, "r", encoding="utf-8") as file1,
-              open(self.target_no_sens_dict, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)
-            d2 = json.load(file2)
-
-            # Checking fields count first
-            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
-
-            # Sorting fields for next comparison
-            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-
-            # Comparing fields between dicts
-            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
-                self.assertEqual(d1_field['schema'], d2_field['schema'])
-                self.assertEqual(d1_field['table'], d2_field['table'])
-                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
-
-        print(f"<============ Finished comparison of {target_no_sens_dict} and {self.target_no_sens_dict}")
+        self.assert_sens_dicts(self.target_sens_dict, self.target_sens_dict_expected)
+        self.assert_no_sens_dicts(target_no_sens_dict_repeat, self.target_no_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_05_repeat_create_dict_with_no_sens_dict")
@@ -1390,7 +1353,8 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_02_create_dict" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
-        target_no_sens_dict = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
+
+        target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
         parser = Context.get_arg_parser()
         self.args_create_dict = parser.parse_args(
@@ -1404,7 +1368,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict_file}",
                 f"--output-sens-dict-file={self.target_sens_dict}",
-                f"--output-no-sens-dict-file={target_no_sens_dict}",
+                f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
                 f"--prepared-sens-dict-file={self.target_sens_dict}",
                 f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
                 f"--threads={params.test_threads}",
@@ -1416,74 +1380,165 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         res = await MainRoutine(self.args_create_dict).run()
         self.assertTrue(os.path.exists(self.target_sens_dict))
-        self.assertTrue(os.path.exists(target_no_sens_dict))
+        self.assertTrue(os.path.exists(target_no_sens_dict_repeat))
 
-        # Checking sens dict
-        with (open(self.target_sens_dict, "r", encoding="utf-8") as file1,
-              open(self.target_sens_dict_expected, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)["dictionary"]
-            d2 = json.load(file2)["dictionary"]
-
-            def iterate_dict_level_2(data):
-                for k, v in data.items():
-                    yield {k: v}
-
-            def iterate_dict_level_1(data):
-                for item in data:
-                    if "fields" in item:
-                        yield from iterate_dict_level_2(item["fields"])
-                    else:
-                        yield from iterate_dict_level_2(item)
-
-            flag_of_identity = True  # comparing elements of two dictionaries
-            expected_result_list_of_iterate_dict = []
-            result_list_of_iterate_dict = []
-
-            print(f"============> Started comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-            for line in iterate_dict_level_1(d2):
-                expected_result_list_of_iterate_dict.append(line)
-
-            for line in iterate_dict_level_1(d1):
-                result_list_of_iterate_dict.append(line)
-                if line not in expected_result_list_of_iterate_dict:
-                    flag_of_identity = False
-                    print(f"check_comparison: row {line} not found in {self.target_sens_dict}")
-
-            if flag_of_identity:
-                for line in iterate_dict_level_1(d2):
-                    if line not in result_list_of_iterate_dict:
-                        flag_of_identity = False
-                        print(f"check_comparison: row {line} not found in {self.target_sens_dict_expected}")
-
-            print(f"<============ Finished comparison of {self.target_sens_dict} and {self.target_sens_dict_expected}")
-
-        self.assertTrue(flag_of_identity)
-
-        print(f"============> Started comparison of {target_no_sens_dict} and {self.target_no_sens_dict}")
-        # Checking no-sens dict
-        with (open(self.target_no_sens_dict, "r", encoding="utf-8") as file1,
-              open(target_no_sens_dict, "r", encoding="utf-8") as file2):
-            d1 = json.load(file1)
-            d2 = json.load(file2)
-
-            # Checking fields count first
-            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
-
-            # Sorting fields for next comparison
-            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
-
-            # Comparing fields between dicts
-            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
-                self.assertEqual(d1_field['schema'], d2_field['schema'])
-                self.assertEqual(d1_field['table'], d2_field['table'])
-                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
-
-        print(f"<============ Finished comparison of {target_no_sens_dict} and {self.target_no_sens_dict}")
+        self.assert_sens_dicts(self.target_sens_dict, self.target_sens_dict_expected)
+        self.assert_no_sens_dicts(target_no_sens_dict_repeat, self.target_no_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict")
+
+    async def test_07_create_dict_using_include_rules(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_include_rules.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_include_rule.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_rule_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_07_create_dict_using_include_rules")
+
+    async def test_08_create_dict_using_partial_constants(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_partial_constants.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_partial_constants.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_partial_constants_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_08_create_dict_using_partial_constants")
+
+    async def test_09_create_dict_using_data_sql_condition(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_data_sql_condition.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_sql_condition.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_sql_condition_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_09_create_dict_using_data_sql_condition")
+
+    async def test_10_create_dict_using_data_func(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_data_func.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_func.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_func_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--threads={params.test_threads}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_10_create_dict_using_data_func")
 
 
 class TmpResults:
@@ -1667,7 +1722,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_02_view_data_print(self):
         self.assertTrue("init_env" in passed_stages)
 
-        prepared_sens_dict_file_name = self.get_test_dict_path('test_prepared_sens_dict_result_expected.py')
+        prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -1695,7 +1750,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_03_view_data_json(self):
         self.assertTrue("init_env" in passed_stages)
 
-        prepared_sens_dict_file_name = self.get_test_dict_path('test_prepared_sens_dict_result_expected.py')
+        prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         parser = Context.get_arg_parser()
         args = parser.parse_args(
@@ -1730,7 +1785,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_04_view_data_null(self):
         self.assertTrue("init_env" in passed_stages)
 
-        prepared_sens_dict_file_name = self.get_test_dict_path('test_prepared_sens_dict_result_expected.py')
+        prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         parser = Context.get_arg_parser()
         args = [
