@@ -5,15 +5,16 @@ import re
 import time
 from typing import List, Dict, Optional
 
-import aioprocessing
 import asyncpg
 import nest_asyncio
+from aioprocessing import AioQueue
 from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_data_from_field
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query
 from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode, ScanMode
+from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
     chunkify,
     exception_helper,
@@ -78,10 +79,11 @@ async def get_fields_for_scan(ctx: Context) -> Dict[str, FieldInfo]:
     :param ctx: context for db connection and meta dictionary rules
     :return: dict of fields with key by obj_id for create dictionary mode
     """
-    fields_list = await get_scan_fields_list(ctx.conn_params)
+    fields_list = await get_scan_fields_list(connection_params=ctx.conn_params, server_settings=ctx.server_settings)
 
     return {
-        field['obj_id']: FieldInfo(**field) for field in fields_list if check_include_fields(ctx, field) and check_not_skip_fields(ctx, field)
+        field['obj_id']: FieldInfo(**field) for field in fields_list
+        if check_include_fields(ctx, field) and check_not_skip_fields(ctx, field)
     }
 
 
@@ -454,9 +456,7 @@ async def scan_obj_func(
     return res
 
 
-def process_impl(
-    name, ctx, queue, fields_info_chunk: List[FieldInfo], conn_params, threads: int
-):
+def process_impl(name: str, ctx: Context, queue: AioQueue, fields_info_chunk: List[FieldInfo]):
     tasks_res = []
 
     status_ratio = 10
@@ -467,7 +467,10 @@ def process_impl(
 
     async def run():
         pool = await asyncpg.create_pool(
-            **conn_params, min_size=threads, max_size=threads
+            **ctx.conn_params,
+            server_settings=ctx.server_settings,
+            min_size=ctx.args.db_connections_per_process,
+            max_size=ctx.args.db_connections_per_process
         )
         tasks = set()
 
@@ -479,7 +482,7 @@ def process_impl(
         )
 
         for idx, field_info in enumerate(fields_info_chunk):
-            if len(tasks) >= threads:
+            if len(tasks) >= ctx.args.db_connections_per_process:
                 done, tasks = await asyncio.wait(
                     tasks, return_when=asyncio.FIRST_COMPLETED
                 )
@@ -501,10 +504,8 @@ def process_impl(
             tasks_res.append(task_res)
             tasks.add(task_res)
             if idx % status_ratio:
-                progress = (
-                    str(round(float(idx) * 100 / len(fields_info_chunk), 2)) + "%"
-                )
-                ctx.logger.info("Process [%s] Progress %s" % (name, str(progress)))
+                progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
+                ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
         if len(tasks) > 0:
             await asyncio.wait(tasks)
         await pool.close()
@@ -515,9 +516,7 @@ def process_impl(
     try:
         loop.run_until_complete(run())
     except asyncio.exceptions.TimeoutError:
-        ctx.logger.error(
-            "================> Process [%s]: asyncio.exceptions.TimeoutError" % name
-        )
+        ctx.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
     finally:
         loop.close()
 
@@ -529,38 +528,6 @@ def process_impl(
     queue.put(tasks_res_final)
     queue.put(None)  # Shut down the worker
     queue.close()
-
-
-async def init_process(name, ctx, fields_info_chunk: List[FieldInfo]):
-    start_t = time.time()
-    ctx.logger.info(
-        "================> Process [%s] started. Input items: %s"
-        % (name, str(len(fields_info_chunk)))
-    )
-    queue = aioprocessing.AioQueue()
-
-    p = aioprocessing.AioProcess(
-        target=process_impl,
-        args=(name, ctx, queue, fields_info_chunk, ctx.conn_params, ctx.args.threads),
-    )
-    p.start()
-    res = None
-    while True:
-        result = await queue.coro_get()
-        if result is None:
-            break
-        res = result
-    await p.coro_join()
-    end_t = time.time()
-    ctx.logger.info(
-        "<================ Process [%s] finished, elapsed: %s sec. Result %s item(s)"
-        % (
-            name,
-            str(round(end_t - start_t, 2)),
-            str(len(res)) if res is not None else "0",
-        )
-    )
-    return res
 
 
 def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
@@ -620,7 +587,14 @@ async def create_dict_impl(ctx):
         tasks = []
         for idx, fields_info_chunk in enumerate(fields_info_chunks):
             tasks.append(
-                asyncio.ensure_future(init_process(str(idx + 1), ctx, fields_info_chunk))
+                asyncio.ensure_future(
+                    init_process(
+                        name=str(idx + 1),
+                        ctx=ctx,
+                        target_func=process_impl,
+                        tasks=fields_info_chunk
+                    )
+                )
             )
         await asyncio.wait(tasks)
 
