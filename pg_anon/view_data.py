@@ -4,10 +4,10 @@ from typing import List, Dict
 import asyncpg
 from prettytable import PrettyTable, SINGLE_BORDER
 
+from pg_anon.common.db_utils import get_fields_list
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import exception_helper, get_dump_query, get_dict_rule_for_table
-from pg_anon.common.db_utils import get_fields_list
 from pg_anon.context import Context
 
 
@@ -38,6 +38,7 @@ class ViewDataMode:
         """
         fields_list = await get_fields_list(
             connection_params=self.context.conn_params,
+            server_settings=self.context.server_settings,
             table_schema=self._schema_name,
             table_name=self._table_name
         )

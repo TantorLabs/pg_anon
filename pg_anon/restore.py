@@ -8,14 +8,14 @@ import subprocess
 
 import asyncpg
 
+from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.enums import ResultCode, AnonMode
 from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
     get_pg_util_version,
     pretty_size,
 )
-from pg_anon.common.enums import ResultCode, AnonMode
-from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 
 
@@ -34,7 +34,7 @@ async def run_pg_restore(ctx, section):
         "-d",
         ctx.args.db_name,
         "-j",
-        str(ctx.args.threads),
+        str(ctx.args.db_connections_per_process),
         os.path.join(ctx.args.input_dir, section.replace("-", "_") + ".backup"),
     ]
     if not ctx.args.db_host:
@@ -51,7 +51,7 @@ async def run_pg_restore(ctx, section):
 
 
 async def seq_init(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
     if ctx.args.seq_init_by_max_value:
         query = """
             DO $$
@@ -116,7 +116,7 @@ async def restore_table_data(
     dump_file: str,
     schema_name: str,
     table_name: str,
-    sn_id: str,
+    transaction_snapshot_id: str,
 ):
     ctx.logger.info(f"{'>':=>20} Started task copy_to_table {schema_name}.{table_name}")
     if dump_file.endswith('.bin.gz'):
@@ -130,7 +130,7 @@ async def restore_table_data(
     try:
         async with pool.acquire() as db_conn:
             async with db_conn.transaction(isolation='repeatable_read'):
-                await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{sn_id}';")
+                await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
 
                 result = await db_conn.copy_to_table(
                     schema_name=schema_name,
@@ -154,9 +154,12 @@ async def restore_table_data(
     ctx.logger.info(f"{'>':=>20} Finished task {schema_name}.{str(table_name)}")
 
 
-async def make_restore_impl(ctx, sn_id):
+async def make_restore_impl(ctx: Context, transaction_snapshot_id: str):
     pool = await asyncpg.create_pool(
-        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
+        **ctx.conn_params,
+        server_settings=ctx.server_settings,
+        min_size=ctx.args.db_connections_per_process,
+        max_size=ctx.args.db_connections_per_process
     )
 
     loop = asyncio.get_event_loop()
@@ -165,7 +168,7 @@ async def make_restore_impl(ctx, sn_id):
         full_path = os.path.join(
             ctx.args.input_dir, file_name
         )
-        if len(tasks) >= ctx.args.threads:
+        if len(tasks) >= ctx.args.db_connections_per_process:
             # Wait for some restore to finish before adding a new one
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             exception = done.pop().exception()
@@ -180,7 +183,7 @@ async def make_restore_impl(ctx, sn_id):
                     dump_file=str(full_path),
                     schema_name=target["schema"],
                     table_name=target["table"],
-                    sn_id=sn_id,
+                    transaction_snapshot_id=transaction_snapshot_id,
                 )
             )
         )
@@ -229,7 +232,7 @@ async def make_restore(ctx):
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
     db_is_empty = await db_conn.fetchval(
         """
         SELECT NOT EXISTS(
@@ -332,8 +335,8 @@ async def make_restore(ctx):
         try:
             async with db_conn.transaction(isolation='repeatable_read'):
                 await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
-                sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-                await make_restore_impl(ctx, sn_id)
+                transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")
+                await make_restore_impl(ctx, transaction_snapshot_id)
         except:
             ctx.logger.error(
                 "<------------- make_restore failed\n" + exception_helper()
@@ -380,14 +383,17 @@ async def run_custom_query(ctx, pool, query):
 async def run_analyze(ctx):
     ctx.logger.info("-------------> Started analyze")
     pool = await asyncpg.create_pool(
-        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
+        **ctx.conn_params,
+        server_settings=ctx.server_settings,
+        min_size=ctx.args.db_connections_per_process,
+        max_size=ctx.args.db_connections_per_process
     )
 
     queries = generate_analyze_queries(ctx)
     loop = asyncio.get_event_loop()
     tasks = set()
     for v in queries:
-        if len(tasks) >= ctx.args.threads:
+        if len(tasks) >= ctx.args.db_connections_per_process:
             done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             exception = done.pop().exception()
             if exception is not None:
@@ -413,7 +419,7 @@ async def validate_restore(ctx):
         return [], {}
 
     if "validate_tables" in ctx.prepared_dictionary_obj:
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
         db_objs = await db_conn.fetch(
             """
             select n.nspname, c.relname --, c.reltuples
