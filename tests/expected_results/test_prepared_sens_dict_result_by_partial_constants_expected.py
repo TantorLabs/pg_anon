@@ -1,10 +1,10 @@
 {
     "dictionary": [
         {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'",
             "fields": {
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')",
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
                 "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
             }
         },
@@ -20,9 +20,9 @@
             "schema": "public",
             "table": "tbl_100",
             "fields": {
-                "\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435": "anon_funcs.digest(\"\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435\", 'salt_word', 'md5')",
+                "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
                 "amount": "anon_funcs.noise(\"amount\", 10)",
-                "\u0438\u043c\u044f_\u043f\u043e\u043b\u044f": "anon_funcs.digest(\"\u0438\u043c\u044f_\u043f\u043e\u043b\u044f\", 'salt_word', 'md5')"
+                "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },
         {
@@ -55,10 +55,10 @@
             }
         },
         {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'3",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'3",
             "fields": {
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')",
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
                 "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
             }
         },
@@ -67,16 +67,16 @@
             "table": "card_numbers",
             "fields": {
                 "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
-                "\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435": "anon_funcs.digest(\"\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435\", 'salt_word', 'md5')",
+                "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
                 "usd": "anon_funcs.noise(\"usd\", 10)",
-                "\u0438\u043c\u044f_\u043f\u043e\u043b\u044f": "anon_funcs.digest(\"\u0438\u043c\u044f_\u043f\u043e\u043b\u044f\", 'salt_word', 'md5')"
+                "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },
         {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'2",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'2",
             "fields": {
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')",
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
                 "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
             }
         },

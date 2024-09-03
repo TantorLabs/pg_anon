@@ -255,6 +255,8 @@ async def check_data_by_functions(
     for rules in [rules_by_type, rules_for_anyelements]:
         for rule in rules:
             matched_count = 0
+            rule_expected_matches_count = rule.get("n_count", 1)
+
             for value in fld_data:
                 if value is None:
                     continue
@@ -267,7 +269,7 @@ async def check_data_by_functions(
                 ):
                     matched_count += 1
 
-                    if matched_count == rule["n_count"]:
+                    if matched_count == rule_expected_matches_count:
                         field_info.rule = rule["anon_func"]
                         ctx.logger.debug(
                             f"========> Process[{name}]: check_sensitive_data: match by data scan func {rule["scan_func"]} , {field_info}")
@@ -651,8 +653,8 @@ async def create_dict_impl(ctx):
     output_dir = os.path.dirname(output_sens_dict_filename)
     os.makedirs(output_dir, exist_ok=True)
 
-    with open(output_sens_dict_filename, "w") as file:
-        file.write(json.dumps(output_sens_dict, indent=4))
+    with open(output_sens_dict_filename, "w", encoding='utf-8') as file:
+        file.write(json.dumps(output_sens_dict, indent=4, ensure_ascii=False))
 
     if need_prepare_no_sens_dict:
         prepared_no_sens_dict_rules = {}
@@ -669,8 +671,8 @@ async def create_dict_impl(ctx):
 
         output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
         output_no_sens_dict_file_name = os.path.join(ctx.current_dir, "dict", ctx.args.output_no_sens_dict_file)
-        with open(output_no_sens_dict_file_name, "w") as file:
-            file.write(json.dumps(output_no_sens_dict, indent=4))
+        with open(output_no_sens_dict_file_name, "w", encoding='utf-8') as file:
+            file.write(json.dumps(output_no_sens_dict, indent=4, ensure_ascii=False))
 
     return result
 

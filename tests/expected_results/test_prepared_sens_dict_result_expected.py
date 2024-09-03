@@ -1,36 +1,43 @@
 {
     "dictionary": [
         {
-            "schema": "schm_customer",
-            "table": "customer_manager",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'",
             "fields": {
-                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')"
-            }
-        },
-        {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'",
-            "fields": {
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')",
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
                 "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
             }
         },
         {
-            "schema": "schm_mask_ext_exclude_2",
-            "table": "card_numbers",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'2",
             "fields": {
-                "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
-                "\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435": "anon_funcs.digest(\"\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435\", 'salt_word', 'md5')",
-                "usd": "anon_funcs.noise(\"usd\", 10)",
-                "\u0438\u043c\u044f_\u043f\u043e\u043b\u044f": "anon_funcs.digest(\"\u0438\u043c\u044f_\u043f\u043e\u043b\u044f\", 'salt_word', 'md5')"
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
+                "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
             }
         },
         {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'3",
+            "schema": "_SCHM.$complex#имя;@&* a'",
+            "table": "_TBL.$complex#имя;@&* a'3",
             "fields": {
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')",
+                "_FLD.$complex#имя;@&* a'": "anon_funcs.digest(\"_FLD.$complex#имя;@&* a'\", 'salt_word', 'md5')",
                 "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')"
+            }
+        },
+        {
+            "schema": "public",
+            "table": "contracts",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)",
+                "contract_expires": "anon_funcs.dnoise(\"contract_expires\",  interval '6 month')",
+                "details": "anon_funcs.digest(\"details\", 'salt_word', 'md5')"
+            }
+        },
+        {
+            "schema": "public",
+            "table": "inn_info",
+            "fields": {
+                "inn": "anon_funcs.random_inn()"
             }
         },
         {
@@ -42,52 +49,45 @@
             }
         },
         {
-            "schema": "schm_customer",
-            "table": "customer_company",
+            "schema": "public",
+            "table": "tbl_100",
             "fields": {
-                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
-                "inn": "anon_funcs.random_inn()"
+                "amount": "anon_funcs.noise(\"amount\", 10)",
+                "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
+                "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },
         {
-            "schema": "_SCHM.$complex#\u0438\u043c\u044f;@&* a'",
-            "table": "_TBL.$complex#\u0438\u043c\u044f;@&* a'2",
+            "schema": "schm_customer",
+            "table": "customer_company",
             "fields": {
-                "fld_key": "anon_funcs.digest(\"fld_key\", 'salt_word', 'md5')",
-                "_FLD.$complex#\u0438\u043c\u044f;@&* a'": "anon_funcs.digest(\"_FLD.$complex#\u0438\u043c\u044f;@&* a'\", 'salt_word', 'md5')"
+                "inn": "anon_funcs.random_inn()",
+                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')"
+            }
+        },
+        {
+            "schema": "schm_customer",
+            "table": "customer_manager",
+            "fields": {
+                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')"
+            }
+        },
+        {
+            "schema": "schm_mask_ext_exclude_2",
+            "table": "card_numbers",
+            "fields": {
+                "usd": "anon_funcs.noise(\"usd\", 10)",
+                "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
+                "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
+                "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },
         {
             "schema": "schm_mask_ext_exclude_2",
             "table": "other_ext_tbl_2",
             "fields": {
-                "val_2": "anon_funcs.digest(\"val_2\", 'salt_word', 'md5')",
-                "val_1": "anon_funcs.digest(\"val_1\", 'salt_word', 'md5')"
-            }
-        },
-        {
-            "schema": "public",
-            "table": "tbl_100",
-            "fields": {
-                "\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435": "anon_funcs.digest(\"\u0434\u0440\u0443\u0433\u043e\u0435_\u043f\u043e\u043b\u0435\", 'salt_word', 'md5')",
-                "amount": "anon_funcs.noise(\"amount\", 10)",
-                "\u0438\u043c\u044f_\u043f\u043e\u043b\u044f": "anon_funcs.digest(\"\u0438\u043c\u044f_\u043f\u043e\u043b\u044f\", 'salt_word', 'md5')"
-            }
-        },
-        {
-            "schema": "public",
-            "table": "contracts",
-            "fields": {
-                "amount": "anon_funcs.noise(\"amount\", 10)",
-                "details": "anon_funcs.digest(\"details\", 'salt_word', 'md5')",
-                "contract_expires": "anon_funcs.dnoise(\"contract_expires\",  interval '6 month')"
-            }
-        },
-        {
-            "schema": "public",
-            "table": "inn_info",
-            "fields": {
-                "inn": "anon_funcs.random_inn()"
+                "val_1": "anon_funcs.digest(\"val_1\", 'salt_word', 'md5')",
+                "val_2": "anon_funcs.digest(\"val_2\", 'salt_word', 'md5')"
             }
         },
         {

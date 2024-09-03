@@ -286,8 +286,8 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         metadata["dbg_stage_3_validate_full"] = False
 
     if not ctx.args.dbg_stage_1_validate_dict:
-        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
-            out_file.write(json.dumps(metadata, indent=4))
+        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w", encoding='utf-8') as out_file:
+            out_file.write(json.dumps(metadata, indent=4, ensure_ascii=False))
 
 
 async def make_dump(ctx):
@@ -394,8 +394,8 @@ async def make_dump(ctx):
             tmp_list.append(v["schema"])
         metadata["schemas"] = list(set(tmp_list))
 
-        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w") as out_file:
-            out_file.write(json.dumps(metadata, indent=4))
+        with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w", encoding='utf-8') as out_file:
+            out_file.write(json.dumps(metadata, indent=4, ensure_ascii=False))
 
     if result.result_code == ResultCode.DONE:
         ctx.logger.info("<------------- Finished dump mode")
