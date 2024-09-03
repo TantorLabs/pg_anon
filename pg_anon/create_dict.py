@@ -156,8 +156,8 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
         if matched:
             continue
 
-        for rule in ctx.meta_dictionary_obj["field"]["rules"]:
-            if re.search(rule, field_info.column_name) is not None:
+        for rule in ctx.meta_dictionary_obj["field"]["constants"]:
+            if rule == field_info.column_name:
                 if obj_id in fields_info:
                     ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
                     del fields_info[obj_id]
@@ -168,8 +168,8 @@ def scan_fields_by_names(ctx, fields_info: Dict[str, FieldInfo]):
         if matched:
             continue
 
-        for rule in ctx.meta_dictionary_obj["field"]["constants"]:
-            if rule == field_info.column_name:
+        for rule in ctx.meta_dictionary_obj["field"]["rules"]:
+            if re.search(rule, field_info.column_name) is not None:
                 if obj_id in fields_info:
                     ctx.logger.debug(f'!!! ------> check_sensitive_fld_names: match as sensitive by "{rule}", removed {field_info}')
                     del fields_info[obj_id]
