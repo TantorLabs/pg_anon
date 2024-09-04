@@ -158,12 +158,12 @@ python pg_anon.py --help
 
 Common pg_anon options:
 
-| Option        | Description                                                    |
-|---------------|----------------------------------------------------------------|
-| `--debug`     | Enable debug mode (default false)                              |
-| `--verbose`   | Configure verbose mode: [info, debug, error] (default info)    |
-| `--threads`   | Amount of threads for IO operations (default 4)                |
-| `--processes` | Amount of processes for multiprocessing operations (default 4) |
+| Option                          | Description                                                          |
+|---------------------------------|----------------------------------------------------------------------|
+| `--debug`                       | Enable debug mode (default false)                                    |
+| `--verbose`                     | Configure verbose mode: [info, debug, error] (default info)          |
+| `--db-connections-per-process`  | Amount of connections for IO operations for each process (default 4) |
+| `--processes`                   | Amount of processes for multiprocessing operations (default 4)       |
 
 Database configuration options:
 
