@@ -6,14 +6,57 @@
 
 The tool comes in handy when it is necessary to transfer the database contents from the production environment to other environments for performance testing or functionality debugging during the development process. With `pg_anon`, no sensitive data is exposed, preventing potential data leaks.
 
+## Terminology
+
+
+| Term                            | Description                                                                                                                                                                                                                                                                                                                                                 |
+|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Source database (source DB)     | A database containing fields that need to be anonymized.                                                                                                                                                                                                                                                                                                    |
+| Target database (target DB)     | An empty database for `--mode=restore`. It can also contain a structure for the `--mode=sync-data-restore`.                                                                                                                                                                                                                                                 |
+| Personal (sensitive) data       | Data containing information that must not be transferred to other storage recipients or third parties and that constitutes a trade secret.                                                                                                                                                                                                                  |
+| Prepared sensitive dict file    | A file with a *.py extension containing an object that describes tables, fields, and methods for replacing the values of these fields. The dictionary file can be manually written by a developer or generated automatically.                                                                                                                               |
+| Prepared no sensitive dict file | A *.py file contains a list of objects structured as schema, table, and fields. This dictionary is used for re-scanning in create-dict mode and can be either manually created by a developer or generated automatically.                                                                                                                                   |
+| Meta-dictionary                 | A file with a *.py extension containing an object that describes rules for identifying personal (sensitive) data. The meta-dictionary is created manually by the user. Based on the meta-dictionary, the prepared sensitive dict file is then created. The process of automatically creating a dictionary is called "exploration." or `--mode=create-dict`. |
+| Create dict (or scanning)       | The process of scanning a source database and searching for sensitive fields based on a meta dictionary. As a result, a prepared sens dict file is created and, if necessary, a prepared no sens dict file.                                                                                                                                                 |
+| Dump                            | The process of writing the contents of a source database into files using a specified dictionary. The dump can be partial or complete. In fact, this is the stage where masking takes place.                                                                                                                                                                |
+| Restore                         | The process of loading data from files into the target database. The target database should not contain any objects.                                                                                                                                                                                                                                        |
+| Anonymization (masking)         | The process of cloning a database, consisting of the steps dump -> restore, during which sensitive data will be replaced with random or hashed values.                                                                                                                                                                                                      |
+| Anonymization function          | A built-in PostgreSQL function or a function from the anon_funcs schema that changes the input value to a random or hashed one. The anon_funcs schema contains a ready-made library of functions. New functions can be added to this schema to transform fields subject to anonymization for subsequent use in dictionaries.                                |
+
+
+
+### Visual representation of terms
+
+#### Anonymization (masking)
+
+The diagram below shows the process of transferring data from the `source DB` to the `target DB`. The source database contains sensitive data, as a rule, this database is located in an industrial environment and a strictly fixed number of employees have access to the database.
+
+![Dump-Resore-Terms.drawio.png](images/Dump-Resore-Terms.drawio.png)
+
+`pg_anon` is launched by a trusted administrator with credentials for connecting to the `source database` and based on the specified dictionary, a dump is performed to the specified directory on the file system. The process in question uses a dictionary prepared in advance and agreed upon with the security team. Next, the resulting directory with files should be transferred to the host of the `target database`. There is no need to use compression when transferring a directory with a dump, because the data files are already compressed.
+When the directory is placed on the host with the `target database`, the restore process should be started with the credentials of the `target database`. The `target database` must be prepared in advance by the CREATE DATABASE command and does not contain any objects. If there are user tables in the `target database`, the restore process will not start. When the restore is completed successfully, the database will be ready for development or testing tasks, during which an arbitrary number of employees will connect to the database without the risk of leakage of sensitive data. 
+
+P.S. `--mode=sync-data-restore` can be run into the non-empty `target DB` with prepared structure.
+
+#### The process of creating a dictionary
+
+There are two processes for creating a dictionary:
+- Manual dictionary creation
+- Automatic dictionary creation
+
+
+The diagram below shows both dictionary creation processes.
+
+![Create-dict-Terms.drawio.png](images/Create-dict-Terms.drawio.png)
+
 ## Features
 
 `pg_anon` works in several modes:
 
 - **`init`**: Creates `anon_funcs` schema with anonymization functions.
-- **`create-dict`**: Scans the DB data and creates a metadict with an anonymization profile.
-- **`view-fields`**: Renders table with fields which will be anonymized and which rules will be used for this
-- **`view-data`**: Renders data from specific table with anonymized data
+- **`create-dict`**: Scans the DB data and creates a prepared sens dict file with an anonymization profile and a prepared no sens dict file for faster work in other time in mode `create-dict`.
+- **`view-fields`**: Renders table with fields which will be anonymized and which rules will be used for this. The table contains `schema`, `table`, `field`, `type`, `dict_file_name`, `rule` fields which are based on a prepared sensitive dictionary. 
+- **`view-data`**: Show adjusted table with applied anonymization rules from prepared sensitive dictionary file.
 - **`dump`**: Creates a database structure dump using Postgres `pg_dump` tool, and data dumps using `COPY ...` queries with anonymization functions. The data dump step saves data locally in `*.bin.gz` format. During this step, the data is anonymized on the database side by `anon_funcs`.
 - **`restore`**: Restores database structure using Postgres `pg_restore` tool and data from the dump to the target DB. `restore` mode can separately restore database structure or data.
 - **`sync-struct-dump`**: Creates a database structure dump using Postgres `pg_dump` tool
@@ -461,7 +504,7 @@ Possible options in `--mode restore`:
 
 #### To see table in database with anonymization fields by prepared dictionary:
 ```commandline
-   python pg_anon.py --mode=view-fields \
+   python pg_anon.py --mode=view-data \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -541,6 +584,8 @@ from (
 This stage validate dictionary, show the tables and run SQL queries without data export into the disk or database.
 So if program works without errors => the stage is passed.
 
+![dbg-stage-1.png](images/dbg-stage-1.png)
+
 ```commandline
    python pg_anon.py --mode=dump \
                      --db-host=127.0.0.1 \
@@ -559,6 +604,8 @@ So if program works without errors => the stage is passed.
 
 Validate data, show the tables and run SQL queries with data export and limit 100 in prepared database.
 This stage requires database with all structure with only pre-data condition, which described in --prepared-sens-dict-file.
+
+
 
 - If you want to create the database with required structure, just run:
 
@@ -595,6 +642,8 @@ And then as many times as you want structure restore:
 
 - Validate data stage in dump:
 
+![dbg-stage-2.png](images/dbg-stage-2.png)
+
 ```commandline
    python pg_anon.py --mode=dump \
                      --db-host=127.0.0.1 \
@@ -626,6 +675,8 @@ And then as many times as you want structure restore:
    ```
 
 3. Stage 3: validate full
+
+![dbg-stage-3.png](images/dbg-stage-3.png)
 
 Makes all logic with "limit 100" in SQL queries. In this stage you don't need prepared database, just run:
 
@@ -723,6 +774,210 @@ Additionally package could be build package using setuptools:
 ```commandline
 python3 setup.py sdist
 ```
+
+## Project and directory structure
+
+
+Main directories:
+- `dict/`: Dir with meta-dict, prepared-sens-dict-file and prepared-no-sens-dict-file files.
+- `docker/`: Dir with docker.
+- `pg_anon/`: Main python modules.
+- `tests/`: Contains test_full.py - main testing module.
+
+
+The main logic of pg_anon is contained within the following Python modules:
+
+- `pg_anon/pg_anon.py`: Creates an instance of the Context class and directs the program to the appropriate module.
+- `pg_anon/context.py`: Contains the Context class (ctx).
+- `pg_anon/create_dict.py`: Logic for `--mode=create-dict`.
+- `pg_anon/dump.py`: Logic for `--mode=dump`, `--mode=sync-struct-dump`, and `--mode=sync-data-dump`.
+- `pg_anon/restore.py`: Logic for `--mode=restore`, `--mode=sync-struct-restore`, and `--mode=sync-data-restore`.
+- `pg_anon/view_fields.py`: Logic for `--mode=view-fields`.
+- `pg_anon/view_data.py`: Logic for `--mode=view-data`.
+
+`tree pg_anon/ -L 3`:
+
+```commandline
+pg_anon/
+├── dict  # Dir with meta-dict, prepared-sens-dict-file and prepared-no-sens-dict-file files.
+│   ├── mask_test.py
+│   ├── test_dbg_stages.py
+│   ├── test_empty_dictionary.py
+│   ├── test_empty_meta_dict.py
+│   ├── test_exclude.py
+│   ├── test_meta_dict.py
+│   ├── test_prepared_no_sens_dict_result_expected.py
+│   ├── test_prepared_sens_dict_result_expected.py
+│   ├── test.py
+│   ├── test_sync_data_2.py
+│   ├── test_sync_data.py
+│   └── test_sync_struct.py
+├── docker  # Dir with docker
+│   ├── Dockerfile
+│   ├── entrypoint_dbg.sh
+│   ├── entrypoint.sh
+│   ├── Makefile
+│   ├── motd
+│   └── README.md
+├── examples
+│   ├── 1.test_db_create.sql
+│   ├── 2.test_db_str.sql
+│   ├── 3.test_db_data.sql
+│   └── README.md
+├── __init__.py
+├── init.sql
+├── pg_anon  # Main python modules
+│   ├── common
+│   │   ├── db_queries.py
+│   │   ├── db_utils.py
+│   │   ├── dto.py
+│   │   ├── enums.py
+│   │   ├── __init__.py
+│   │   └── utils.py
+│   ├── context.py
+│   ├── create_dict.py
+│   ├── dump.py
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── pg_anon.py
+│   ├── restore.py
+│   ├── version.py
+│   ├── view_data.py
+│   └── view_fields.py
+├── pg_anon.py
+├── poetry.lock
+├── pyproject.toml
+├── README.md
+├── requirements.txt
+├── setup.py
+├── tests  # Contains test_full.py - main testing module
+│   ├── init_env.sql
+│   ├── __init__.py
+│   ├── init_stress_env.sql
+│   ├── PGAnonMaskUnitTest_source_tables.result
+│   ├── PGAnonMaskUnitTest_target_tables.result
+│   └── test_full.py
+└── tools
+    └── metadata_history.sql
+```
+
+## Description of the library of functions for anonymization
+
+All functions are contained in the `init.sql` file. After executing the command `--mode=init`, they will reside in the `anon_funcs` schema in the source database. 
+If you want to write a new function, simply create it in the `anon_funcs` schema in your source database.
+
+List of some functions available for use in dictionaries:
+
+1. Add noise to a real number:
+```SQL
+SELECT anon_funcs.noise(100, 1.2);
+>> 123
+```
+
+2. Add noise to a date or timestamp:
+```SQL
+SELECT anon_funcs.dnoise('2020-02-02 10:10:10'::timestamp, interval '1 month');
+>> 2020-03-02 10:10:10
+```
+
+3. Hash a string value with a specified hash function:
+```SQL
+SELECT anon_funcs.digest('text', 'salt', 'sha256');
+>> '3353e....'
+```
+
+4. Keep the first few characters (2nd argument) and the last few characters (4th argument) of the specified string, adding a constant (3rd argument) in between:
+```SQL
+SELECT anon_funcs.partial('123456789', 1, '***', 3);
+>> 1***789
+```
+
+5. Mask an email address:
+```SQL
+SELECT anon_funcs.partial_email('example@gmail.com');
+>> ex*****@gm*****.com
+```
+
+6. Generate a random string of specified length:
+```SQL
+SELECT anon_funcs.random_string(7);
+>> H3ZVL5P
+```
+
+7. Generate a random ZIP code:
+```SQL
+SELECT anon_funcs.random_zip();
+>> 851467
+```
+
+8. Generate a random date and time within a specified range:
+```SQL
+SELECT anon_funcs.random_date_between(
+   '2020-02-02 10:10:10'::timestamp,
+   '2022-02-05 10:10:10'::timestamp
+);
+>> 2021-11-08 06:47:48.057
+```
+
+9. Generate a random date and time:
+```SQL
+SELECT anon_funcs.random_date();
+>> 1911-04-18 21:54:13.139
+```
+
+10. Generate a random integer within a specified range:
+```SQL
+SELECT anon_funcs.random_int_between(100, 200);
+>> 159
+```
+
+11. Generate a random bigint within a specified range:
+```SQL
+SELECT anon_funcs.random_bigint_between(6000000000, 7000000000);
+>> 6268278565
+```
+
+12. Generate a random phone number:
+```SQL
+SELECT anon_funcs.random_phone('+7');
+>> +7297479867
+```
+
+13. Generate a random hash using the specified function:
+```SQL
+SELECT anon_funcs.random_hash('seed', 'sha512');
+>> b972f895ebea9cf2f65e19abc151b8031926c4a332471dc5c40fab608950870d6dbddcd18c7e467563f9b527e63d4d13870e4961c0ff2a62f021827654ae51fd
+```
+
+14. Select a random element from an array:
+```SQL
+SELECT anon_funcs.random_in(array['a', 'b', 'c']);
+>> a
+```
+
+15. Convert a hexadecimal value to decimal:
+```SQL
+SELECT anon_funcs.hex_to_int('8AB');
+>> 2219
+```
+
+In addition to the existing functions in the anon_funcs schema, functions from the pgcrypto extension can also be used.
+
+Example of using encryption with base64 encoding to store the encrypted value in a text field:
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```SQL
+SELECT encode((SELECT encrypt('data', 'password', 'bf')), 'base64');
+>> cSMq9gb1vOw=
+
+SELECT decrypt(
+(
+SELECT decode('cSMq9gb1vOw=', 'base64')
+), 'password', 'bf');
+>> data
+```
+
+Also, adding new anonymization functions can be performed by adding `init.sql` to the file and then calling pg_anon in `--mode=init` mode.
+
 
 ## Future plans:
 
