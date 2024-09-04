@@ -1,5 +1,6 @@
 import re
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import FieldInfo
 
 
@@ -9,15 +10,15 @@ def get_query_limit(limit: int) -> str:
 
 def get_query_get_scan_fields(limit: int = None, count_only: bool = False):
     if not count_only:
-        fields = """
+        fields = f"""
             SELECT DISTINCT
             n.nspname,
             c.relname,
             a.attname AS column_name,
             format_type(a.atttypid, a.atttypmod) as type,
             c.oid, a.attnum,
-            anon_funcs.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
-            anon_funcs.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
+            {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
+            {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
         """
         order_by = 'ORDER BY 1, 2, a.attnum' if count_only else ''
     else:

@@ -10,6 +10,7 @@ import nest_asyncio
 from aioprocessing import AioQueue
 from asyncpg import Connection
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_queries import get_data_from_field
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query
 from pg_anon.common.dto import PgAnonResult, FieldInfo
@@ -536,7 +537,7 @@ def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, pre
     res_hash_func = field_info.rule
 
     if res_hash_func is None:
-        hash_func = "anon_funcs.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
+        hash_func = f"{ANON_UTILS_DB_SCHEMA_NAME}.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
 
         for fld_type, func in meta_dictionary_obj["funcs"].items():
             if str(field_info.type).find(fld_type) > -1:

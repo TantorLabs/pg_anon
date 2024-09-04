@@ -3,8 +3,26 @@ from typing import Dict, List
 import asyncpg
 from asyncpg import Connection
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_queries import get_query_get_scan_fields
 from pg_anon.common.dto import FieldInfo
+
+
+async def check_anon_utils_db_schema_exists(connection_params: Dict, server_settings: Dict = None) -> bool:
+    """
+    Checks exists db schema what consists predefined anonymization utils
+    :param connection_params: Required connection parameters such as host, login, password and etc.
+    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
+    :return: Exists schema or not
+    """
+    query = f"""
+    select exists (select schema_name FROM information_schema.schemata where "schema_name" = '{ANON_UTILS_DB_SCHEMA_NAME}');
+    """
+
+    db_conn = await asyncpg.connect(**connection_params, server_settings=server_settings)
+    exists = await db_conn.fetchval(query)
+    await db_conn.close()
+    return exists
 
 
 async def get_scan_fields_list(connection_params: Dict, server_settings: Dict = None, limit: int = None) -> List:
@@ -15,8 +33,9 @@ async def get_scan_fields_list(connection_params: Dict, server_settings: Dict = 
     :param limit: Limit the number of results to return.
     :return: resulted fields list for processing
     """
-    db_conn = await asyncpg.connect(**connection_params, server_settings=server_settings)
     query = get_query_get_scan_fields(limit=limit)
+
+    db_conn = await asyncpg.connect(**connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(query)
     await db_conn.close()
     return fields_list
@@ -29,8 +48,9 @@ async def get_scan_fields_count(connection_params: Dict, server_settings: Dict =
     :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
     :return: count of resulted fields list for processing
     """
-    db_conn = await asyncpg.connect(**connection_params, server_settings=server_settings)
     query = get_query_get_scan_fields(count_only=True)
+
+    db_conn = await asyncpg.connect(**connection_params, server_settings=server_settings)
     count = await db_conn.fetchval(query)
     await db_conn.close()
     return count

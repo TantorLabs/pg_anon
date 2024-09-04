@@ -8,6 +8,7 @@ import subprocess
 
 import asyncpg
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, AnonMode
 from pg_anon.common.utils import (
@@ -234,14 +235,14 @@ async def make_restore(ctx):
 
     db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
     db_is_empty = await db_conn.fetchval(
-        """
+        f"""
         SELECT NOT EXISTS(
             SELECT table_schema, table_name
             FROM information_schema.tables
             WHERE table_schema not in (
                     'pg_catalog',
                     'information_schema',
-                    'anon_funcs'
+                    '{ANON_UTILS_DB_SCHEMA_NAME}'
                 ) AND table_type = 'BASE TABLE'
         )"""
     )

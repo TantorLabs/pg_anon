@@ -9,6 +9,8 @@ from logging.handlers import RotatingFileHandler
 
 import asyncpg
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import (
@@ -177,6 +179,20 @@ class MainRoutine:
         if not check_pg_util(
             self.ctx, self.ctx.args.pg_dump, "pg_dump"
         ) or not check_pg_util(self.ctx, self.ctx.args.pg_restore, "pg_restore"):
+            result.result_code = ResultCode.FAIL
+            return result
+
+        try:
+            anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
+                connection_params=self.ctx.conn_params,
+                server_settings=self.ctx.server_settings
+            )
+            if not anon_utils_schema_exists:
+                raise ValueError(
+                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
+                )
+        except:
+            self.ctx.logger.error(exception_helper(show_traceback=True))
             result.result_code = ResultCode.FAIL
             return result
 

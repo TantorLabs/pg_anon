@@ -2,6 +2,7 @@ import argparse
 import os
 from typing import Dict, Optional
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 from pg_anon.common.utils import (
     exception_handler,
@@ -24,7 +25,7 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches = {}  # for create-dict mode
         self.create_dict_no_sens_matches = {}  # for create-dict mode
-        self.exclude_schemas = ["anon_funcs", "columnar_internal"]
+        self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
         self.logger = None
 
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
