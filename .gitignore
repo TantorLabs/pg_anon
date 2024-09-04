@@ -1,6 +1,9 @@
 # Service specific
 output/
 log/
+tests/output_dict/
+tests/output/
+tests/saved_results/
 docker/pg_anon
 *.tar
 *.tar.gz

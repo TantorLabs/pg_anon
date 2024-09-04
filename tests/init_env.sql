@@ -521,3 +521,28 @@ CREATE TABLE columnar_internal.tbl_200
     val_skip text
 );
 --------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS test_anon_funcs;
+CREATE OR REPLACE FUNCTION test_anon_funcs.test_check_is_company_email(
+  value TEXT,
+  schema_name TEXT,
+  table_name TEXT,
+  field_name TEXT
+)
+RETURNS boolean AS $$
+DECLARE
+    result boolean;
+    email_part TEXT;
+BEGIN
+    email_part := SPLIT_PART(value, '@', '2');
+
+    if email_part = ''
+    then
+    	return false;
+    end if;
+
+    execute 'SELECT EXISTS (SELECT * FROM schm_customer.customer_company WHERE email LIKE ''%' || email_part || ''')' into result;
+    return result;
+END;
+$$
+  LANGUAGE plpgsql;
