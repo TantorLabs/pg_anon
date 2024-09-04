@@ -1,8 +1,10 @@
 from typing import Dict, List
 
 import asyncpg
+from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_query_get_scan_fields
+from pg_anon.common.dto import FieldInfo
 
 
 async def get_scan_fields_list(connection_params: Dict, limit: int = None) -> List:
@@ -34,3 +36,21 @@ async def get_fields_list(connection_params: Dict, table_schema: str, table_name
     await db_conn.close()
     return fields_list
 
+
+async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
+    """
+    Execute scan in data by custom DB function
+    :param connection: Active connection to db
+    :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
+    :param value: Data value from field
+    :param field_info: Field info
+    :return: If it sensitive by scan func then return **True**, otherwise **False**
+    """
+
+    query = f"""SELECT {scan_func}($1, $2, $3, $4)"""
+    statement = await connection.prepare(query)
+    res = await statement.fetchval(
+        value, field_info.nspname, field_info.relname, field_info.column_name
+    )
+
+    return res

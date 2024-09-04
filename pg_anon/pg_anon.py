@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 
 from logging.handlers import RotatingFileHandler
 
@@ -61,6 +62,7 @@ class MainRoutine:
     def __init__(self, external_args=None):
         file_dir = os.path.dirname(os.path.realpath(__file__))
         self.current_dir = os.path.dirname(file_dir)
+        self.start_time = datetime.now().strftime('%Y_%m_%d__%H_%M')
         if external_args is not None:
             self.args = external_args
         else:
@@ -75,7 +77,7 @@ class MainRoutine:
     def setup_logger(self):
         log_level = logging.NOTSET
 
-        if self.args.mode != AnonMode.VIEW_FIELDS:
+        if self.args.mode not in (AnonMode.VIEW_FIELDS, AnonMode.VIEW_DATA):
             if self.args.verbose == VerboseOptions.INFO:
                 log_level = logging.INFO
             elif self.args.verbose == VerboseOptions.DEBUG:
@@ -84,8 +86,6 @@ class MainRoutine:
                 log_level = logging.ERROR
 
         self.logger = logging.getLogger(os.path.basename(__file__))
-        # if len(self.logger.handlers):
-        #    self.close_previous_logger_handlers()
 
         if not len(self.logger.handlers):
             formatter = logging.Formatter(
@@ -101,20 +101,23 @@ class MainRoutine:
                 os.makedirs(os.path.join(self.current_dir, "log"))
 
             if self.args.mode == AnonMode.INIT:
-                log_file = f"{self.args.mode}.log"
+                log_file = f"{self.args.mode.value}.log"
             elif self.args.mode == AnonMode.CREATE_DICT:
                 if self.args.meta_dict_files:
                     base_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
                 else:
                     base_file_name = os.path.basename(self.args.input_dir)
-                log_file = f"{self.args.mode}_{base_file_name}.log"
+
+                log_file = f"{self.args.mode.value}__{base_file_name}.log"
             else:
                 if self.args.prepared_sens_dict_files:
                     base_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
                 else:
                     base_file_name = os.path.basename(self.args.input_dir)
 
-                log_file = f"{self.args.mode}_{base_file_name}.log"
+                log_file = f"{self.args.mode.value}__{base_file_name}.log"
+
+            log_file = f"{self.start_time}__{log_file}"
 
             f_handler = RotatingFileHandler(
                 os.path.join(self.current_dir, "log", log_file),
