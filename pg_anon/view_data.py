@@ -67,7 +67,7 @@ class ViewDataMode:
             for field, value in zip(self.field_names, field_values):
                 result[field].append(value)
 
-        self.json = json.dumps(result, default=lambda x: str(x))
+        self.json = json.dumps(result, default=lambda x: str(x), ensure_ascii=False)
 
     async def _output_fields(self) -> None:
 

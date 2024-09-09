@@ -143,7 +143,14 @@ class ViewFieldsMode:
             ])
 
     def _prepare_json(self):
-        self.json = json.dumps([asdict(field) for field in self.fields])
+        self.json = json.dumps([{
+            'schema': field.nspname,
+            'table': field.relname,
+            'field': field.column_name,
+            'type': field.type,
+            'dict_file_name': field.dict_file_name,
+            'rule': field.rule,
+        } for field in self.fields], ensure_ascii=False)
 
     async def _output_fields(self):
         await self._make_notice_fields_cut_by_limits()
