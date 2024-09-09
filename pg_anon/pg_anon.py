@@ -182,19 +182,20 @@ class MainRoutine:
             result.result_code = ResultCode.FAIL
             return result
 
-        try:
-            anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
-                connection_params=self.ctx.conn_params,
-                server_settings=self.ctx.server_settings
-            )
-            if not anon_utils_schema_exists:
-                raise ValueError(
-                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
+        if self.ctx.args.mode != AnonMode.INIT:
+            try:
+                anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
+                    connection_params=self.ctx.conn_params,
+                    server_settings=self.ctx.server_settings
                 )
-        except:
-            self.ctx.logger.error(exception_helper(show_traceback=True))
-            result.result_code = ResultCode.FAIL
-            return result
+                if not anon_utils_schema_exists:
+                    raise ValueError(
+                        f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
+                    )
+            except:
+                self.ctx.logger.error(exception_helper(show_traceback=True))
+                result.result_code = ResultCode.FAIL
+                return result
 
         start_t = time.time()
         try:
