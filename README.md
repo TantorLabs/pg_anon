@@ -49,6 +49,146 @@ The diagram below shows both dictionary creation processes.
 
 ![Create-dict-Terms.drawio.png](images/Create-dict-Terms.drawio.png)
 
+
+## What kind of work does pg_anon do inside during dump and restore? The simplest representation.
+
+### For example, we have data that we want to anonymize:
+
+1. Create the `source` table:
+
+```SQL
+create table users (
+    id bigserial,
+    email text,
+    login text
+);
+
+-- Checking the contents of the source table
+select * from users;
+```
+``` output
+>>
+    id |  email  | login 
+   ----+---------+-------
+```
+
+2. Populating the `source` table:
+
+```SQL
+insert into users (email, login)
+select
+ 'user' || generate_series(1001, 1020) || '@example.com',
+ 'user' || generate_series(1001, 1020);
+
+-- Checking the contents of the source table
+select * from users;
+```
+```output
+>>
+    id |		email	  |  login   
+   ----+----------------------+----------
+     1 | user1001@example.com | user1001
+     2 | user1002@example.com | user1002
+    ...
+```
+
+### What is the process of creating a dump with masking?
+
+1. Data `dump` from the `source` table to a CSV file (without masking):
+
+```SQL
+copy (
+	select *
+	from users
+) to '/tmp/users.csv' with csv;
+```
+```output
+cat /tmp/users.csv
+>>
+   1,user1001@example.com,user1001
+   2,user1002@example.com,user1002
+   ...
+```
+
+2. Masking the contents of the `source` table:
+
+```SQL
+select
+   id,
+   md5(email) || '@abc.com' as email, -- hashing the email
+   login
+from users;
+```
+```output
+>>
+    id |              	email                  |  login   
+   ----+------------------------------------------+----------
+     1 | 385513d80895c4c5e19c91d1df9eacae@abc.com | user1001
+     2 | 9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com | user1002
+    ...
+```
+
+3. Data `dump` from the `source` table to a CSV file (with `masking`):
+
+```SQL
+copy (
+  select
+    id,
+    md5(email) || '@abc.com' as email, -- hashing the email
+    login
+  from users
+) to '/tmp/users_anonymized.csv' with csv;
+```
+```output
+cat /tmp/users_anonymized.csv
+>>
+   1,385513d80895c4c5e19c91d1df9eacae@abc.com,user1001
+   2,9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com,user1002
+   ...
+```
+
+### What is the process for restoring a masked dump? 
+
+1. Reproducing of the structure. Creating the `target` table:
+
+```SQL
+create table users_anonymized (
+    id bigserial,
+    email text,
+    login text
+);
+
+-- Checking the contents of the target table
+select * from users_anonymized;
+```
+```output
+>>
+    id | email | login 
+   ----+---------+-------
+```
+
+2. Loading data from the `source` table data `dump` (CSV file) to `target` table:
+
+```SQL
+copy users_anonymized
+from '/tmp/users_anonymized.csv'
+with csv;
+
+-- Checking the contents of the target table
+select * from users_anonymized;
+```
+```output
+>>
+    id |              	email                  |  login   
+   ----+------------------------------------------+----------
+     1 | 385513d80895c4c5e19c91d1df9eacae@abc.com | user1001
+     2 | 9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com | user1002
+    ...
+```
+
+**But in pg_anon we use `.bin.gz` files to save data. And pg_anon works with the whole database.**
+
+
 ## Features
 
 `pg_anon` works in several modes:
