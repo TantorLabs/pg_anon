@@ -344,10 +344,7 @@ class ScanRequest(BaseModel):
     input_sens_dict_contents: Union[List[str], None] = None
     input_no_sens_dict_icontents: Union[List[str], None] = None
 ## scanning response = HTTP_OK (200)
-
 ## scan status request = operation_id (UUID)
-# class ScanStatusRequest(BaseModel):
-#     operation_id: str #UUID
 
 ## scan status response
 class ScanStatusResponse(BaseModel):
@@ -367,8 +364,6 @@ class DumpRequest(BaseModel):
 ## dump response = HTTP_OK(200)
 
 ## dump status request = operation_id (UUID)
-# class DumpStatusRequest(BaseModel):
-#     operation_id: str #UUID
 
 ## dump status response
 class DumpStatusResponse(BaseModel):
@@ -385,8 +380,6 @@ class PreviewRequest(BaseModel):
 ## preview response = HTTP_OK (200)
 
 ## preview status request = operation_id (UUID)
-# class PreviewStatusRequest(BaseModel):
-#     operation_id: str #UUID
 
 ## preview status response
 class PreviewStatusResponse(BaseModel):
