@@ -272,7 +272,7 @@ async def check_data_by_functions(
                     if matched_count == rule_expected_matches_count:
                         field_info.rule = rule["anon_func"]
                         ctx.logger.debug(
-                            f"========> Process[{name}]: check_sensitive_data: match by data scan func {rule["scan_func"]} , {field_info}")
+                            f'========> Process[{name}]: check_sensitive_data: match by data scan func {rule["scan_func"]} , {field_info}')
                         return True
 
     return False
