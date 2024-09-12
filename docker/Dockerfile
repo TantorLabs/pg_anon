@@ -25,6 +25,16 @@ RUN apt update
 
 RUN apt -y install postgresql-${PG_VERSION} postgresql-client-${PG_VERSION}
 
+RUN add-apt-repository ppa:deadsnakes/ppa && \
+    apt update && \
+    apt install -y python3.12 python3.12-distutils python3.12-dev
+
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3.12 get-pip.py && \
+    rm get-pip.py
+
 # Add pg_anon
 ADD ./pg_anon /usr/share/pg_anon
 
