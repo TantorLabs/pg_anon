@@ -1014,7 +1014,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         args = parser.parse_args(
             [
                 f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db + "_7"}",
+                f"--db-name={params.test_target_db}_7",
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
