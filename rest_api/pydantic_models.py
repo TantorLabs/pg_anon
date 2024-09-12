@@ -315,3 +315,80 @@ class PreviewUpdate(BaseModel):
 
     input_sens_dict_ids: Union[List[int], None] = None
     attributes: Union[str, None] = None  # some custom attributes for integrations
+
+
+
+################################################################# nEw LoGiC
+
+# db connection params
+class DbConnectionParams(BaseModel):
+    host: str
+    port: int
+    database: str
+
+    user: Union[str, None] = None
+    password: Union[str, None] = None
+
+
+# scanning
+## scanning request
+class ScanRequest(BaseModel):
+    operation_id: str #UUID
+    type_id: int
+    depth: int
+    source_db: DbConnectionParams
+
+
+    input_meta_dict_contents: List[str]
+    input_sens_dict_contents: Union[List[str], None] = None
+    input_no_sens_dict_icontents: Union[List[str], None] = None
+## scanning response = HTTP_OK (200)
+
+## scan status request = operation_id (UUID)
+# class ScanStatusRequest(BaseModel):
+#     operation_id: str #UUID
+
+## scan status response
+class ScanStatusResponse(BaseModel):
+    status_id: int
+    output_sens_dict_content: Union[str, None] = None
+    output_no_sens_dict_content: Union[str, None] = None
+
+
+# dumping
+## dump request
+class DumpRequest(BaseModel):
+    operation_id: str #UUID
+    type_id: int
+    source_db: DbConnectionParams
+    output_path: str
+    input_sens_dict_content: List[str]
+## dump response = HTTP_OK(200)
+
+## dump status request = operation_id (UUID)
+# class DumpStatusRequest(BaseModel):
+#     operation_id: str #UUID
+
+## dump status response
+class DumpStatusResponse(BaseModel):
+    status_id: int
+    size: Union[int, None] = None
+
+
+# preview
+## preview request
+class PreviewRequest(BaseModel):
+    operation_id: str #UUID
+    source_db: DbConnectionParams
+    input_sens_dict_contents: List[str]
+## preview response = HTTP_OK (200)
+
+## preview status request = operation_id (UUID)
+# class PreviewStatusRequest(BaseModel):
+#     operation_id: str #UUID
+
+## preview status response
+class PreviewStatusResponse(BaseModel):
+    status_id: int
+    data_before:Union[str, None] = None
+    data_after:Union[str, None] = None

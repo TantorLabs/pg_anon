@@ -10,7 +10,11 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     DbCheckConnectionStatus, DictionaryShort, DictionaryDetailed, DictionaryCreate, DictionaryType, DictionaryUpdate, \
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
-    Content
+    Content, \
+    ScanRequest,ScanStatusResponse, \
+    DumpRequest,DumpStatusResponse, \
+    PreviewRequest, PreviewStatusResponse
+ 
 from utils import simple_slugify
 
 app = FastAPI(
@@ -1252,3 +1256,115 @@ async def dump_types():
             slug="partial",
         ),
     ]
+
+
+
+
+#######################################
+
+@app.post(
+    '/v2/scan',
+    tags=['Scan_v2'],
+    summary='Create new scanning operation',
+    description='Create new scanning operation',
+    status_code=200,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def scan_operation_create(scan_request: ScanRequest):
+    print(scan_request)
+    return None
+
+@app.get(
+    '/v2/scan/{operation_id}',
+    tags=['Scan_v2'],
+    summary='Get scanning operation status',
+    description='Get scanning operation status',
+    response_model=ScanStatusResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def scan_operation_status(operation_id: str):
+    print("Get scan status for operation_id=",operation_id)
+
+    return ScanStatusResponse(
+        status_id =2,
+        output_sens_dict_content=["sens_dict_1_content.....","sens_dict_2_content....."],
+        output_sens_dict_content=["sens_dict_1_content.....","sens_dict_2_content....."]
+    )
+
+@app.post(
+    '/v2/dump',
+    tags=['Dump_v2'],
+    summary='Create new dump operation',
+    description='Create new dump operation',
+    status_code=200,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def dump_operation_create(dump_request: DumpRequest):
+    print(dump_request)
+    return None
+
+@app.get(
+    '/v2/dump/{operation_id}',
+    tags=['Dump_v2'],
+    summary='Get dump operation status',
+    description='Get dump operation status',
+    response_model=DumpStatusResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def dump_operation_status(operation_id: str):
+    print("Get dump status for operation_id=",operation_id)
+
+    return DumpStatusResponse(
+        status_id=2,
+        size=1024
+    )
+
+@app.post(
+    '/v2/preview',
+    tags=['Preview_v2'],
+    summary='Create new preview operation',
+    description='Create new preview operation',
+    status_code=200,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def preview_operation_create(preview_request: PreviewRequest):
+    print(preview_request)
+
+    return None
+
+
+@app.get(
+    '/v2/preview/{operation_id}',
+    tags=['Preview_v2'],
+    summary='Get preview operation status',
+    description='Get preview operation status',
+    response_model=PreviewStatusResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def preview_operation_status(operation_id: str):
+    print("Get preview status for operation_id=",operation_id)
+
+    return PreviewStatusResponse(
+        status_id=2,
+        data_before="data_1234567890_sensetive",
+        data_after="data_XXXXXXXXXX_sensetive"
+    )
+
