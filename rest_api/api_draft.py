@@ -1293,8 +1293,8 @@ async def scan_operation_status(operation_id: str):
 
     return ScanStatusResponse(
         status_id =2,
-        output_sens_dict_content=["sens_dict_1_content.....","sens_dict_2_content....."],
-        output_no_sens_dict_content=["no_sens_dict_1_content.....","no_sens_dict_2_content....."]
+        output_sens_dict_content="sens_dict_1_content.....",
+        output_no_sens_dict_content="no_sens_dict_1_content....."
     )
 
 @app.post(

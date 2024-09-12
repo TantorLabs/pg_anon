@@ -337,7 +337,8 @@ class ScanRequest(BaseModel):
     type_id: int
     depth: int
     source_db: DbConnectionParams
-
+    proc_cnt: Union[int, None] = None
+    proc_conn_cnt: Union[int, None] = None
 
     input_meta_dict_contents: List[str]
     input_sens_dict_contents: Union[List[str], None] = None
