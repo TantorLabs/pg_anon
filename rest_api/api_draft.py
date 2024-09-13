@@ -1380,7 +1380,7 @@ async def preview_operation_status(operation_id: str):
         "500": {"model": ErrorResponse},
     }
 )
-async def dump_operation_status(operation_id: str):
+async def dump_operation_delete(operation_id: str):
     print("Delete dump with operation_id=",operation_id)
 
     return None
