@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Union, List
+from typing import Union, List,Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 
 
 #############################################
@@ -322,63 +322,60 @@ class PreviewUpdate(BaseModel):
 
 # db connection params
 class DbConnectionParams(BaseModel):
-    host: str
-    port: int
-    db_name: str
+    host: str = Field(..., alias="host")
+    port: int = Field(..., alias="port")
+    db_name: str = Field(..., alias="dbName")
 
-    user_login: Union[str, None] = None
-    user_password: Union[str, None] = None
+    user_login: Optional[str] = Field(..., alias="userLogin")
+    user_password: Optional[str] = Field(..., alias="userPassword")
 
 
 # scan
 ## scanning request
 class ScanRequest(BaseModel):
-    operation_id: str #UUID
-    type_id: int
-    depth: int
-    db_connection_params: DbConnectionParams
-    proc_cnt: Union[int, None] = None
-    proc_conn_cnt: Union[int, None] = None
+    operation_id: str  = Field(..., alias="operationID")
+    type_id: int = Field(..., alias="typeID")
+    depth: int  = Field(..., alias="depth")
+    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
+    proc_count: Optional[int] = Field(..., alias="procCount")
+    proc_conn_count: Optional[int] = Field(..., alias="procConnCount")
 
-    input_meta_dict_contents: List[str]
-    input_sens_dict_contents: Union[List[str], None] = None
-    input_no_sens_dict_contents: Union[List[str], None] = None
+    meta_dict_contents: List[str] = Field(..., alias="metaDictContents")
+    sens_dict_contents: Optional[List[str]] = Field(..., alias="sensDictContents")
+    no_sens_dict_contents: Optional[List[str]] = Field(..., alias="noSensDictContents")
 ## scanning response = HTTP_OK (200)
-## scan status request = operation_id (UUID)
 
 ## scan status response
 class ScanStatusResponse(BaseModel):
-    status_id: int
-    output_sens_dict_content: Union[str, None] = None
-    output_no_sens_dict_content: Union[str, None] = None
+    status_id: int = Field(..., alias="statusID")
+    sens_dict_content: Optional[str] = Field(..., alias="sensDictContent")
+    no_sens_dict_content: Optional[str] = Field(..., alias="noSensDictContent")
 
 
 # dump
 ## dump request
 class DumpRequest(BaseModel):
-    operation_id: str #UUID
-    type_id: int
-    db_connection_params: DbConnectionParams
-    output_path: str
-    input_sens_dict_contents: List[str]
+    operation_id: str = Field(..., alias="operationID")
+    type_id: int = Field(..., alias="typeID")
+    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
+    output_path: str = Field(..., alias="outputPath")
+    sens_dict_contents: List[str] = Field(..., alias="sensDictContents")
 ## dump response = HTTP_OK(200)
 
-## dump status request = operation_id (UUID)
 
 ## dump status response
 class DumpStatusResponse(BaseModel):
-    status_id: int
-    size: Union[int, None] = None
-
+    status_id: int = Field(..., alias="statusID")
+    size: Optional[int] = Field(..., alias="size")
 
 # preview
 ## preview request
 class PreviewRequest(BaseModel):
-    operation_id: str #UUID
-    db_connection_params: DbConnectionParams
-    input_sens_dict_contents: List[str]
+    operation_id: str  = Field(..., alias="operationID")
+    db_connection_params: DbConnectionParams = Field(..., alias="dbConnectionParams")
+    sens_dict_contents: Optional[List[str]] = Field(..., alias="sensDictContents")
 ## preview response 
 class PreviewResponse(BaseModel):
-    status_id: int
-    data_before:Union[str, None] = None
-    data_after:Union[str, None] = None
+    status_id: int = Field(..., alias="statusID")
+    data_before:Optional[str] = Field(..., alias="dataBefore")
+    data_after:Optional[str] = Field(..., alias="dataAfter")
