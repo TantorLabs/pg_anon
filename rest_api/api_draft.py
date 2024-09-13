@@ -1263,8 +1263,8 @@ async def dump_types():
 #######################################
 
 @app.post(
-    '/v2/scan',
-    tags=['Scan_v2'],
+    '/api/scan',
+    tags=['API','Scans'],
     summary='Create new scanning operation',
     description='Create new scanning operation',
     status_code=200,
@@ -1278,8 +1278,8 @@ async def scan_operation_create(scan_request: ScanRequest):
     return None
 
 @app.get(
-    '/v2/scan/{operation_id}',
-    tags=['Scan_v2'],
+    '/api/scan/{operation_id}',
+    tags=['API','Scans'],
     summary='Get scanning operation status',
     description='Get scanning operation status',
     response_model=ScanStatusResponse,
@@ -1293,13 +1293,13 @@ async def scan_operation_status(operation_id: str):
 
     return ScanStatusResponse(
         status_id =2,
-        output_sens_dict_content="sens_dict_1_content.....",
-        output_no_sens_dict_content="no_sens_dict_1_content....."
+        output_sens_dict_content=TEMPLATE_SENS_DICT,
+        output_no_sens_dict_content=TEMPLATE_NO_SENS_DICT
     )
 
 @app.post(
-    '/v2/dump',
-    tags=['Dump_v2'],
+    '/api/dump',
+    tags=['API','Dumps'],
     summary='Create new dump operation',
     description='Create new dump operation',
     status_code=200,
@@ -1313,8 +1313,8 @@ async def dump_operation_create(dump_request: DumpRequest):
     return None
 
 @app.get(
-    '/v2/dump/{operation_id}',
-    tags=['Dump_v2'],
+    '/api/dump/{operation_id}',
+    tags=['API','Dumps'],
     summary='Get dump operation status',
     description='Get dump operation status',
     response_model=DumpStatusResponse,
@@ -1332,8 +1332,8 @@ async def dump_operation_status(operation_id: str):
     )
 
 @app.post(
-    '/v2/preview',
-    tags=['Preview_v2'],
+    '/api/preview',
+    tags=['API','Previews'],
     summary='Create new preview operation',
     description='Create new preview operation',
     status_code=200,
@@ -1349,8 +1349,8 @@ async def preview_operation_create(preview_request: PreviewRequest):
 
 
 @app.get(
-    '/v2/preview/{operation_id}',
-    tags=['Preview_v2'],
+    '/api/preview/{operation_id}',
+    tags=['API','Previews'],
     summary='Get preview operation status',
     description='Get preview operation status',
     response_model=PreviewStatusResponse,
