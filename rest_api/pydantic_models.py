@@ -377,12 +377,8 @@ class PreviewRequest(BaseModel):
     operation_id: str #UUID
     db_connection_params: DbConnectionParams
     input_sens_dict_contents: List[str]
-## preview response = HTTP_OK (200)
-
-## preview status request = operation_id (UUID)
-
-## preview status response
-class PreviewStatusResponse(BaseModel):
+## preview response 
+class PreviewResponse(BaseModel):
     status_id: int
     data_before:Union[str, None] = None
     data_after:Union[str, None] = None

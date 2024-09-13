@@ -11,9 +11,9 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
     Content, \
-    ScanRequest,ScanStatusResponse, \
-    DumpRequest,DumpStatusResponse, \
-    PreviewRequest, PreviewStatusResponse
+    ScanRequest, \
+    DumpRequest, \
+    PreviewRequest, PreviewResponse
  
 from utils import simple_slugify
 
@@ -1299,7 +1299,7 @@ async def dump_operation_create(dump_request: DumpRequest):
     tags=['API','Previews'],
     summary='Create new preview operation',
     description='Create new preview operation',
-    status_code=200,
+    response_model=PreviewResponse,
     responses={
         "400": {"model": ErrorResponse},
         "500": {"model": ErrorResponse},
@@ -1307,9 +1307,11 @@ async def dump_operation_create(dump_request: DumpRequest):
 )
 async def preview_operation_create(preview_request: PreviewRequest):
     print("Preview request=",preview_request)
-
-    return None
-
+    return PreviewResponse(
+        status_id=2,
+        data_before="data_sens_123321",
+        data_after="data_sens_xxxxxx"
+    )
 
 @app.delete(
     '/api/dump/{operation_id}',
@@ -1324,5 +1326,4 @@ async def preview_operation_create(preview_request: PreviewRequest):
 )
 async def dump_operation_delete(operation_id: str):
     print("Delete dump with operation_id=",operation_id)
-
     return None
