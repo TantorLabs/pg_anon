@@ -1277,25 +1277,6 @@ async def scan_operation_create(scan_request: ScanRequest):
     print("Scan request=",scan_request)
     return None
 
-@app.get(
-    '/api/scan/{operation_id}',
-    tags=['API','Scans'],
-    summary='Get scanning operation status',
-    description='Get scanning operation status',
-    response_model=ScanStatusResponse,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def scan_operation_status(operation_id: str):
-    print("Get scan status for operation_id=",operation_id)
-
-    return ScanStatusResponse(
-        status_id =2,
-        output_sens_dict_content=TEMPLATE_SENS_DICT,
-        output_no_sens_dict_content=TEMPLATE_NO_SENS_DICT
-    )
 
 @app.post(
     '/api/dump',
@@ -1312,24 +1293,6 @@ async def dump_operation_create(dump_request: DumpRequest):
     print("Dump request=",dump_request)
     return None
 
-@app.get(
-    '/api/dump/{operation_id}',
-    tags=['API','Dumps'],
-    summary='Get dump operation status',
-    description='Get dump operation status',
-    response_model=DumpStatusResponse,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def dump_operation_status(operation_id: str):
-    print("Get dump status for operation_id=",operation_id)
-
-    return DumpStatusResponse(
-        status_id=2,
-        size=1024
-    )
 
 @app.post(
     '/api/preview',
@@ -1346,27 +1309,6 @@ async def preview_operation_create(preview_request: PreviewRequest):
     print("Preview request=",preview_request)
 
     return None
-
-
-@app.get(
-    '/api/preview/{operation_id}',
-    tags=['API','Previews'],
-    summary='Get preview operation status',
-    description='Get preview operation status',
-    response_model=PreviewStatusResponse,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def preview_operation_status(operation_id: str):
-    print("Get preview status for operation_id=",operation_id)
-
-    return PreviewStatusResponse(
-        status_id=2,
-        data_before="data_1234567890_sensetive",
-        data_after="data_XXXXXXXXXX_sensetive"
-    )
 
 
 @app.delete(
