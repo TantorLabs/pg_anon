@@ -324,25 +324,25 @@ class PreviewUpdate(BaseModel):
 class DbConnectionParams(BaseModel):
     host: str
     port: int
-    database: str
+    db_name: str
 
-    user: Union[str, None] = None
-    password: Union[str, None] = None
+    user_login: Union[str, None] = None
+    user_password: Union[str, None] = None
 
 
-# scanning
+# scan
 ## scanning request
 class ScanRequest(BaseModel):
     operation_id: str #UUID
     type_id: int
     depth: int
-    source_db: DbConnectionParams
+    db_connection_params: DbConnectionParams
     proc_cnt: Union[int, None] = None
     proc_conn_cnt: Union[int, None] = None
 
     input_meta_dict_contents: List[str]
     input_sens_dict_contents: Union[List[str], None] = None
-    input_no_sens_dict_icontents: Union[List[str], None] = None
+    input_no_sens_dict_contents: Union[List[str], None] = None
 ## scanning response = HTTP_OK (200)
 ## scan status request = operation_id (UUID)
 
@@ -353,14 +353,14 @@ class ScanStatusResponse(BaseModel):
     output_no_sens_dict_content: Union[str, None] = None
 
 
-# dumping
+# dump
 ## dump request
 class DumpRequest(BaseModel):
     operation_id: str #UUID
     type_id: int
-    source_db: DbConnectionParams
+    db_connection_params: DbConnectionParams
     output_path: str
-    input_sens_dict_content: List[str]
+    input_sens_dict_contents: List[str]
 ## dump response = HTTP_OK(200)
 
 ## dump status request = operation_id (UUID)
@@ -375,7 +375,7 @@ class DumpStatusResponse(BaseModel):
 ## preview request
 class PreviewRequest(BaseModel):
     operation_id: str #UUID
-    source_db: DbConnectionParams
+    db_connection_params: DbConnectionParams
     input_sens_dict_contents: List[str]
 ## preview response = HTTP_OK (200)
 

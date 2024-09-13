@@ -1260,7 +1260,7 @@ async def dump_types():
 
 
 
-#######################################
+####################################### ENDPOINTS FOR PMM ##################
 
 @app.post(
     '/api/scan',
@@ -1274,7 +1274,7 @@ async def dump_types():
     }
 )
 async def scan_operation_create(scan_request: ScanRequest):
-    print(scan_request)
+    print("Scan request=",scan_request)
     return None
 
 @app.get(
@@ -1309,7 +1309,7 @@ async def scan_operation_status(operation_id: str):
     }
 )
 async def dump_operation_create(dump_request: DumpRequest):
-    print(dump_request)
+    print("Dump request=",dump_request)
     return None
 
 @app.get(
@@ -1343,7 +1343,7 @@ async def dump_operation_status(operation_id: str):
     }
 )
 async def preview_operation_create(preview_request: PreviewRequest):
-    print(preview_request)
+    print("Preview request=",preview_request)
 
     return None
 
@@ -1368,3 +1368,19 @@ async def preview_operation_status(operation_id: str):
         data_after="data_XXXXXXXXXX_sensetive"
     )
 
+
+@app.delete(
+    '/api/dump/{operation_id}',
+    tags=['API','Dumps'],
+    summary='Delete dump',
+    description='Delete dump',
+    status_code=200,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def dump_operation_status(operation_id: str):
+    print("Delete dump with operation_id=",operation_id)
+
+    return None
