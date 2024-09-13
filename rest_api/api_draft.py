@@ -13,7 +13,7 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     Content, \
     ScanRequest, \
     DumpRequest, \
-    PreviewRequest, PreviewResponse
+    PreviewRequest, PreviewResponse,DbConnectionParams
  
 from utils import simple_slugify
 
@@ -1326,4 +1326,19 @@ async def preview_operation_create(preview_request: PreviewRequest):
 )
 async def dump_operation_delete(operation_id: str):
     print("Delete dump with operation_id=",operation_id)
+    return None
+
+@app.post(
+    '/api/check_db_connection',
+    tags=['API','DB Connections'],
+    summary='Check DB connections with credentials',
+    description='Check DB connections with credentials',
+    status_code=200,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def db_connection_check(check_request: DbConnectionParams):
+    print("DB connection check request=",check_request)
     return None
