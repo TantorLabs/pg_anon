@@ -5,25 +5,25 @@ import re
 import sys
 import time
 from datetime import datetime
-
 from logging.handlers import RotatingFileHandler
 
 import asyncpg
 
-
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists
+from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import (
     check_pg_util,
     exception_helper,
 )
-from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
-from pg_anon.common.dto import PgAnonResult
-from pg_anon.create_dict import create_dict
 from pg_anon.context import Context
+from pg_anon.create_dict import create_dict
 from pg_anon.dump import make_dump
 from pg_anon.restore import make_restore, run_analyze, validate_restore
 from pg_anon.version import __version__
-from pg_anon.view_fields import ViewFieldsMode
 from pg_anon.view_data import ViewDataMode
+from pg_anon.view_fields import ViewFieldsMode
 
 
 async def make_init(ctx):
@@ -33,7 +33,7 @@ async def make_init(ctx):
     async def handle_notice(connection, message):
         ctx.logger.info("NOTICE: %s" % message)
 
-    db_conn = await asyncpg.connect(**ctx.conn_params)
+    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
     db_conn.add_log_listener(handle_notice)
 
     tr = db_conn.transaction()
@@ -167,7 +167,7 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            db_conn = await asyncpg.connect(**self.ctx.conn_params)
+            db_conn = await asyncpg.connect(**self.ctx.conn_params, server_settings=self.ctx.server_settings)
             self.ctx.pg_version = await db_conn.fetchval("select version()")
             self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
             await db_conn.close()
@@ -181,6 +181,21 @@ class MainRoutine:
         ) or not check_pg_util(self.ctx, self.ctx.args.pg_restore, "pg_restore"):
             result.result_code = ResultCode.FAIL
             return result
+
+        if self.ctx.args.mode != AnonMode.INIT:
+            try:
+                anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
+                    connection_params=self.ctx.conn_params,
+                    server_settings=self.ctx.server_settings
+                )
+                if not anon_utils_schema_exists:
+                    raise ValueError(
+                        f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
+                    )
+            except:
+                self.ctx.logger.error(exception_helper(show_traceback=True))
+                result.result_code = ResultCode.FAIL
+                return result
 
         start_t = time.time()
         try:

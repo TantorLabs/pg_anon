@@ -1,24 +1,25 @@
 import asyncio
 import gzip
-import hashlib
 import json
 import os
 import re
 import subprocess
 from datetime import datetime
 from hashlib import sha256
+from typing import List, Tuple
 
 import asyncpg
+import nest_asyncio
+from aioprocessing import AioQueue
+from asyncpg import Connection, Pool
 
-from pg_anon.common.utils import (
-    exception_helper,
-    get_pg_util_version,
-    get_dict_rule_for_table,
-    get_dump_query,
-    get_file_name_from_path,
-)
-from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
+from pg_anon.common.multiprocessing_utils import init_process
+from pg_anon.common.utils import (
+    exception_helper, get_pg_util_version, get_dict_rule_for_table, get_dump_query, get_file_name_from_path, chunkify
+)
+from pg_anon.context import Context
 
 DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
 
@@ -77,48 +78,69 @@ async def run_pg_dump(ctx, section):
         ctx.logger.info(v)
 
 
-async def get_dump_table(ctx, query: str, file_name: str, db_conn, output_dir: str):
-    full_file_name = os.path.join(output_dir, file_name.split(".")[0])
+async def dump_into_file(ctx: Context, db_conn: Connection, query: str, file_name: str):
     try:
         if ctx.args.dbg_stage_1_validate_dict:
-            result = await db_conn.execute(query)
-            return result
-        result = await db_conn.copy_from_query(
-            query, output=f"{full_file_name}.bin", format="binary"
+            return await db_conn.execute(query)
+
+        return await db_conn.copy_from_query(
+            query=query,
+            output=file_name,
+            format="binary",
         )
-        with open(f"{full_file_name}.bin", "rb") as f_in, gzip.open(
-                f"{full_file_name}.bin.gz", "wb"
-        ) as f_out:
-            f_out.writelines(f_in)
-        os.remove(f"{full_file_name}.bin")
-        return result
     except Exception as exc:
         ctx.logger.error(exc)
         raise exc
 
 
-async def dump_obj_func(ctx, pool, task, sn_id, file_name):
-    ctx.logger.info("================> Started task %s" % str(task))
+async def compress_file(ctx: Context, file_path: str, remove_origin_file_after_compress: bool = True):
+    gzipped_file_path = f'{file_path}.gz'
+
+    ctx.logger.debug(f"Start compressing file: {file_path}")
+    with (open(file_path, "rb") as f_in,
+          gzip.open(gzipped_file_path, "wb") as f_out):
+        f_out.writelines(f_in)
+    ctx.logger.debug(f"Compressing has done. Output file: {gzipped_file_path}")
+
+    if remove_origin_file_after_compress:
+        ctx.logger.debug(f"Removing origin file: {file_path}")
+        os.remove(file_path)
+
+
+async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str):
+    file_path = str(os.path.join(ctx.args.output_dir, file_name.split(".")[0]))
+    binary_output_file_path = f'{file_path}.bin'
+    ctx.logger.info(f"================> Started task {query} to file {binary_output_file_path}")
 
     try:
         async with pool.acquire() as db_conn:
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
-                await db_conn.execute("SET TRANSACTION SNAPSHOT '%s';" % sn_id)
-                res = await get_dump_table(
+                await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
+
+                result = await dump_into_file(
                     ctx,
-                    query=task,
-                    file_name=file_name,
                     db_conn=db_conn,
-                    output_dir=ctx.args.output_dir,
+                    query=query,
+                    file_name=binary_output_file_path,
                 )
-                count_rows = re.findall(r"(\d+)", res)[0]
-                ctx.task_results[hash(task)] = count_rows
-                ctx.logger.debug("COPY %s [rows] Task: %s " % (count_rows, str(task)))
+
+        count_rows = re.findall(r"(\d+)", result)[0]
+        ctx.logger.debug(f"COPY {count_rows} [rows] Task: {query}")
+
+        if not ctx.args.dbg_stage_1_validate_dict:
+            # Processing files no need to keep connection, after receiving data into binary file
+            await compress_file(
+                ctx=ctx,
+                file_path=binary_output_file_path
+            )
+
     except Exception as e:
         ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
-        raise Exception("Can't execute task: %s" % task)
+        raise Exception(f"Can't execute task: {query}")
 
-    ctx.logger.info("<================ Finished task %s" % str(task))
+    ctx.logger.info(f"<================ Finished task {query}")
+
+    return {hash(query): count_rows}
 
 
 async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection):
@@ -136,7 +158,7 @@ async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection
     return db_objs
 
 
-async def generate_dump_queries(ctx, db_conn):
+async def generate_dump_queries(ctx: Context, db_conn: Connection):
     tables = await get_tables_to_dump(
         excluded_schemas=ctx.exclude_schemas, db_conn=db_conn
     )
@@ -172,33 +194,110 @@ async def generate_dump_queries(ctx, db_conn):
     return queries, files
 
 
-async def make_dump_impl(ctx, db_conn, sn_id):
-    loop = asyncio.get_event_loop()
-    tasks = set()
-    pool = await asyncpg.create_pool(
-        **ctx.conn_params, min_size=ctx.args.threads, max_size=ctx.args.threads
-    )
+def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
+    tasks_res = []
 
+    status_ratio = 10
+    if len(query_tasks) > 1000:
+        status_ratio = 100
+    if len(query_tasks) > 50000:
+        status_ratio = 1000
+
+    async def run():
+        pool = await asyncpg.create_pool(
+            **ctx.conn_params,
+            server_settings=ctx.server_settings,
+            min_size=ctx.args.db_connections_per_process,
+            max_size=ctx.args.db_connections_per_process
+        )
+        tasks = set()
+
+        for idx, (file_name, query) in enumerate(query_tasks):
+            if len(tasks) >= ctx.args.db_connections_per_process:
+                # Wait for some dump to finish before adding a new one
+                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                exception = done.pop().exception()
+                if exception is not None:
+                    await pool.close()
+                    raise exception
+
+            task_res = loop.create_task(
+                dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name)
+            )
+
+            tasks.add(task_res)
+            tasks_res.append(task_res)
+
+            if idx % status_ratio:
+                progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
+                ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
+
+        if len(tasks) > 0:
+            await asyncio.wait(tasks)
+
+        await pool.close()
+
+    nest_asyncio.apply()
+    loop = asyncio.new_event_loop()
+
+    try:
+        loop.run_until_complete(run())
+    except asyncio.exceptions.TimeoutError:
+        ctx.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
+    finally:
+        loop.close()
+
+    tasks_res_final = []
+    for task in tasks_res:
+        if task.result() is not None and len(task.result()) > 0:
+            tasks_res_final.append(task.result())
+
+    queue.put(tasks_res_final)
+    queue.put(None)  # Shut down the worker
+    queue.close()
+
+
+async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
     queries, files = await generate_dump_queries(ctx, db_conn)
     if not queries:
-        await pool.close()
         raise Exception("No objects for dump!")
 
-    zipped_list = list(zip([hash(v) for v in queries], files))
+    queries_chunks = list(chunkify(list(zip(files.keys(), queries)), ctx.args.processes))
 
-    for file_name, query in zip(files.keys(), queries):
-        if len(tasks) >= ctx.args.threads:
-            # Wait for some dump to finish before adding a new one
-            done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            exception = done.pop().exception()
-            if exception is not None:
-                await pool.close()
-                raise exception
-        tasks.add(loop.create_task(dump_obj_func(ctx, pool, query, sn_id, file_name)))
+    process_tasks = []
+    for idx, queries_chunk in enumerate(queries_chunks):
+        process_tasks.append(
+            asyncio.ensure_future(
+                init_process(
+                    name=str(idx + 1),
+                    ctx=ctx,
+                    target_func=process_dump_impl,
+                    tasks=queries_chunk,
+                    transaction_snapshot_id=transaction_snapshot_id,
+                )
+            )
+        )
 
     # Wait for the remaining dumps to finish
-    await asyncio.wait(tasks)
-    await pool.close()
+    task_group = asyncio.gather(*process_tasks)
+
+    while not task_group.done():
+        """
+        Keeps main transaction in active by using simple query `SELECT 1`
+        It's needs for large databases, when dump can making for very long time
+
+        Avoids lots of queries by sleep
+        Big value for sleeping isn't recommended, because it can freeze processing, when tasks will be done
+        """
+        await asyncio.sleep(5)
+        await db_conn.execute('SELECT 1')
+
+    await task_group
+
+    task_results = {}
+    for process_task in process_tasks:
+        for res in process_task.result():
+            task_results.update(res)
 
     # Generate metadata.json
     query = """
@@ -242,7 +341,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
                     "value": seq_val,
                 }
 
-    metadata = dict()
+    metadata = {}
     metadata["db_size"] = await db_conn.fetchval(
         """SELECT pg_database_size('""" + ctx.args.db_name + """')"""
     )
@@ -258,8 +357,8 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         ).hexdigest()
     metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
 
-    for v in zipped_list:
-        files[v[1]].update({"rows": ctx.task_results[v[0]]})
+    for query, file in zip(queries, files):
+        files[file].update({"rows": task_results[hash(query)]})
 
     metadata["files"] = files
 
@@ -272,7 +371,6 @@ async def make_dump_impl(ctx, db_conn, sn_id):
         total_tables_size += await db_conn.fetchval(
             """select pg_total_relation_size('"%s"."%s"')""" % (schema, table)
         )
-        # print('<---------------------------------', int(v["rows"]))
         total_rows += int(v["rows"])
     metadata["total_tables_size"] = total_tables_size
     metadata["total_rows"] = total_rows
@@ -290,7 +388,7 @@ async def make_dump_impl(ctx, db_conn, sn_id):
             out_file.write(json.dumps(metadata, indent=4, ensure_ascii=False))
 
 
-async def make_dump(ctx):
+async def make_dump(ctx: Context):
     result = PgAnonResult()
     ctx.logger.info("-------------> Started dump mode")
 
@@ -330,11 +428,11 @@ async def make_dump(ctx):
                     for root, dirs, files in os.walk(output_dir):
                         for file in files:
                             if (
-                                    file.endswith(".sql")
-                                    or file.endswith(".gz")
-                                    or file.endswith(".json")
-                                    or file.endswith(".backup")
-                                    or file.endswith(".bin")
+                                file.endswith(".sql")
+                                or file.endswith(".gz")
+                                or file.endswith(".json")
+                                or file.endswith(".backup")
+                                or file.endswith(".bin")
                             ):
                                 os.remove(os.path.join(root, file))
                             else:
@@ -359,11 +457,11 @@ async def make_dump(ctx):
     result.result_code = ResultCode.DONE
 
     if ctx.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP):
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
         try:
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
-                sn_id = await db_conn.fetchval("select pg_export_snapshot()")
-                await make_dump_impl(ctx, db_conn, sn_id)
+                transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")
+                await make_dump_impl(ctx, db_conn, transaction_snapshot_id)
         except:
             ctx.logger.error("<------------- make_dump failed\n" + exception_helper())
             result.result_code = ResultCode.FAIL
@@ -371,7 +469,7 @@ async def make_dump(ctx):
             await db_conn.close()
 
     if ctx.args.mode == AnonMode.SYNC_STRUCT_DUMP:
-        metadata = dict()
+        metadata = {}
         metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         metadata["pg_version"] = ctx.pg_version
         metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)

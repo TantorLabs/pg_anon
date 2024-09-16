@@ -206,7 +206,7 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
         (table_schema + "_" + table_name).encode()
     ).hexdigest()
 
-    files["%s.bin.gz" % hashed_name] = {"schema": table_schema, "table": table_name}
+    files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
 
     if not found_white_list:
         included_objs.append(
@@ -217,7 +217,6 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
                 or ctx.args.dbg_stage_2_validate_data
                 or ctx.args.dbg_stage_3_validate_full):
             query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
-            ctx.logger.info(str(query))
             return query
         else:
             query = f"SELECT * FROM {table_name_full}"
@@ -242,52 +241,42 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
             # the table is transferred with the specific fields for anonymization
             fields_list = await get_fields_list(
                 connection_params=ctx.conn_params,
+                server_settings=ctx.server_settings,
                 table_schema=table_schema,
                 table_name=table_name
             )
 
             sql_expr = ""
 
-            def check_fld(fld_name):
-                if fld_name in table_rule["fields"]:
-                    return fld_name, table_rule["fields"][fld_name]
+            def check_field(field_name: str):
+                if field_name in table_rule["fields"]:
+                    return field_name, table_rule["fields"][field_name]
                 return None, None
 
             for cnt, column_info in enumerate(fields_list):
                 column_name = column_info["column_name"]
                 udt_name = column_info["udt_name"]
-                fld_name, fld_val = check_fld(column_name)
-                if fld_name:
-                    if fld_val.find("SQL:") == 0:
-                        sql_expr += f'({fld_val[4:]}) as "{fld_name}"'
+                field_name, field_value = check_field(column_name)
+
+                if field_name:
+                    if field_value.find("SQL:") == 0:
+                        sql_expr += f'({field_value[4:]}) as "{field_name}"'
                     else:
-                        sql_expr += f'{fld_val}::{udt_name} as "{fld_name}"'
+                        sql_expr += f'{field_value}::{udt_name} as "{field_name}"'
                 else:
                     # field "as is"
-                    if (
-                            not column_name.islower() and not column_name.isupper()
-                    ) or column_name.isupper():
-                        sql_expr += f'"{column_name}" as "{column_name}"'
-                    else:
-                        sql_expr += f'"{column_name}" as "{column_name}"'
+                    sql_expr += f'"{column_name}" as "{column_name}"'
+
                 if cnt != len(fields_list) - 1:
                     sql_expr += ",\n"
 
+            query = f"SELECT {sql_expr} FROM {table_name_full}"
             if (ctx.args.dbg_stage_1_validate_dict
                     or ctx.args.dbg_stage_2_validate_data
                     or ctx.args.dbg_stage_3_validate_full):
-                query = "SELECT %s FROM %s %s" % (
-                    sql_expr,
-                    table_name_full,
-                    ctx.validate_limit,
-                )
-                return query
-            else:
-                query = "SELECT %s FROM %s" % (
-                    sql_expr,
-                    table_name_full,
-                )
-                return query
+                query += f" {ctx.validate_limit}"
+
+            return query
 
 
 def get_file_name_from_path(path: str) -> str:

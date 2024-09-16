@@ -65,7 +65,11 @@ class ViewFieldsMode:
         Get scanning fields for view mode
         :return: list of fields for view mode
         """
-        fields_list = await get_scan_fields_list(self.context.conn_params, limit=self._processing_fields_limit)
+        fields_list = await get_scan_fields_list(
+            connection_params=self.context.conn_params,
+            server_settings=self.context.server_settings,
+            limit=self._processing_fields_limit
+        )
 
         result = []
         for field in fields_list:
@@ -76,7 +80,11 @@ class ViewFieldsMode:
         return result
 
     async def _make_notice_fields_cut_by_limits(self):
-        fields_count = await get_scan_fields_count(self.context.conn_params)
+        fields_count = await get_scan_fields_count(
+            connection_params=self.context.conn_params,
+            server_settings=self.context.server_settings
+        )
+
         if fields_count > self._processing_fields_limit and not self.context.args.json:
             print(f'You try to get too many fields ({fields_count} fields).'
                   f' Will processed for output only first {self._processing_fields_limit} fields.'
@@ -135,7 +143,14 @@ class ViewFieldsMode:
             ])
 
     def _prepare_json(self):
-        self.json = json.dumps([asdict(field) for field in self.fields])
+        self.json = json.dumps([{
+            'schema': field.nspname,
+            'table': field.relname,
+            'field': field.column_name,
+            'type': field.type,
+            'dict_file_name': field.dict_file_name,
+            'rule': field.rule,
+        } for field in self.fields], ensure_ascii=False)
 
     async def _output_fields(self):
         await self._make_notice_fields_cut_by_limits()

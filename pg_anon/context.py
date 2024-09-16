@@ -2,6 +2,7 @@ import argparse
 import os
 from typing import Dict, Optional
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 from pg_anon.common.utils import (
     exception_handler,
@@ -24,11 +25,19 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches = {}  # for create-dict mode
         self.create_dict_no_sens_matches = {}  # for create-dict mode
-        self.exclude_schemas = ["anon_funcs", "columnar_internal"]
+        self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
         self.logger = None
 
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
+
+        self.server_settings = {
+            "application_name": "pg_anon",
+            "statement_timeout": "0",
+            "lock_timeout": "0",
+            "idle_in_transaction_session_timeout": "0",
+            "idle_session_timeout": "0",
+        }
 
         self.conn_params = {
             "host": args.db_host,
@@ -208,8 +217,8 @@ class Context:
                         dictionary_rule['dict_file_name'] = dict_file
                 self.prepared_dictionary_obj["dictionary"].extend(dictionary_rules)
 
-            if dictionary := dict_data.get("dictionary_exclude", []):
-                self.prepared_dictionary_obj["dictionary_exclude"].extend(dictionary)
+            if dictionary_exclude_rules := dict_data.get("dictionary_exclude", []):
+                self.prepared_dictionary_obj["dictionary_exclude"].extend(dictionary_exclude_rules)
 
             if validate_tables := dict_data.get("validate_tables", []):
                 self.prepared_dictionary_obj["validate_tables"].extend(validate_tables)
@@ -260,10 +269,10 @@ class Context:
             help="In 'create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
         )
         parser.add_argument(
-            "--threads",
+            "--db-connections-per-process",
             type=int,
             default=4,
-            help="Amount of threads for IO operations.",
+            help="Amount of db connections for each process for IO operations.",
         )
         parser.add_argument(
             "--processes",
