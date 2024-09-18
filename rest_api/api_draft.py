@@ -1266,8 +1266,8 @@ async def scanCallback(operation_id: str):
     await asyncio.sleep(10)
 
     scanStatus=ScanStatusResponse(
-        operation_id=operation_id,
-        status_id=4, # in progress
+        operationID=operation_id,
+        statusID=4, # in progress
     )
     print(scanStatus.model_dump(by_alias=True))
     r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
@@ -1275,10 +1275,10 @@ async def scanCallback(operation_id: str):
     await asyncio.sleep(10)
 
     scanStatus=ScanStatusResponse(
-        operation_id=operation_id,
-        status_id=2, # success
-        sens_dict_content=TEMPLATE_SENS_DICT,
-        no_sens_dict_content=TEMPLATE_NO_SENS_DICT,
+        operationID=operation_id,
+        statusID=2, # success
+        sensDictContent=TEMPLATE_SENS_DICT,
+        noSensDictContents=TEMPLATE_NO_SENS_DICT,
     )
     print(scanStatus.model_dump(by_alias=True))
     r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
@@ -1308,8 +1308,8 @@ async def dumpCallback(operation_id: str):
     await asyncio.sleep(10)
 
     dumpStatus=DumpStatusResponse(
-        operation_id=operation_id,
-        status_id=4, # in progress
+        operationID=operation_id,
+        statusID=4, # in progress
     )
     print(dumpStatus.model_dump(by_alias=True))
     r = httpx.post('http://backend:5666/internal/api/pg_anon/dump_status', json=dumpStatus.model_dump(by_alias=True))
@@ -1317,8 +1317,8 @@ async def dumpCallback(operation_id: str):
     await asyncio.sleep(10)
 
     dumpStatus=DumpStatusResponse(
-        operation_id=operation_id,
-        status_id=2, # success
+        operationID=operation_id,
+        statusID=2, # success
         size=4096,
     )
     print(dumpStatus.model_dump(by_alias=True))
@@ -1360,32 +1360,32 @@ async def preview_operation_create(preview_request: PreviewRequest):
     print("Preview request=",preview_request)
 
     preview_data_part_one=PreviewData(
-        schema_name="schema_test_1",
-        table_name="table1",
+        schemaName="schema_test_1",
+        tableName="table1",
         columns=[
             PreviewDataColumn(
                 name="ID",
-                type_col="serial",
+                type="serial",
                 rule="",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
             PreviewDataColumn(
                 name="name",
-                type_col="text",
+                type="text",
                 rule="",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
             PreviewDataColumn(
                 name="inn",
-                type_col="text",
+                type="text",
                 rule="md5()",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
         ],
-        rows_before=[
+        rowsBefore=[
             "1",
             "Ivanov",
             "7743013901",
@@ -1399,7 +1399,7 @@ async def preview_operation_create(preview_request: PreviewRequest):
             "Novikov",
             "7743013904",
         ],
-        rows_after=[
+        rowsAfter=[
             "1",
             "Ivanov",
             "38f3361baaaeb33cb1b65245900364dc",
@@ -1413,50 +1413,50 @@ async def preview_operation_create(preview_request: PreviewRequest):
             "Novikov",
             "38f3361baaaeb33cb1b65245900364dc",
         ],
-        total_rows_count=4
+        totalRowsCount=4
     )
 
     preview_data_part_two=PreviewData(
-        schema_name="schema_test_1",
-        table_name="table2",
+        schemaName="schema_test_1",
+        tableName="table2",
         columns=[
             PreviewDataColumn(
                 name="ID",
-                type_col="serial",
+                type="serial",
                 rule="",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
             PreviewDataColumn(
                 name="login",
-                type_col="text",
+                type="text",
                 rule="",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
             PreviewDataColumn(
                 name="fam",
-                type_col="text",
+                type="text",
                 rule="md5",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
             PreviewDataColumn(
                 name="im",
-                type_col="text",
+                type="text",
                 rule="md5()",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
              PreviewDataColumn(
                 name="ot",
-                type_col="text",
+                type="text",
                 rule="md5()",
-                example_data_before="",
-                example_data_after="",
+                exampleDataBefore="",
+                exampleDataAfter="",
             ),
         ],
-        rows_before=[
+        rowsBefore=[
             "1",
             "ivanov_ii",
             "Ivanov",
@@ -1478,7 +1478,7 @@ async def preview_operation_create(preview_request: PreviewRequest):
             "Roman",
             "Alelseevich",
         ],
-        rows_after=[
+        rowsAfter=[
             "1",
             "ivanov_ii",
             "38f3361baaaeb33cb1b65245900364dc",
@@ -1504,8 +1504,8 @@ async def preview_operation_create(preview_request: PreviewRequest):
     )
 
     return PreviewResponse(
-        status_id=2,
-        preview_data=[
+        statusID=2,
+        previewData=[
             preview_data_part_one,
             preview_data_part_two
         ]

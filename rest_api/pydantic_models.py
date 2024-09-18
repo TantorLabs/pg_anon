@@ -322,77 +322,77 @@ class PreviewUpdate(BaseModel):
 
 # db connection params
 class DbConnectionParams(BaseModel):
-    host: str = Field(..., serialization_alias="host")
-    port: int = Field(..., serialization_alias="port")
-    db_name: str = Field(..., serialization_alias="dbName")
+    host: str = Field(alias="host")
+    port: int = Field(alias="port")
+    db_name: str = Field(alias="dbName")
 
-    user_login:str = Field(..., serialization_alias="userLogin")
-    user_password: str = Field(..., serialization_alias="userPassword")
+    user_login:str = Field(alias="userLogin")
+    user_password: str = Field(alias="userPassword")
 
 
 # scan
 ## scanning request
 class ScanRequest(BaseModel):
-    operation_id: str  = Field(..., serialization_alias="operationID")
-    type_id: int = Field(..., serialization_alias="typeID")
-    depth: int  = Field(..., serialization_alias="depth")
-    db_connection_params: DbConnectionParams  = Field(..., serialization_alias="dbConnectionParams")
-    proc_count: Optional[int] = Field(serialization_alias="procCount", default=None)
-    proc_conn_count: Optional[int] = Field(serialization_alias="procConnCount", default=None)
+    operation_id: str  = Field(..., alias="operationID")
+    type_id: int = Field(..., alias="typeID")
+    depth: int  = Field(..., alias="depth")
+    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
+    proc_count: Optional[int] = Field(alias="procCount", default=None)
+    proc_conn_count: Optional[int] = Field(alias="procConnCount", default=None)
 
-    meta_dict_contents: List[str] = Field(..., serialization_alias="metaDictContents")
-    sens_dict_contents: Optional[List[str]] = Field(serialization_alias="sensDictContents", default=None)
-    no_sens_dict_contents: Optional[List[str]] = Field(serialization_alias="noSensDictContents", default=None)
+    meta_dict_contents: List[str] = Field(..., alias="metaDictContents")
+    sens_dict_contents: Optional[List[str]] = Field(alias="sensDictContents", default=None)
+    no_sens_dict_contents: Optional[List[str]] = Field(alias="noSensDictContents", default=None)
 ## scanning response = HTTP_OK (200)
 
 ## scan status response
 class ScanStatusResponse(BaseModel):
-    operation_id: str  = Field(..., serialization_alias="operationID")
-    status_id: int = Field(..., serialization_alias="statusID")
-    sens_dict_content: Optional[str] = Field(serialization_alias="sensDictContent", default=None)
-    no_sens_dict_content: Optional[str] = Field(serialization_alias="noSensDictContent", default=None)
+    operation_id: str  = Field(..., alias="operationID")
+    status_id: int = Field(..., alias="statusID")
+    sens_dict_content: Optional[str] = Field(alias="sensDictContent", default=None)
+    no_sens_dict_content: Optional[str] = Field(alias="noSensDictContent", default=None)
 
 
 # dump
 ## dump request
 class DumpRequest(BaseModel):
-    operation_id: str = Field(..., serialization_alias="operationID")
-    type_id: int = Field(..., serialization_alias="typeID")
-    db_connection_params: DbConnectionParams  = Field(..., serialization_alias="dbConnectionParams")
-    output_path: str = Field(..., serialization_alias="outputPath")
-    sens_dict_contents: List[str] = Field(..., serialization_alias="sensDictContents")
+    operation_id: str = Field(..., alias="operationID")
+    type_id: int = Field(..., alias="typeID")
+    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
+    output_path: str = Field(..., alias="outputPath")
+    sens_dict_contents: List[str] = Field(..., alias="sensDictContents")
 ## dump response = HTTP_OK(200)
 
 
 ## dump status response
 class DumpStatusResponse(BaseModel):
-    operation_id: str  = Field(..., serialization_alias="operationID")
-    status_id: int = Field(..., serialization_alias="statusID")
-    size: Optional[int] = Field(serialization_alias="size", default=None)
+    operation_id: str  = Field(..., alias="operationID")
+    status_id: int = Field(..., alias="statusID")
+    size: Optional[int] = Field(alias="size", default=None)
 
 # preview
 ## preview request
 class PreviewRequest(BaseModel):
-    operation_id: str  = Field(..., serialization_alias="operationID")
-    db_connection_params: DbConnectionParams = Field(..., serialization_alias="dbConnectionParams")
-    sens_dict_contents: List[str] = Field(..., serialization_alias="sensDictContents")
+    operation_id: str  = Field(..., alias="operationID")
+    db_connection_params: DbConnectionParams = Field(..., alias="dbConnectionParams")
+    sens_dict_contents: List[str] = Field(..., alias="sensDictContents")
     
 ## preview response 
 class PreviewDataColumn(BaseModel):
-    name: str  = Field(..., serialization_alias="name")
-    type_col: str  = Field(..., serialization_alias="type")
-    rule: str  = Field(..., serialization_alias="rule")
-    example_data_before: Optional[str]  = Field(serialization_alias="exampleDataBefore", default=None)
-    example_data_after: Optional[str]  = Field(serialization_alias="exampleDataAfter", default=None)
+    name: str  = Field(..., alias="name")
+    type_col: str  = Field(..., alias="type")
+    rule: str  = Field(..., alias="rule")
+    example_data_before: Optional[str]  = Field(alias="exampleDataBefore", default=None)
+    example_data_after: Optional[str]  = Field(alias="exampleDataAfter", default=None)
 
 class PreviewData(BaseModel):
-    schema_name: str  = Field(..., serialization_alias="schemaName")
-    table_name: str  = Field(..., serialization_alias="tableName")
-    columns: List[PreviewDataColumn]  = Field(..., serialization_alias="columns")
-    rows_before: List[str] = Field(..., serialization_alias="rowsBefore")
-    rows_after: List[str] = Field(..., serialization_alias="rowsAfter")
-    total_rows_count: int = Field(..., serialization_alias="totalRowsCount")
+    schema_name: str  = Field(..., alias="schemaName")
+    table_name: str  = Field(..., alias="tableName")
+    columns: List[PreviewDataColumn]  = Field(..., alias="columns")
+    rows_before: List[str] = Field(..., alias="rowsBefore")
+    rows_after: List[str] = Field(..., alias="rowsAfter")
+    total_rows_count: int = Field(..., alias="totalRowsCount")
 
 class PreviewResponse(BaseModel):
-    status_id: int = Field(..., serialization_alias="statusID")
-    preview_data: Optional[List[PreviewData]] = Field(serialization_alias="previewData", default=None)
+    status_id: int = Field(..., alias="statusID")
+    preview_data: Optional[List[PreviewData]] = Field(alias="previewData", default=None)
