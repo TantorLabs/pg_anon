@@ -2,6 +2,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
+import httpx,asyncio
 
 from fastapi import FastAPI
 
@@ -11,9 +12,8 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
     Content, \
-    ScanRequest, \
-    DumpRequest, \
-    PreviewRequest, PreviewResponse,DbConnectionParams
+    ScanRequest,ScanStatusResponse, DumpRequest,DumpStatusResponse,\
+    PreviewRequest, PreviewResponse, DbConnectionParams, PreviewDataColumn,PreviewData 
  
 from utils import simple_slugify
 
@@ -1262,6 +1262,29 @@ async def dump_types():
 
 ####################################### ENDPOINTS FOR PMM ##################
 
+async def scanCallback(operation_id: str):
+    await asyncio.sleep(10)
+
+    scanStatus=ScanStatusResponse(
+        operation_id=operation_id,
+        status_id=4, # in progress
+    )
+    print(scanStatus.model_dump(by_alias=True))
+    r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
+    print(r.status_code)
+    await asyncio.sleep(10)
+
+    scanStatus=ScanStatusResponse(
+        operation_id=operation_id,
+        status_id=2, # success
+        sens_dict_content=TEMPLATE_SENS_DICT,
+        no_sens_dict_content=TEMPLATE_NO_SENS_DICT,
+    )
+    print(scanStatus.model_dump(by_alias=True))
+    r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
+    print(r.status_code)
+
+
 @app.post(
     '/api/scan',
     tags=['API','Scans'],
@@ -1275,7 +1298,32 @@ async def dump_types():
 )
 async def scan_operation_create(scan_request: ScanRequest):
     print("Scan request=",scan_request)
+
+    asyncio.ensure_future(scanCallback(scan_request.operation_id))
+
     return None
+
+
+async def dumpCallback(operation_id: str):
+    await asyncio.sleep(10)
+
+    dumpStatus=DumpStatusResponse(
+        operation_id=operation_id,
+        status_id=4, # in progress
+    )
+    print(dumpStatus.model_dump(by_alias=True))
+    r = httpx.post('http://backend:5666/internal/api/pg_anon/dump_status', json=dumpStatus.model_dump(by_alias=True))
+    print(r.status_code)
+    await asyncio.sleep(10)
+
+    dumpStatus=DumpStatusResponse(
+        operation_id=operation_id,
+        status_id=2, # success
+        size=4096,
+    )
+    print(dumpStatus.model_dump(by_alias=True))
+    r = httpx.post('http://backend:5666/internal/api/pg_anon/dump_status', json=dumpStatus.model_dump(by_alias=True))
+    print(r.status_code)
 
 
 @app.post(
@@ -1291,6 +1339,9 @@ async def scan_operation_create(scan_request: ScanRequest):
 )
 async def dump_operation_create(dump_request: DumpRequest):
     print("Dump request=",dump_request)
+
+    asyncio.ensure_future(dumpCallback(dump_request.operation_id))
+
     return None
 
 
@@ -1307,10 +1358,157 @@ async def dump_operation_create(dump_request: DumpRequest):
 )
 async def preview_operation_create(preview_request: PreviewRequest):
     print("Preview request=",preview_request)
+
+    preview_data_part_one=PreviewData(
+        schema_name="schema_test_1",
+        table_name="table1",
+        columns=[
+            PreviewDataColumn(
+                name="ID",
+                type_col="serial",
+                rule="",
+                example_data_before="",
+                example_data_after="",
+            ),
+            PreviewDataColumn(
+                name="name",
+                type_col="text",
+                rule="",
+                example_data_before="",
+                example_data_after="",
+            ),
+            PreviewDataColumn(
+                name="inn",
+                type_col="text",
+                rule="md5()",
+                example_data_before="",
+                example_data_after="",
+            ),
+        ],
+        rows_before=[
+            "1",
+            "Ivanov",
+            "7743013901",
+            "2",
+            "Petrov",
+            "7743013902",
+            "3",
+            "Sidoroff",
+            "7743013903",
+            "4",
+            "Novikov",
+            "7743013904",
+        ],
+        rows_after=[
+            "1",
+            "Ivanov",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "2",
+            "Petrov",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "3",
+            "Sidoroff",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "4",
+            "Novikov",
+            "38f3361baaaeb33cb1b65245900364dc",
+        ],
+        total_rows_count=4
+    )
+
+    preview_data_part_two=PreviewData(
+        schema_name="schema_test_1",
+        table_name="table2",
+        columns=[
+            PreviewDataColumn(
+                name="ID",
+                type_col="serial",
+                rule="",
+                example_data_before="",
+                example_data_after="",
+            ),
+            PreviewDataColumn(
+                name="login",
+                type_col="text",
+                rule="",
+                example_data_before="",
+                example_data_after="",
+            ),
+            PreviewDataColumn(
+                name="fam",
+                type_col="text",
+                rule="md5",
+                example_data_before="",
+                example_data_after="",
+            ),
+            PreviewDataColumn(
+                name="im",
+                type_col="text",
+                rule="md5()",
+                example_data_before="",
+                example_data_after="",
+            ),
+             PreviewDataColumn(
+                name="ot",
+                type_col="text",
+                rule="md5()",
+                example_data_before="",
+                example_data_after="",
+            ),
+        ],
+        rows_before=[
+            "1",
+            "ivanov_ii",
+            "Ivanov",
+            "Ivan",
+            "Ivanovich",
+            "2",
+            "petrov_pp",
+            "Petrov",
+            "Petr",
+            "Petrovich",
+            "3",
+            "sidorov_ss",
+            "Sidoroff",
+            "Sidor"
+            "Sidorovich",
+            "4",
+            "novikov_ra",
+            "Novikov",
+            "Roman",
+            "Alelseevich",
+        ],
+        rows_after=[
+            "1",
+            "ivanov_ii",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "2",
+            "petrov_pp",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "3",
+            "sidorov_ss",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc"
+            "38f3361baaaeb33cb1b65245900364dc",
+            "4",
+            "novikov_ra",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+            "38f3361baaaeb33cb1b65245900364dc",
+        ],
+        total_rows_count=4
+    )
+
     return PreviewResponse(
         status_id=2,
-        data_before="data_sens_123321",
-        data_after="data_sens_xxxxxx"
+        preview_data=[
+            preview_data_part_one,
+            preview_data_part_two
+        ]
     )
 
 @app.delete(
