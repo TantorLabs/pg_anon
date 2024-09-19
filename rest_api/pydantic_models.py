@@ -339,9 +339,9 @@ class ScanRequest(BaseModel):
     db_connection_params: DbConnectionParams
     webhook_status_url: str
 
-    meta_dict_contents: List[Dict[str, str]]
-    sens_dict_contents: Union[List[Dict[str, str]], None] = None
-    no_sens_dict_contents: Union[List[Dict[str, str]], None] = None
+    meta_dict_contents: Dict[str, str]
+    sens_dict_contents: Union[Dict[str, str], None] = None
+    no_sens_dict_contents: Union[Dict[str, str], None] = None
 
     depth: Union[int, None] = None
     proc_count: Union[int, None] = None
@@ -363,7 +363,7 @@ class DumpRequest(BaseModel):
     type_id: int
     db_connection_params: DbConnectionParams
     webhook_status_url: str
-    sens_dict_contents: List[Dict[str, str]]
+    sens_dict_contents: Dict[str, str]
     output_path: Union[str] = None
 
 
@@ -382,7 +382,7 @@ class DumpDeleteRequest(BaseModel):
 #############################################
 class ViewFieldsRequest(BaseModel):
     db_connection_params: DbConnectionParams
-    sens_dict_contents: List[Dict[str, str]]
+    sens_dict_contents: Dict[str, str]
 
     schema_name: Union[str, None] = None
     schema_mask: Union[str, None] = None
@@ -411,7 +411,7 @@ class ViewFieldsResponse(BaseModel):
 #############################################
 class ViewDataRequest(BaseModel):
     db_connection_params: DbConnectionParams
-    sens_dict_contents: List[Dict[str, str]]
+    sens_dict_contents: Dict[str, str]
 
     schema_name: str
     table_name: str

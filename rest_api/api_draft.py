@@ -1291,10 +1291,7 @@ async def stateless_scan_start(request: ScanRequest):
     print("Scan request=", request)
 
     asyncio.ensure_future(
-        scan_callback(
-            operation_id=request.operation_id,
-            webhook_status_url=request.webhook_status_url,
-        )
+        scan_callback(request)
     )
 
 
@@ -1403,10 +1400,7 @@ async def stateless_dump_start(request: DumpRequest):
     print("Dump request=", request)
 
     asyncio.ensure_future(
-        dump_callback(
-            operation_id=request.operation_id,
-            webhook_status_url=request.webhook_status_url,
-        )
+        dump_callback(request)
     )
 
 
@@ -1423,4 +1417,3 @@ async def stateless_dump_start(request: DumpRequest):
 )
 async def dump_operation_delete(request: DumpDeleteRequest):
     print("Delete dump dir in path", request.path)
-
