@@ -1,8 +1,8 @@
+import asyncio
 import json
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
-import httpx,asyncio
 
 from fastapi import FastAPI
 
@@ -11,10 +11,9 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     DbCheckConnectionStatus, DictionaryShort, DictionaryDetailed, DictionaryCreate, DictionaryType, DictionaryUpdate, \
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
-    Content, \
-    ScanRequest,ScanStatusResponse, DumpRequest,DumpStatusResponse,\
-    PreviewRequest, PreviewResponse, DbConnectionParams, PreviewDataColumn,PreviewData 
- 
+    Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewFieldsContent, \
+    ViewDataResponse, ViewDataRequest, ViewDataContent, DumpDeleteRequest
+from rest_api.callbacks import scan_callback, dump_callback
 from utils import simple_slugify
 
 app = FastAPI(
@@ -953,8 +952,8 @@ async def preview_fields(preview_id: int):
 @app.post(
     '/preview/{preview_id}/data',
     tags=['Previews'],
-    summary='Render preview rules by data',
-    description='Rendering of preview rules by data',
+    summary='Render preview data by rules',
+    description='Rendering of preview data by rules',
     responses={
         "400": {"model": ErrorResponse},
         "404": {"model": ErrorResponse},
@@ -1258,277 +1257,13 @@ async def dump_types():
     ]
 
 
-
-
-####################################### ENDPOINTS FOR PMM ##################
-
-async def scanCallback(operation_id: str):
-    await asyncio.sleep(10)
-
-    scanStatus=ScanStatusResponse(
-        operationID=operation_id,
-        statusID=4, # in progress
-    )
-    print(scanStatus.model_dump(by_alias=True))
-    r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
-    print(r.status_code)
-    await asyncio.sleep(10)
-
-    scanStatus=ScanStatusResponse(
-        operationID=operation_id,
-        statusID=2, # success
-        sensDictContent=TEMPLATE_SENS_DICT,
-        noSensDictContents=TEMPLATE_NO_SENS_DICT,
-    )
-    print(scanStatus.model_dump(by_alias=True))
-    r = httpx.post('http://backend:5666/internal/api/pg_anon/scan_status', json=scanStatus.model_dump(by_alias=True))
-    print(r.status_code)
-
+#############################################
+# Stateless API
+#############################################
 
 @app.post(
-    '/api/scan',
-    tags=['API','Scans'],
-    summary='Create new scanning operation',
-    description='Create new scanning operation',
-    status_code=200,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def scan_operation_create(scan_request: ScanRequest):
-    print("Scan request=",scan_request)
-
-    asyncio.ensure_future(scanCallback(scan_request.operation_id))
-
-    return None
-
-
-async def dumpCallback(operation_id: str):
-    await asyncio.sleep(10)
-
-    dumpStatus=DumpStatusResponse(
-        operationID=operation_id,
-        statusID=4, # in progress
-    )
-    print(dumpStatus.model_dump(by_alias=True))
-    r = httpx.post('http://backend:5666/internal/api/pg_anon/dump_status', json=dumpStatus.model_dump(by_alias=True))
-    print(r.status_code)
-    await asyncio.sleep(10)
-
-    dumpStatus=DumpStatusResponse(
-        operationID=operation_id,
-        statusID=2, # success
-        size=4096,
-    )
-    print(dumpStatus.model_dump(by_alias=True))
-    r = httpx.post('http://backend:5666/internal/api/pg_anon/dump_status', json=dumpStatus.model_dump(by_alias=True))
-    print(r.status_code)
-
-
-@app.post(
-    '/api/dump',
-    tags=['API','Dumps'],
-    summary='Create new dump operation',
-    description='Create new dump operation',
-    status_code=200,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def dump_operation_create(dump_request: DumpRequest):
-    print("Dump request=",dump_request)
-
-    asyncio.ensure_future(dumpCallback(dump_request.operation_id))
-
-    return None
-
-
-@app.post(
-    '/api/preview',
-    tags=['API','Previews'],
-    summary='Create new preview operation',
-    description='Create new preview operation',
-    response_model=PreviewResponse,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def preview_operation_create(preview_request: PreviewRequest):
-    print("Preview request=",preview_request)
-
-    preview_data_part_one=PreviewData(
-        schemaName="schema_test_1",
-        tableName="table1",
-        columns=[
-            PreviewDataColumn(
-                name="ID",
-                type="serial",
-                rule="",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-            PreviewDataColumn(
-                name="name",
-                type="text",
-                rule="",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-            PreviewDataColumn(
-                name="inn",
-                type="text",
-                rule="md5()",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-        ],
-        rowsBefore=[
-            "1",
-            "Ivanov",
-            "7743013901",
-            "2",
-            "Petrov",
-            "7743013902",
-            "3",
-            "Sidoroff",
-            "7743013903",
-            "4",
-            "Novikov",
-            "7743013904",
-        ],
-        rowsAfter=[
-            "1",
-            "Ivanov",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "2",
-            "Petrov",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "3",
-            "Sidoroff",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "4",
-            "Novikov",
-            "38f3361baaaeb33cb1b65245900364dc",
-        ],
-        totalRowsCount=4
-    )
-
-    preview_data_part_two=PreviewData(
-        schemaName="schema_test_1",
-        tableName="table2",
-        columns=[
-            PreviewDataColumn(
-                name="ID",
-                type="serial",
-                rule="",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-            PreviewDataColumn(
-                name="login",
-                type="text",
-                rule="",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-            PreviewDataColumn(
-                name="fam",
-                type="text",
-                rule="md5",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-            PreviewDataColumn(
-                name="im",
-                type="text",
-                rule="md5()",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-             PreviewDataColumn(
-                name="ot",
-                type="text",
-                rule="md5()",
-                exampleDataBefore="",
-                exampleDataAfter="",
-            ),
-        ],
-        rowsBefore=[
-            "1",
-            "ivanov_ii",
-            "Ivanov",
-            "Ivan",
-            "Ivanovich",
-            "2",
-            "petrov_pp",
-            "Petrov",
-            "Petr",
-            "Petrovich",
-            "3",
-            "sidorov_ss",
-            "Sidoroff",
-            "Sidor"
-            "Sidorovich",
-            "4",
-            "novikov_ra",
-            "Novikov",
-            "Roman",
-            "Alelseevich",
-        ],
-        rowsAfter=[
-            "1",
-            "ivanov_ii",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "2",
-            "petrov_pp",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "3",
-            "sidorov_ss",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc"
-            "38f3361baaaeb33cb1b65245900364dc",
-            "4",
-            "novikov_ra",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-            "38f3361baaaeb33cb1b65245900364dc",
-        ],
-        total_rows_count=4
-    )
-
-    return PreviewResponse(
-        statusID=2,
-        previewData=[
-            preview_data_part_one,
-            preview_data_part_two
-        ]
-    )
-
-@app.delete(
-    '/api/dump/{operation_id}',
-    tags=['API','Dumps'],
-    summary='Delete dump',
-    description='Delete dump',
-    status_code=200,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def dump_operation_delete(operation_id: str):
-    print("Delete dump with operation_id=",operation_id)
-    return None
-
-@app.post(
-    '/api/check_db_connection',
-    tags=['API','DB Connections'],
+    '/api/stateless/check_db_connection',
+    tags=['Stateless'],
     summary='Check DB connections with credentials',
     description='Check DB connections with credentials',
     status_code=200,
@@ -1537,6 +1272,155 @@ async def dump_operation_delete(operation_id: str):
         "500": {"model": ErrorResponse},
     }
 )
-async def db_connection_check(check_request: DbConnectionParams):
-    print("DB connection check request=",check_request)
-    return None
+async def db_connection_check(request: DbConnectionParams):
+    print("DB connection check request=", request)
+
+
+@app.post(
+    '/api/stateless/scan',
+    tags=['Stateless'],
+    summary='Create new scanning operation',
+    description='Create new scanning operation',
+    status_code=201,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_scan_start(request: ScanRequest):
+    print("Scan request=", request)
+
+    asyncio.ensure_future(
+        scan_callback(
+            operation_id=request.operation_id,
+            webhook_status_url=request.webhook_status_url,
+        )
+    )
+
+
+@app.post(
+    '/api/stateless/view-fields',
+    tags=['Stateless'],
+    summary='Render preview rules by fields',
+    description='Rendering of preview rules by fields',
+    response_model=ViewFieldsResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_view_fields(request: ViewFieldsRequest):
+    print("Preview fields request=", request)
+
+    await asyncio.sleep(2)  # emulate working
+
+    return ViewFieldsResponse(
+        status_id=2,  # success
+        content=[
+            ViewFieldsContent(
+                schema='public',
+                table='users',
+                field='id',
+                type='serial',
+                dict_file_name='---',
+                rule='---',
+            ),
+            ViewFieldsContent(
+                schema='public',
+                table='users',
+                field='email',
+                type='text',
+                dict_file_name='---',
+                rule="md5(email) || '@abc.com'",
+            ),
+            ViewFieldsContent(
+                schema='public',
+                table='users',
+                field='login',
+                type='text',
+                dict_file_name='---',
+                rule="---",
+            )
+        ]
+    )
+
+
+@app.post(
+    '/api/stateless/view-data',
+    tags=['Stateless'],
+    summary='Render preview data by rules',
+    description='Rendering of preview data by rules',
+    response_model=ViewDataResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_view_data(request: ViewDataRequest):
+    print("Preview data request=", request)
+
+    await asyncio.sleep(2)  # emulate working
+
+    return ViewDataResponse(
+        status_id=2,  # success
+        content=[
+            ViewDataContent(
+                schema='public',
+                table='users',
+                fields=[
+                    'id',
+                    'email',
+                    'login',
+                ],
+                total_rows_count=3,
+                rows_before=[
+                    [1, 'user1001@example.com', 'user1001'],
+                    [2, 'user1002@example.com', 'user1002'],
+                    [3, 'user1003@example.com', 'user1003'],
+                ],
+                rows_after=[
+                    [1, '385513d80895c4c5e19c91d1df9eacae@abc.com', 'user1001'],
+                    [2, '9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com', 'user1002'],
+                    [3, 'e4e9fe7090f5be634be77db8f86e453c@abc.com', 'user1003'],
+                ],
+            ),
+        ]
+    )
+
+
+@app.post(
+    '/api/stateless/dump',
+    tags=['Stateless'],
+    summary='Create new dump operation',
+    description='Create new dump operation',
+    status_code=201,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_dump_start(request: DumpRequest):
+    print("Dump request=", request)
+
+    asyncio.ensure_future(
+        dump_callback(
+            operation_id=request.operation_id,
+            webhook_status_url=request.webhook_status_url,
+        )
+    )
+
+
+@app.delete(
+    '/api/stateless/dump',
+    tags=['Stateless'],
+    summary='Delete dump',
+    description='Delete dump',
+    status_code=204,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def dump_operation_delete(request: DumpDeleteRequest):
+    print("Delete dump dir in path", request.path)
+

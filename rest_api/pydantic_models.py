@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Union, List,Optional
+from typing import Union, List, Optional, Dict
 
-from pydantic import BaseModel,Field
+from pydantic import BaseModel, Field
 
 
 #############################################
@@ -317,82 +317,118 @@ class PreviewUpdate(BaseModel):
     attributes: Union[str, None] = None  # some custom attributes for integrations
 
 
-
-################################################################# nEw LoGiC
-
-# db connection params
+#############################################
+# Stateless
+#############################################
 class DbConnectionParams(BaseModel):
-    host: str = Field(alias="host")
-    port: int = Field(alias="port")
-    db_name: str = Field(alias="dbName")
+    host: str
+    port: int
+    db_name: str
 
-    user_login:str = Field(alias="userLogin")
-    user_password: str = Field(alias="userPassword")
+    user_login: str
+    user_password: str
 
 
-# scan
-## scanning request
+#############################################
+# Stateless | Scan
+#############################################
 class ScanRequest(BaseModel):
-    operation_id: str  = Field(..., alias="operationID")
-    type_id: int = Field(..., alias="typeID")
-    depth: int  = Field(..., alias="depth")
-    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
-    proc_count: Optional[int] = Field(alias="procCount", default=None)
-    proc_conn_count: Optional[int] = Field(alias="procConnCount", default=None)
+    operation_id: str
+    type_id: int
 
-    meta_dict_contents: List[str] = Field(..., alias="metaDictContents")
-    sens_dict_contents: Optional[List[str]] = Field(alias="sensDictContents", default=None)
-    no_sens_dict_contents: Optional[List[str]] = Field(alias="noSensDictContents", default=None)
-## scanning response = HTTP_OK (200)
+    db_connection_params: DbConnectionParams
+    webhook_status_url: str
 
-## scan status response
+    meta_dict_contents: List[Dict[str, str]]
+    sens_dict_contents: Union[List[Dict[str, str]], None] = None
+    no_sens_dict_contents: Union[List[Dict[str, str]], None] = None
+
+    depth: Union[int, None] = None
+    proc_count: Union[int, None] = None
+    proc_conn_count: Union[int, None] = None
+
+
 class ScanStatusResponse(BaseModel):
-    operation_id: str  = Field(..., alias="operationID")
-    status_id: int = Field(..., alias="statusID")
-    sens_dict_content: Optional[str] = Field(alias="sensDictContent", default=None)
-    no_sens_dict_content: Optional[str] = Field(alias="noSensDictContent", default=None)
+    operation_id: str
+    status_id: int
+    sens_dict_content: Union[Dict[str, str], None] = None
+    no_sens_dict_content: Union[Dict[str, str], None] = None
 
 
-# dump
-## dump request
+#############################################
+# Stateless | Dump
+#############################################
 class DumpRequest(BaseModel):
-    operation_id: str = Field(..., alias="operationID")
-    type_id: int = Field(..., alias="typeID")
-    db_connection_params: DbConnectionParams  = Field(..., alias="dbConnectionParams")
-    output_path: str = Field(..., alias="outputPath")
-    sens_dict_contents: List[str] = Field(..., alias="sensDictContents")
-## dump response = HTTP_OK(200)
+    operation_id: str
+    type_id: int
+    db_connection_params: DbConnectionParams
+    webhook_status_url: str
+    sens_dict_contents: List[Dict[str, str]]
+    output_path: Union[str] = None
 
 
-## dump status response
 class DumpStatusResponse(BaseModel):
-    operation_id: str  = Field(..., alias="operationID")
-    status_id: int = Field(..., alias="statusID")
-    size: Optional[int] = Field(alias="size", default=None)
+    operation_id: str
+    status_id: int
+    path: str
+    size: Union[int, None] = None
 
-# preview
-## preview request
-class PreviewRequest(BaseModel):
-    operation_id: str  = Field(..., alias="operationID")
-    db_connection_params: DbConnectionParams = Field(..., alias="dbConnectionParams")
-    sens_dict_contents: List[str] = Field(..., alias="sensDictContents")
-    
-## preview response 
-class PreviewDataColumn(BaseModel):
-    name: str  = Field(..., alias="name")
-    type_col: str  = Field(..., alias="type")
-    rule: str  = Field(..., alias="rule")
-    example_data_before: Optional[str]  = Field(alias="exampleDataBefore", default=None)
-    example_data_after: Optional[str]  = Field(alias="exampleDataAfter", default=None)
 
-class PreviewData(BaseModel):
-    schema_name: str  = Field(..., alias="schemaName")
-    table_name: str  = Field(..., alias="tableName")
-    columns: List[PreviewDataColumn]  = Field(..., alias="columns")
-    rows_before: List[str] = Field(..., alias="rowsBefore")
-    rows_after: List[str] = Field(..., alias="rowsAfter")
-    total_rows_count: int = Field(..., alias="totalRowsCount")
+class DumpDeleteRequest(BaseModel):
+    path: str
 
-class PreviewResponse(BaseModel):
-    status_id: int = Field(..., alias="statusID")
-    preview_data: Optional[List[PreviewData]] = Field(alias="previewData", default=None)
+#############################################
+# Stateless | Preview | View fields
+#############################################
+class ViewFieldsRequest(BaseModel):
+    db_connection_params: DbConnectionParams
+    sens_dict_contents: List[Dict[str, str]]
+
+    schema_name: Union[str, None] = None
+    schema_mask: Union[str, None] = None
+    table_name: Union[str, None] = None
+    table_mask: Union[str, None] = None
+
+    view_only_sensitive_fields: bool = False
+
+
+class ViewFieldsContent(BaseModel):
+    schema: str
+    table: str
+    field: str
+    type: str
+    dict_file_name: str
+    rule: str
+
+
+class ViewFieldsResponse(BaseModel):
+    status_id: int
+    content: Union[List[ViewFieldsContent], None] = None
+
+
+#############################################
+# Stateless | Preview | View data
+#############################################
+class ViewDataRequest(BaseModel):
+    db_connection_params: DbConnectionParams
+    sens_dict_contents: List[Dict[str, str]]
+
+    schema_name: str
+    table_name: str
+
+    limit: int = 10
+    offset: int = 0
+
+
+class ViewDataContent(BaseModel):
+    schema: str
+    table: str
+    fields: List[str]
+    total_rows_count: int
+    rows_before: List[List]
+    rows_after: List[List]
+
+
+class ViewDataResponse(BaseModel):
+    status_id: int
+    content: Union[List[ViewDataContent], None] = None
