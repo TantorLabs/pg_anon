@@ -5,10 +5,11 @@ import httpx
 
 from rest_api.dict_templates import TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest
+from rest_api.utils import get_full_dump_path
 
 
 async def scan_callback(request: ScanRequest):
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
 
     scan_status = ScanStatusResponse(
         operation_id=request.operation_id,
@@ -21,7 +22,7 @@ async def scan_callback(request: ScanRequest):
     )
     print(response.status_code)
     
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
 
     scan_status = ScanStatusResponse(
         operation_id=request.operation_id,
@@ -44,14 +45,13 @@ async def dump_callback(request: DumpRequest):
         dict_name = list(request.sens_dict_contents.keys())[0]
         path = dict_name if dict_name else uuid.uuid4()
 
-    path = f'/some/dumps/{path}'
+    print(f'Full dump path = {get_full_dump_path(path)}')
 
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
 
     dump_status = DumpStatusResponse(
         operation_id=request.operation_id,
         status_id=4,  # in progress
-        path=path,
     )
     print(dump_status.model_dump(by_alias=True))
     response = httpx.post(
@@ -60,12 +60,11 @@ async def dump_callback(request: DumpRequest):
     )
     print(response.status_code)
 
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
 
     dump_status = DumpStatusResponse(
         operation_id=request.operation_id,
         status_id=2,  # success
-        path=path,
         size=4096,
     )
     print(dump_status.model_dump(by_alias=True))

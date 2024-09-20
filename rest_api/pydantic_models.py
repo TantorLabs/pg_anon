@@ -364,18 +364,18 @@ class DumpRequest(BaseModel):
     db_connection_params: DbConnectionParams
     webhook_status_url: str
     sens_dict_contents: Dict[str, str]
-    output_path: Union[str] = None
+    output_path: str
 
 
 class DumpStatusResponse(BaseModel):
     operation_id: str
     status_id: int
-    path: str
     size: Union[int, None] = None
 
 
 class DumpDeleteRequest(BaseModel):
     path: str
+
 
 #############################################
 # Stateless | Preview | View fields
@@ -393,11 +393,11 @@ class ViewFieldsRequest(BaseModel):
 
 
 class ViewFieldsContent(BaseModel):
-    schema: str
-    table: str
-    field: str
+    schema_name: str
+    table_name: str
+    field_name: str
     type: str
-    dict_file_name: str
+    dict_name: str
     rule: str
 
 
@@ -421,9 +421,9 @@ class ViewDataRequest(BaseModel):
 
 
 class ViewDataContent(BaseModel):
-    schema: str
-    table: str
-    fields: List[str]
+    schema_name: str
+    table_name: str
+    field_names: List[str]
     total_rows_count: int
     rows_before: List[List]
     rows_after: List[List]

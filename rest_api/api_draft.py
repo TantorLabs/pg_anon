@@ -14,7 +14,7 @@ from pydantic_models import Project, DbConnection, TaskStatus, DumpType, Project
     Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewFieldsContent, \
     ViewDataResponse, ViewDataRequest, ViewDataContent, DumpDeleteRequest
 from rest_api.callbacks import scan_callback, dump_callback
-from utils import simple_slugify
+from utils import simple_slugify, get_full_dump_path
 
 app = FastAPI(
     title='Web service for pg_anon'
@@ -1416,4 +1416,4 @@ async def stateless_dump_start(request: DumpRequest):
     }
 )
 async def dump_operation_delete(request: DumpDeleteRequest):
-    print("Delete dump dir in path", request.path)
+    print(f'Delete dump dir in path {get_full_dump_path(request.path)}')
