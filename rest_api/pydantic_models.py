@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 # Common
 #############################################
 class ErrorResponse(BaseModel):
-    code: int
     message: str
 
 

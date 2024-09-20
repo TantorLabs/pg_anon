@@ -240,7 +240,7 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
         else:
             # the table is transferred with the specific fields for anonymization
             fields_list = await get_fields_list(
-                connection_params=ctx.conn_params,
+                connection_params=ctx.connection_params,
                 server_settings=ctx.server_settings,
                 table_schema=table_schema,
                 table_name=table_name

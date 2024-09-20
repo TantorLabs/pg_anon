@@ -13,6 +13,7 @@ import nest_asyncio
 from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
 
+from pg_anon.common.db_utils import create_connection, create_pool
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -204,8 +205,8 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         status_ratio = 1000
 
     async def run():
-        pool = await asyncpg.create_pool(
-            **ctx.conn_params,
+        pool = await create_pool(
+            connection_params=ctx.connection_params,
             server_settings=ctx.server_settings,
             min_size=ctx.args.db_connections_per_process,
             max_size=ctx.args.db_connections_per_process
@@ -457,7 +458,7 @@ async def make_dump(ctx: Context):
     result.result_code = ResultCode.DONE
 
     if ctx.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP):
-        db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+        db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
         try:
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                 transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")

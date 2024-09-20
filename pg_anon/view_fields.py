@@ -66,7 +66,7 @@ class ViewFieldsMode:
         :return: list of fields for view mode
         """
         fields_list = await get_scan_fields_list(
-            connection_params=self.context.conn_params,
+            connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             limit=self._processing_fields_limit
         )
@@ -81,7 +81,7 @@ class ViewFieldsMode:
 
     async def _make_notice_fields_cut_by_limits(self):
         fields_count = await get_scan_fields_count(
-            connection_params=self.context.conn_params,
+            connection_params=self.context.connection_params,
             server_settings=self.context.server_settings
         )
 
