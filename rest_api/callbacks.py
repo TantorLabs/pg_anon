@@ -18,7 +18,8 @@ async def scan_callback(request: ScanRequest):
     print(scan_status.model_dump(by_alias=True))
     response = httpx.post(
         url=request.webhook_status_url,
-        json=scan_status.model_dump(by_alias=True)
+        json=scan_status.model_dump(by_alias=True),
+        verify=False
     )
     print(response.status_code)
     
@@ -33,7 +34,8 @@ async def scan_callback(request: ScanRequest):
     print(scan_status.model_dump(by_alias=True))
     response = httpx.post(
         url=request.webhook_status_url,
-        json=scan_status.model_dump(by_alias=True)
+        json=scan_status.model_dump(by_alias=True),
+        verify=False
     )
     print(response.status_code)
 
@@ -56,7 +58,8 @@ async def dump_callback(request: DumpRequest):
     print(dump_status.model_dump(by_alias=True))
     response = httpx.post(
         url=request.webhook_status_url,
-        json=dump_status.model_dump(by_alias=True)
+        json=dump_status.model_dump(by_alias=True),
+        verify=False
     )
     print(response.status_code)
 
@@ -70,6 +73,7 @@ async def dump_callback(request: DumpRequest):
     print(dump_status.model_dump(by_alias=True))
     response = httpx.post(
         url=request.webhook_status_url,
-        json=dump_status.model_dump(by_alias=True)
+        json=dump_status.model_dump(by_alias=True),
+        verify=False
     )
     print(response.status_code)

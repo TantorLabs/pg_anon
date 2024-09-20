@@ -5,16 +5,20 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
-from dict_templates import TEMPLATE_META_DICT, TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
-from pydantic_models import Project, DbConnection, TaskStatus, DumpType, ProjectCreate, \
+from pg_anon.common.db_utils import check_db_connection
+from pg_anon.common.dto import ConnectionParams
+from rest_api.callbacks import scan_callback, dump_callback
+from rest_api.dict_templates import TEMPLATE_META_DICT, TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
+from rest_api.pydantic_models import Project, DbConnection, TaskStatus, DumpType, ProjectCreate, \
     DbCheckConnectionStatus, DictionaryShort, DictionaryDetailed, DictionaryCreate, DictionaryType, DictionaryUpdate, \
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
     Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewFieldsContent, \
     ViewDataResponse, ViewDataRequest, ViewDataContent, DumpDeleteRequest
-from rest_api.callbacks import scan_callback, dump_callback
-from utils import simple_slugify, get_full_dump_path
+from rest_api.utils import simple_slugify, get_full_dump_path
 
 app = FastAPI(
     title='Web service for pg_anon'
@@ -1274,6 +1278,25 @@ async def dump_types():
 )
 async def db_connection_check(request: DbConnectionParams):
     print("DB connection check request=", request)
+    connection_is_ok = await check_db_connection(
+        connection_params=ConnectionParams(
+            host=request.host,
+            port=request.port,
+            database=request.db_name,
+            user=request.user_login,
+            password=request.user_password,
+        )
+    )
+
+    if not connection_is_ok:
+        return JSONResponse(
+            status_code=400,
+            content=jsonable_encoder(
+                ErrorResponse(
+                    message='Connection is unreachable'
+                )
+            )
+        )
 
 
 @app.post(
