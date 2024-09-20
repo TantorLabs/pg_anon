@@ -2,12 +2,8 @@
 # Documentation
 https://github.com/TantorLabs/pg_anon/blob/master/README.md
 =============================================
-python3 pg_anon.py --version
+python3 pg_anon.py --help
 
 # Run tests
-# Under postgres
-python3 test/full_test.py -v
-
-# Under other user
-su - postgres -c "python3 test/full_test.py -v"
+python3 tests/test_full.py -v
 =============================================

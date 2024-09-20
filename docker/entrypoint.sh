@@ -26,6 +26,8 @@ usermod -d /usr/share/pg_anon postgres
 
 cd /usr/share/pg_anon
 
+echo 'export PYTHONPATH=/usr/share/pg_anon' >> /etc/bash.bashrc
+
 echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc
 
 trap : TERM INT; sleep infinity & wait

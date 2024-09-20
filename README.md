@@ -9,19 +9,19 @@ The tool comes in handy when it is necessary to transfer the database contents f
 ## Terminology
 
 
-| Term                            | Description                                                                                                                                                                                                                                                                                                                                                 |
-|---------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Source database (source DB)     | A database containing fields that need to be anonymized.                                                                                                                                                                                                                                                                                                    |
-| Target database (target DB)     | An empty database for `--mode=restore`. It can also contain a structure for the `--mode=sync-data-restore`.                                                                                                                                                                                                                                                 |
-| Personal (sensitive) data       | Data containing information that must not be transferred to other storage recipients or third parties and that constitutes a trade secret.                                                                                                                                                                                                                  |
-| Prepared sensitive dict file    | A file with a *.py extension containing an object that describes tables, fields, and methods for replacing the values of these fields. The dictionary file can be manually written by a developer or generated automatically.                                                                                                                               |
-| Prepared no sensitive dict file | A *.py file contains a list of objects structured as schema, table, and fields. This dictionary is used for re-scanning in create-dict mode and can be either manually created by a developer or generated automatically.                                                                                                                                   |
-| Meta-dictionary                 | A file with a *.py extension containing an object that describes rules for identifying personal (sensitive) data. The meta-dictionary is created manually by the user. Based on the meta-dictionary, the prepared sensitive dict file is then created. The process of automatically creating a dictionary is called "exploration." or `--mode=create-dict`. |
-| Create dict (or scanning)       | The process of scanning a source database and searching for sensitive fields based on a meta dictionary. As a result, a prepared sens dict file is created and, if necessary, a prepared no sens dict file.                                                                                                                                                 |
-| Dump                            | The process of writing the contents of a source database into files using a specified dictionary. The dump can be partial or complete. In fact, this is the stage where masking takes place.                                                                                                                                                                |
-| Restore                         | The process of loading data from files into the target database. The target database should not contain any objects.                                                                                                                                                                                                                                        |
-| Anonymization (masking)         | The process of cloning a database, consisting of the steps dump -> restore, during which sensitive data will be replaced with random or hashed values.                                                                                                                                                                                                      |
-| Anonymization function          | A built-in PostgreSQL function or a function from the anon_funcs schema that changes the input value to a random or hashed one. The anon_funcs schema contains a ready-made library of functions. New functions can be added to this schema to transform fields subject to anonymization for subsequent use in dictionaries.                                |
+| Term                             | Description                                                                                                                                                                                                                                                                                                                                                 |
+|----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Source database (source DB)      | A database containing fields that need to be anonymized.                                                                                                                                                                                                                                                                                                    |
+| Target database (target DB)      | An empty database for `--mode=restore`. It can also contain a structure for the `--mode=sync-data-restore`.                                                                                                                                                                                                                                                 |
+| Personal (sensitive) data        | Data containing information that must not be transferred to other storage recipients or third parties and that constitutes a trade secret.                                                                                                                                                                                                                  |
+| Prepared sensitive dict file     | A file with a *.py extension containing an object that describes tables, fields, and methods for replacing the values of these fields. The dictionary file can be manually written by a developer or generated automatically.                                                                                                                               |
+| Prepared non-sensitive dict file | A *.py file contains a list of objects structured as schema, table, and fields. This dictionary is used for re-scanning in create-dict mode and can be either manually created by a developer or generated automatically. Using this dictionary in `create-dict` mode can significantly accelerate subsequent scans.                                        |
+| Meta-dictionary                  | A file with a *.py extension containing an object that describes rules for identifying personal (sensitive) data. The meta-dictionary is created manually by the user. Based on the meta-dictionary, the prepared sensitive dict file is then created. The process of automatically creating a dictionary is called "exploration." or `--mode=create-dict`. |
+| Create dict (or scanning)        | The process of scanning a source database and searching for sensitive fields based on a meta dictionary. As a result, a prepared sens dict file is created and, if necessary, a prepared no sens dict file.                                                                                                                                                 |
+| Dump                             | The process of writing the contents of a source database into files using a specified dictionary. The dump can be partial or complete. In fact, this is the stage where masking takes place.                                                                                                                                                                |
+| Restore                          | The process of loading data from files into the target database. The target database should not contain any objects.                                                                                                                                                                                                                                        |
+| Anonymization (masking)          | The process of cloning a database, consisting of the steps dump -> restore, during which sensitive data will be replaced with random or hashed values.                                                                                                                                                                                                      |
+| Anonymization function           | A built-in PostgreSQL function or a function from the anon_funcs schema that changes the input value to a random or hashed one. The anon_funcs schema contains a ready-made library of functions. New functions can be added to this schema to transform fields subject to anonymization for subsequent use in dictionaries.                                |
 
 
 
@@ -49,6 +49,153 @@ The diagram below shows both dictionary creation processes.
 
 ![Create-dict-Terms.drawio.png](images/Create-dict-Terms.drawio.png)
 
+
+## What kind of work does pg_anon do inside during dump and restore? The simplest representation.
+
+### For example, we have data that we want to anonymize:
+
+1. Create the `source` table:
+
+```SQL
+create table users (
+    id bigserial,
+    email text,
+    login text
+);
+
+-- Checking the contents of the source table
+select * from users;
+```
+``` output
+>>
+    id |  email  | login 
+   ----+---------+-------
+```
+
+2. Populating the `source` table:
+
+```SQL
+insert into users (email, login)
+select
+ 'user' || generate_series(1001, 1020) || '@example.com',
+ 'user' || generate_series(1001, 1020);
+
+-- Checking the contents of the source table
+select * from users;
+```
+```output
+>>
+    id |	email	      |  login   
+   ----+----------------------+----------
+     1 | user1001@example.com | user1001
+     2 | user1002@example.com | user1002
+    ...
+```
+
+**The 'email' field contains `sensitive data`. We need to `anonymize` it.**
+
+### What is the process of creating a dump with masking?
+
+1. Data `dump` from the `source` table to a CSV file (without masking):
+
+```SQL
+copy (
+	select *
+	from users
+) to '/tmp/users.csv' with csv;
+```
+```output
+cat /tmp/users.csv
+>>
+   1,user1001@example.com,user1001
+   2,user1002@example.com,user1002
+   ...
+```
+
+2. `Masking` the contents of the `source` table:
+
+```SQL
+select
+   id,
+   md5(email) || '@abc.com' as email, -- hashing the email (masking rule in prepared sens dict file)
+   login
+from users;
+```
+```output
+>>
+    id |              	email                     |  login   
+   ----+------------------------------------------+----------
+     1 | 385513d80895c4c5e19c91d1df9eacae@abc.com | user1001
+     2 | 9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com | user1002
+    ...
+```
+
+3. Data `dump` from the `source` table to a CSV file (with `masking`):
+
+```SQL
+copy (
+  select
+    id,
+    md5(email) || '@abc.com' as email, -- hashing the email (masking rule in prepared sens dict file)
+    login
+  from users
+) to '/tmp/users_anonymized.csv' with csv;
+```
+```output
+cat /tmp/users_anonymized.csv
+>>
+   1,385513d80895c4c5e19c91d1df9eacae@abc.com,user1001
+   2,9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com,user1002
+   ...
+```
+
+**The `prepared sens dict file` contains masking rules like hashing**
+
+### What is the process for restoring a masked dump? 
+
+1. Reproducing of the structure. Creating the `target` table:
+
+```SQL
+create table users_anonymized (
+    id bigserial,
+    email text,
+    login text
+);
+
+-- Checking the contents of the target table
+select * from users_anonymized;
+```
+```output
+>>
+    id |  email  | login 
+   ----+---------+-------
+```
+
+2. Loading data from the `source` table data `dump` (CSV file) to `target` table:
+
+```SQL
+copy users_anonymized
+from '/tmp/users_anonymized.csv'
+with csv;
+
+-- Checking the contents of the target table
+select * from users_anonymized;
+```
+```output
+>>
+    id |              	email                     |  login   
+   ----+------------------------------------------+----------
+     1 | 385513d80895c4c5e19c91d1df9eacae@abc.com | user1001
+     2 | 9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com | user1002
+    ...
+```
+
+### Differences between original work of pg_anon and that representation:
+- `pg_anon` operates on the entire database (not only one table)
+- `pg_anon` uses `.bin.gz` files to save data (not csv)
+- Masking rules are provided to `pg_anon` via a `prepared sens dict file`
+
+
 ## Features
 
 `pg_anon` works in several modes:
@@ -69,11 +216,10 @@ The diagram below shows both dictionary creation processes.
 
 `pg_anon` is based on `Python3` and also requires the third-party libraries listed in `requirements.txt`.
 
-It uses the following tools and technologies:
+It uses the following tools:
 
-- Postgres [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) tool for dumping the database structure.
-- Postgres [`pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html) tool for restoring the database structure.
-- Postgres [functions](https://www.postgresql.org/docs/current/functions.html) for the anonymization process.
+- PostgreSQL [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) tool for dumping the database structure.
+- PostgreSQL [`pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html) tool for restoring the database structure.
 
 ## Installation Guide
 

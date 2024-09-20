@@ -182,7 +182,11 @@ class MainRoutine:
             result.result_code = ResultCode.FAIL
             return result
 
-        if self.ctx.args.mode != AnonMode.INIT:
+        if self.ctx.args.mode in (
+                AnonMode.DUMP,
+                AnonMode.SYNC_DATA_DUMP,
+                AnonMode.SYNC_STRUCT_DUMP,
+            ):
             try:
                 anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
                     connection_params=self.ctx.conn_params,
