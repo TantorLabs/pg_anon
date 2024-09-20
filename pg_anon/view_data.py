@@ -4,7 +4,7 @@ from typing import List, Dict
 import asyncpg
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db_utils import get_fields_list
+from pg_anon.common.db_utils import get_fields_list, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import exception_helper, get_dump_query, get_dict_rule_for_table
@@ -37,7 +37,7 @@ class ViewDataMode:
         Get field names and all fields for view-data mode
         """
         fields_list = await get_fields_list(
-            connection_params=self.context.conn_params,
+            connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             table_schema=self._schema_name,
             table_name=self._table_name
@@ -49,7 +49,7 @@ class ViewDataMode:
             else:
                 self.field_names.append(field_name)
 
-        db_conn = await asyncpg.connect(**self.context.conn_params)
+        db_conn = await create_connection(self.context.connection_params)
         table_result = await db_conn.fetch(self.query)
         self.fields = [[record[field["column_name"]] for field in fields_list] for record in table_result]
         await db_conn.close()

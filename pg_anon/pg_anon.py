@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 import asyncpg
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
-from pg_anon.common.db_utils import check_anon_utils_db_schema_exists
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import (
@@ -33,7 +33,7 @@ async def make_init(ctx):
     async def handle_notice(connection, message):
         ctx.logger.info("NOTICE: %s" % message)
 
-    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
     db_conn.add_log_listener(handle_notice)
 
     tr = db_conn.transaction()
@@ -167,7 +167,7 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            db_conn = await asyncpg.connect(**self.ctx.conn_params, server_settings=self.ctx.server_settings)
+            db_conn = await create_connection(self.ctx.connection_params, server_settings=self.ctx.server_settings)
             self.ctx.pg_version = await db_conn.fetchval("select version()")
             self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
             await db_conn.close()
@@ -189,7 +189,7 @@ class MainRoutine:
             ):
             try:
                 anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
-                    connection_params=self.ctx.conn_params,
+                    connection_params=self.ctx.connection_params,
                     server_settings=self.ctx.server_settings
                 )
                 if not anon_utils_schema_exists:
