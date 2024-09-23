@@ -12,7 +12,7 @@ from asyncpg import Connection
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_queries import get_data_from_field
-from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query
+from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
 from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode, ScanMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -80,7 +80,7 @@ async def get_fields_for_scan(ctx: Context) -> Dict[str, FieldInfo]:
     :param ctx: context for db connection and meta dictionary rules
     :return: dict of fields with key by obj_id for create dictionary mode
     """
-    fields_list = await get_scan_fields_list(connection_params=ctx.conn_params, server_settings=ctx.server_settings)
+    fields_list = await get_scan_fields_list(connection_params=ctx.connection_params, server_settings=ctx.server_settings)
 
     return {
         field['obj_id']: FieldInfo(**field) for field in fields_list
@@ -469,8 +469,8 @@ def process_impl(name: str, ctx: Context, queue: AioQueue, fields_info_chunk: Li
         status_ratio = 1000
 
     async def run():
-        pool = await asyncpg.create_pool(
-            **ctx.conn_params,
+        pool = await create_pool(
+            connection_params=ctx.connection_params,
             server_settings=ctx.server_settings,
             min_size=ctx.args.db_connections_per_process,
             max_size=ctx.args.db_connections_per_process

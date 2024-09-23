@@ -2,7 +2,8 @@ import argparse
 import os
 from typing import Dict, Optional
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
+from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 from pg_anon.common.utils import (
     exception_handler,
@@ -31,41 +32,19 @@ class Context:
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
 
-        self.server_settings = {
-            "application_name": "pg_anon",
-            "statement_timeout": "0",
-            "lock_timeout": "0",
-            "idle_in_transaction_session_timeout": "0",
-            "idle_session_timeout": "0",
-        }
+        self.server_settings = SERVER_SETTINGS
 
-        self.conn_params = {
-            "host": args.db_host,
-            "database": args.db_name,
-            "port": args.db_port,
-            "user": args.db_user,
-        }
-
-        if args.db_passfile != "":
-            self.conn_params.update({"passfile": args.db_passfile})
-
-        if args.db_user_password != "":
-            self.conn_params.update({"password": args.db_user_password})
-
-        if (
-            args.db_ssl_cert_file != ""
-            or args.db_ssl_key_file != ""
-            or args.db_ssl_ca_file != ""
-        ):
-            self.conn_params.update(
-                {
-                    "ssl": "on",
-                    "ssl_min_protocol_version": "TLSv1.2",
-                    "ssl_cert_file": args.db_ssl_cert_file,
-                    "ssl_key_file": args.db_ssl_key_file,
-                    "ssl_ca_file": args.db_ssl_ca_file,
-                }
-            )
+        self.connection_params = ConnectionParams(
+            host=args.db_host,
+            database=args.db_name,
+            port=args.db_port,
+            user=args.db_user,
+            passfile=args.db_passfile,
+            password=args.db_user_password,
+            ssl_cert_file=args.db_ssl_cert_file,
+            ssl_key_file=args.db_ssl_key_file,
+            ssl_ca_file=args.db_ssl_ca_file,
+        )
 
     def _check_meta_dict_types(self, meta_dict: Dict):
         """
