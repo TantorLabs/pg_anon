@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Union, List, Optional, Dict
+from typing import Union, List, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 #############################################
@@ -364,6 +364,7 @@ class DumpRequest(BaseModel):
     webhook_status_url: str
     sens_dict_contents: Dict[str, str]
     output_path: str
+    pg_dump_path: Union[str, None] = None
 
 
 class DumpStatusResponse(BaseModel):
