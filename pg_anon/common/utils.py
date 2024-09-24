@@ -287,3 +287,14 @@ def get_file_name_from_path(path: str) -> str:
     """
     file_name = os.path.basename(path)
     return os.path.splitext(file_name)[0]
+
+
+def validate_exists_mode(mode: str):
+    from pg_anon.common.enums import AnonMode
+
+    try:
+        AnonMode(mode)
+    except ValueError:
+        return False
+
+    return True
