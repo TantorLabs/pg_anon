@@ -32,7 +32,9 @@ class Context:
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
 
-        self.server_settings = SERVER_SETTINGS
+        self.server_settings = SERVER_SETTINGS.copy()
+        if self.args.application_name_suffix:
+            self.server_settings['application_name'] += '_' + self.args.application_name_suffix
 
         self.connection_params = ConnectionParams(
             host=args.db_host,
@@ -397,5 +399,12 @@ class Context:
             type=int,
             default=0,
             help="In 'view-data' mode which part of --limit rows will be displayed. By default = 0",
+        )
+        parser.add_argument(
+            "--application-name-suffix",
+            type=str,
+            default=None,
+            required=False,
+            help="Appends suffix for connection name. Just for comfortable automation",
         )
         return parser

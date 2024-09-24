@@ -6,8 +6,7 @@ import sys
 import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-
-import asyncpg
+from typing import Optional, List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
@@ -24,6 +23,17 @@ from pg_anon.restore import make_restore, run_analyze, validate_restore
 from pg_anon.version import __version__
 from pg_anon.view_data import ViewDataMode
 from pg_anon.view_fields import ViewFieldsMode
+
+
+async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
+    """
+    Run pg_anon
+    :param cli_run_params: list of params in command line format
+    :return: result of pg_anon
+    """
+    parser = Context.get_arg_parser()
+    args = parser.parse_args(cli_run_params)
+    return await MainRoutine(args).run()
 
 
 async def make_init(ctx):
@@ -254,4 +264,4 @@ class MainRoutine:
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(MainRoutine().run())
+    loop.run_until_complete(run_pg_anon())

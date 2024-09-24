@@ -328,15 +328,17 @@ class DbConnectionParams(BaseModel):
     user_password: str
 
 
+class StatelessRunnerRequest(BaseModel):
+    operation_id: str
+    db_connection_params: DbConnectionParams
+    webhook_status_url: str
+
+
 #############################################
 # Stateless | Scan
 #############################################
-class ScanRequest(BaseModel):
-    operation_id: str
+class ScanRequest(StatelessRunnerRequest):
     type_id: int
-
-    db_connection_params: DbConnectionParams
-    webhook_status_url: str
 
     meta_dict_contents: Dict[str, str]
     sens_dict_contents: Union[Dict[str, str], None] = None
@@ -357,11 +359,8 @@ class ScanStatusResponse(BaseModel):
 #############################################
 # Stateless | Dump
 #############################################
-class DumpRequest(BaseModel):
-    operation_id: str
+class DumpRequest(StatelessRunnerRequest):
     type_id: int
-    db_connection_params: DbConnectionParams
-    webhook_status_url: str
     sens_dict_contents: Dict[str, str]
     output_path: str
     pg_dump_path: Union[str, None] = None
@@ -425,8 +424,8 @@ class ViewDataContent(BaseModel):
     table_name: str
     field_names: List[str]
     total_rows_count: int
-    rows_before: List[List]
-    rows_after: List[List]
+    rows_before: List[List[str]]
+    rows_after: List[List[str]]
 
 
 class ViewDataResponse(BaseModel):

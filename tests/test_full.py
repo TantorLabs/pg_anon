@@ -7,8 +7,6 @@ import unittest
 from decimal import Decimal
 from typing import Dict, Set
 
-import asyncpg
-
 from pg_anon import MainRoutine
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
 from pg_anon.common.dto import PgAnonResult
@@ -166,11 +164,11 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db + "_8")  # for PGAnonValidateUnitTest 05
         await db_conn.close()
 
-        sourse_db_params = copy.copy(ctx.connection_params)
-        sourse_db_params.database = params.test_source_db
+        source_db_params = copy.copy(ctx.connection_params)
+        source_db_params.database = params.test_source_db
 
         print("============> Started init_env")
-        db_conn = await create_connection(sourse_db_params)
+        db_conn = await create_connection(source_db_params)
         await DBOperations.init_env(db_conn, "init_env.sql", params.test_scale)
         await db_conn.close()
         print("<============ Finished init_env")
@@ -219,8 +217,8 @@ class BasicUnitTest:
         db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db_once(db_conn, params.test_source_db + "_stress")
 
-        sourse_db_params = copy.copy(ctx.connection_params)
-        sourse_db_params.database = params.test_source_db + "_stress"
+        source_db_params = copy.copy(ctx.connection_params)
+        source_db_params.database = params.test_source_db + "_stress"
 
         args = parser.parse_args(
             [
@@ -243,7 +241,7 @@ class BasicUnitTest:
         await db_conn.close()
         if len(schema_exists) == 0:
             print("============> Started init_stress_env")
-            db_conn = await create_connection(sourse_db_params)
+            db_conn = await create_connection(source_db_params)
             await DBOperations.init_env(
                 db_conn, "init_stress_env.sql", params.test_scale
             )
