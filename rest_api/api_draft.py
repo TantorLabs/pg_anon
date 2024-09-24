@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -1310,12 +1310,9 @@ async def db_connection_check(request: DbConnectionParams):
         "500": {"model": ErrorResponse},
     }
 )
-async def stateless_scan_start(request: ScanRequest):
+async def stateless_scan_start(request: ScanRequest, background_tasks: BackgroundTasks):
     print("Scan request=", request)
-
-    asyncio.ensure_future(
-        scan_callback(request)
-    )
+    background_tasks.add_task(scan_callback, request)
 
 
 @app.post(
@@ -1338,27 +1335,27 @@ async def stateless_view_fields(request: ViewFieldsRequest):
         status_id=2,  # success
         content=[
             ViewFieldsContent(
-                schema='public',
-                table='users',
-                field='id',
+                schema_name='public',
+                table_name='users',
+                field_name='id',
                 type='serial',
-                dict_file_name='---',
+                dict_name='---',
                 rule='---',
             ),
             ViewFieldsContent(
-                schema='public',
-                table='users',
-                field='email',
+                schema_name='public',
+                table_name='users',
+                field_name='email',
                 type='text',
-                dict_file_name='---',
+                dict_name='---',
                 rule="md5(email) || '@abc.com'",
             ),
             ViewFieldsContent(
-                schema='public',
-                table='users',
-                field='login',
+                schema_name='public',
+                table_name='users',
+                field_name='login',
                 type='text',
-                dict_file_name='---',
+                dict_name='---',
                 rule="---",
             )
         ]
@@ -1385,9 +1382,9 @@ async def stateless_view_data(request: ViewDataRequest):
         status_id=2,  # success
         content=[
             ViewDataContent(
-                schema='public',
-                table='users',
-                fields=[
+                schema_name='public',
+                table_name='users',
+                field_names=[
                     'id',
                     'email',
                     'login',
@@ -1419,12 +1416,9 @@ async def stateless_view_data(request: ViewDataRequest):
         "500": {"model": ErrorResponse},
     }
 )
-async def stateless_dump_start(request: DumpRequest):
+async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks):
     print("Dump request=", request)
-
-    asyncio.ensure_future(
-        dump_callback(request)
-    )
+    background_tasks.add_task(dump_callback, request)
 
 
 @app.delete(
@@ -1438,5 +1432,5 @@ async def stateless_dump_start(request: DumpRequest):
         "500": {"model": ErrorResponse},
     }
 )
-async def dump_operation_delete(request: DumpDeleteRequest):
+async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
     print(f'Delete dump dir in path {get_full_dump_path(request.path)}')
