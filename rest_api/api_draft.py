@@ -1391,14 +1391,14 @@ async def stateless_view_data(request: ViewDataRequest):
                 ],
                 total_rows_count=3,
                 rows_before=[
-                    [1, 'user1001@example.com', 'user1001'],
-                    [2, 'user1002@example.com', 'user1002'],
-                    [3, 'user1003@example.com', 'user1003'],
+                    ['1', 'user1001@example.com', 'user1001'],
+                    ['2', 'user1002@example.com', 'user1002'],
+                    ['3', 'user1003@example.com', 'user1003'],
                 ],
                 rows_after=[
-                    [1, '385513d80895c4c5e19c91d1df9eacae@abc.com', 'user1001'],
-                    [2, '9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com', 'user1002'],
-                    [3, 'e4e9fe7090f5be634be77db8f86e453c@abc.com', 'user1003'],
+                    ['1', '385513d80895c4c5e19c91d1df9eacae@abc.com', 'user1001'],
+                    ['2', '9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com', 'user1002'],
+                    ['3', 'e4e9fe7090f5be634be77db8f86e453c@abc.com', 'user1003'],
                 ],
             ),
         ]
