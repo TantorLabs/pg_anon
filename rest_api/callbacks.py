@@ -1,79 +1,99 @@
-import asyncio
-import uuid
-
 import httpx
+from pydantic import BaseModel
 
-from rest_api.dict_templates import TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
+from pg_anon.common.utils import get_folder_size
+from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest
-from rest_api.utils import get_full_dump_path
+from rest_api.runners import ScanRunner, DumpRunner, InitRunner
+from rest_api.utils import read_dictionary_contents
+
+
+def send_webhook(url: str, response_body: BaseModel):
+    print(response_body.model_dump(by_alias=True))
+    response = httpx.post(
+        url=url,
+        json=response_body.model_dump(by_alias=True),
+        verify=False
+    )
+    print(response.status_code)
 
 
 async def scan_callback(request: ScanRequest):
-    await asyncio.sleep(5)
+    try:
+        init_runner = InitRunner(request)
+        await init_runner.run()
 
-    scan_status = ScanStatusResponse(
-        operation_id=request.operation_id,
-        status_id=4,  # in progress
-    )
-    print(scan_status.model_dump(by_alias=True))
-    response = httpx.post(
-        url=request.webhook_status_url,
-        json=scan_status.model_dump(by_alias=True),
-        verify=False
-    )
-    print(response.status_code)
-    
-    await asyncio.sleep(5)
+        scan_runner = ScanRunner(request)
 
-    scan_status = ScanStatusResponse(
-        operation_id=request.operation_id,
-        status_id=2,  # success
-        sens_dict_content=TEMPLATE_SENS_DICT,
-        no_sens_dict_contents=TEMPLATE_NO_SENS_DICT,
-    )
-    print(scan_status.model_dump(by_alias=True))
-    response = httpx.post(
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=ScanStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+            )
+        )
+
+        await scan_runner.run()
+
+        sens_dict_contents = read_dictionary_contents(scan_runner.output_sens_dict_file_name)
+        no_sens_dict_contents = None
+        if scan_runner.output_no_sens_dict_file_name:
+            no_sens_dict_contents = read_dictionary_contents(scan_runner.output_no_sens_dict_file_name)
+    except Exception as ex:
+        print(ex)
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=ScanStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.ERROR.value,
+            )
+        )
+        return
+
+    send_webhook(
         url=request.webhook_status_url,
-        json=scan_status.model_dump(by_alias=True),
-        verify=False
+        response_body=ScanStatusResponse(
+            operation_id=request.operation_id,
+            status_id=ResponseStatusesHandbook.SUCCESS.value,
+            sens_dict_content=sens_dict_contents,
+            no_sens_dict_content=no_sens_dict_contents,
+        )
     )
-    print(response.status_code)
 
 
 async def dump_callback(request: DumpRequest):
-    if request.output_path:
-        path = request.output_path.lstrip("/")
-    else:
-        dict_name = list(request.sens_dict_contents.keys())[0]
-        path = dict_name if dict_name else uuid.uuid4()
+    try:
+        init_runner = InitRunner(request)
+        await init_runner.run()
 
-    print(f'Full dump path = {get_full_dump_path(path)}')
+        dump_runner = DumpRunner(request)
 
-    await asyncio.sleep(5)
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=DumpStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+            )
+        )
 
-    dump_status = DumpStatusResponse(
-        operation_id=request.operation_id,
-        status_id=4,  # in progress
-    )
-    print(dump_status.model_dump(by_alias=True))
-    response = httpx.post(
+        await dump_runner.run()
+        dump_size = get_folder_size(dump_runner.full_dump_path)
+    except Exception as ex:
+        print(ex)
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=DumpStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.ERROR.value,
+            )
+        )
+        return
+
+    send_webhook(
         url=request.webhook_status_url,
-        json=dump_status.model_dump(by_alias=True),
-        verify=False
+        response_body=DumpStatusResponse(
+            operation_id=request.operation_id,
+            status_id=ResponseStatusesHandbook.SUCCESS.value,
+            size=dump_size,
+        )
     )
-    print(response.status_code)
-
-    await asyncio.sleep(5)
-
-    dump_status = DumpStatusResponse(
-        operation_id=request.operation_id,
-        status_id=2,  # success
-        size=4096,
-    )
-    print(dump_status.model_dump(by_alias=True))
-    response = httpx.post(
-        url=request.webhook_status_url,
-        json=dump_status.model_dump(by_alias=True),
-        verify=False
-    )
-    print(response.status_code)

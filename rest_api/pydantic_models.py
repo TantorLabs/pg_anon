@@ -344,6 +344,8 @@ class ScanRequest(StatelessRunnerRequest):
     sens_dict_contents: Union[Dict[str, str], None] = None
     no_sens_dict_contents: Union[Dict[str, str], None] = None
 
+    need_no_sens_dict: bool
+
     depth: Union[int, None] = None
     proc_count: Union[int, None] = None
     proc_conn_count: Union[int, None] = None
@@ -352,8 +354,8 @@ class ScanRequest(StatelessRunnerRequest):
 class ScanStatusResponse(BaseModel):
     operation_id: str
     status_id: int
-    sens_dict_content: Union[Dict[str, str], None] = None
-    no_sens_dict_content: Union[Dict[str, str], None] = None
+    sens_dict_content: Union[str, None] = None
+    no_sens_dict_content: Union[str, None] = None
 
 
 #############################################
@@ -364,6 +366,9 @@ class DumpRequest(StatelessRunnerRequest):
     sens_dict_contents: Dict[str, str]
     output_path: str
     pg_dump_path: Union[str, None] = None
+
+    proc_count: Union[int, None] = None
+    proc_conn_count: Union[int, None] = None
 
 
 class DumpStatusResponse(BaseModel):
