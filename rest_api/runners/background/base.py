@@ -41,14 +41,13 @@ class BaseRunner:
         if not self.mode:
             raise ValueError(f'Mode is not set')
 
-        result = await run_pg_anon_worker(
+        self.result = await run_pg_anon_worker(
             mode=self.mode,
             operation_id=self.operation_id,
             cli_run_params=self.cli_params
         )
 
-        if not result or result.result_code == ResultCode.FAIL:
+        if not self.result or self.result.result_code == ResultCode.FAIL:
             raise ValueError('Operation not completed successfully')
 
-        self.result = result
         return self.result

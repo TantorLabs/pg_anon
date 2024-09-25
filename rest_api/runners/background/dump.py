@@ -3,7 +3,7 @@ from typing import List
 from pg_anon.common.enums import AnonMode
 from rest_api.enums import DumpModeHandbook
 from rest_api.pydantic_models import DumpRequest
-from rest_api.runners.base import BaseRunner
+from rest_api.runners.background import BaseRunner
 from rest_api.utils import write_dictionary_contents, get_full_dump_path
 
 
@@ -28,7 +28,7 @@ class DumpRunner(BaseRunner):
             self.mode = AnonMode.SYNC_DATA_DUMP.value
 
     def _prepare_dictionaries_cli_params(self):
-        self._input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents)
+        self._input_sens_dict_file_names = list(write_dictionary_contents(self.request.sens_dict_contents).keys())
         self.cli_params.append(
             f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names)}"
         )
