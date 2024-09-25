@@ -1,5 +1,6 @@
 import asyncio
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -141,7 +142,7 @@ async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapsh
 
     ctx.logger.info(f"<================ Finished task {query}")
 
-    return {hash(query): count_rows}
+    return {hashlib.sha256(query.encode()).hexdigest(): count_rows}
 
 
 async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection):
@@ -248,14 +249,18 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
     finally:
         loop.close()
 
-    tasks_res_final = []
-    for task in tasks_res:
-        if task.result() is not None and len(task.result()) > 0:
-            tasks_res_final.append(task.result())
+    try:
+        tasks_res_final = []
+        for task in tasks_res:
+            if task.result() is not None and len(task.result()) > 0:
+                tasks_res_final.append(task.result())
 
-    queue.put(tasks_res_final)
-    queue.put(None)  # Shut down the worker
-    queue.close()
+        queue.put(tasks_res_final)
+    except Exception as ex:
+        ctx.logger.error(f"================> Process [{name}]: {ex}")
+    finally:
+        queue.put(None)  # Shut down the worker
+        queue.close()
 
 
 async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
@@ -263,7 +268,7 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
     if not queries:
         raise Exception("No objects for dump!")
 
-    queries_chunks = list(chunkify(list(zip(files.keys(), queries)), ctx.args.processes))
+    queries_chunks = chunkify(list(zip(files.keys(), queries)), ctx.args.processes)
 
     process_tasks = []
     for idx, queries_chunk in enumerate(queries_chunks):
@@ -297,7 +302,11 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
 
     task_results = {}
     for process_task in process_tasks:
-        for res in process_task.result():
+        process_task_result = process_task.result()
+        if not process_task_result:
+            raise ValueError("One or more dump queries has been failed!")
+
+        for res in process_task_result:
             task_results.update(res)
 
     # Generate metadata.json
@@ -359,7 +368,8 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
     metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
 
     for query, file in zip(queries, files):
-        files[file].update({"rows": task_results[hash(query)]})
+        key = hashlib.sha256(query.encode()).hexdigest()
+        files[file].update({"rows": task_results[key]})
 
     metadata["files"] = files
 
