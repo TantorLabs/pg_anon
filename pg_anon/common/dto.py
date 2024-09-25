@@ -22,7 +22,7 @@ class FieldInfo:
     obj_id: str
     tbl_id: str
     rule: Optional[Callable] = None  # uses for --mode=create-dict with --prepared-sens-dict-file
-    dict_file_name: Optional[List] = None  # uses for --mode=view-fields
+    dict_file_name: Optional[str] = None  # uses for --mode=view-fields
 
 
 class ConnectionParams:

@@ -12,12 +12,14 @@ from pg_anon.common.db_utils import check_db_connection
 from pg_anon.common.dto import ConnectionParams
 from rest_api.callbacks import scan_callback, dump_callback
 from rest_api.dict_templates import TEMPLATE_META_DICT, TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
+from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import Project, DbConnection, TaskStatus, DumpType, ProjectCreate, \
     DbCheckConnectionStatus, DictionaryShort, DictionaryDetailed, DictionaryCreate, DictionaryType, DictionaryUpdate, \
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
     Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewFieldsContent, \
     ViewDataResponse, ViewDataRequest, ViewDataContent, DumpDeleteRequest
+from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.utils import get_full_dump_path, delete_folder
 from pg_anon.common.utils import simple_slugify
 
@@ -1330,36 +1332,12 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
 async def stateless_view_fields(request: ViewFieldsRequest):
     print("Preview fields request=", request)
 
-    await asyncio.sleep(2)  # emulate working
+    runner = ViewFieldsRunner(request)
+    data = await runner.run()
 
     return ViewFieldsResponse(
-        status_id=2,  # success
-        content=[
-            ViewFieldsContent(
-                schema_name='public',
-                table_name='users',
-                field_name='id',
-                type='serial',
-                dict_name='---',
-                rule='---',
-            ),
-            ViewFieldsContent(
-                schema_name='public',
-                table_name='users',
-                field_name='email',
-                type='text',
-                dict_name='---',
-                rule="md5(email) || '@abc.com'",
-            ),
-            ViewFieldsContent(
-                schema_name='public',
-                table_name='users',
-                field_name='login',
-                type='text',
-                dict_name='---',
-                rule="---",
-            )
-        ]
+        status_id=ResponseStatusesHandbook.SUCCESS.value,
+        content=data
     )
 
 

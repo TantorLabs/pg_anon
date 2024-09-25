@@ -18,15 +18,15 @@ def get_full_dump_path(dump_path: str) -> str:
     return os.path.join(DUMP_STORAGE_BASE_DIR, dump_path.lstrip("/"))
 
 
-def write_dictionary_contents(dictionary_contents: Dict[str, str]):
-    file_names = []
+def write_dictionary_contents(dictionary_contents: Dict[str, str]) -> Dict[str, str]:
+    file_names = {}
 
     for dict_name, content in dictionary_contents.items():
         file_name = f'/tmp/{simple_slugify(dict_name)}-{uuid.uuid4()}.py'
         with open(file_name, "w") as out_file:
             out_file.write(content)
 
-        file_names.append(file_name)
+        file_names[file_name] = dict_name
 
     return file_names
 

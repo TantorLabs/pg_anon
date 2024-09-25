@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest
-from rest_api.runners import ScanRunner, DumpRunner, InitRunner
+from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner
 from rest_api.utils import read_dictionary_contents
 
 

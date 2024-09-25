@@ -3,7 +3,7 @@ from typing import Optional
 from pg_anon.common.enums import AnonMode, ScanMode
 from rest_api.enums import ScanModeHandbook
 from rest_api.pydantic_models import ScanRequest
-from rest_api.runners.base import BaseRunner
+from rest_api.runners.background import BaseRunner
 from rest_api.utils import write_dictionary_contents
 
 
@@ -14,15 +14,15 @@ class ScanRunner(BaseRunner):
     output_no_sens_dict_file_name: Optional[str] = None
 
     def _prepare_dictionaries_cli_params(self):
-        input_meta_dict_file_names = write_dictionary_contents(self.request.meta_dict_contents)
+        input_meta_dict_file_names = list(write_dictionary_contents(self.request.meta_dict_contents).keys())
 
         input_sens_dict_file_names = None
         if self.request.sens_dict_contents:
-            input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents)
+            input_sens_dict_file_names = list(write_dictionary_contents(self.request.sens_dict_contents).keys())
 
         input_no_sens_dict_file_names = None
         if self.request.no_sens_dict_contents:
-            input_no_sens_dict_file_names = write_dictionary_contents(self.request.no_sens_dict_contents)
+            input_no_sens_dict_file_names = list(write_dictionary_contents(self.request.no_sens_dict_contents).keys())
 
         self.output_sens_dict_file_name = f'/tmp/output_sens_dict_{self.request.operation_id}.py'
 
