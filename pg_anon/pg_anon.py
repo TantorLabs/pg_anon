@@ -12,10 +12,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
-from pg_anon.common.utils import (
-    check_pg_util,
-    exception_helper,
-)
+from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
 from pg_anon.context import Context
 from pg_anon.create_dict import create_dict
 from pg_anon.dump import make_dump
@@ -110,24 +107,19 @@ class MainRoutine:
             if not os.path.exists(os.path.join(self.current_dir, "log")):
                 os.makedirs(os.path.join(self.current_dir, "log"))
 
-            if self.args.mode == AnonMode.INIT:
-                log_file = f"{self.args.mode.value}.log"
-            elif self.args.mode == AnonMode.CREATE_DICT:
-                if self.args.meta_dict_files:
-                    base_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
-                else:
-                    base_file_name = os.path.basename(self.args.input_dir)
+            additional_file_name = None
+            if self.args.mode == AnonMode.CREATE_DICT and self.args.meta_dict_files:
+                additional_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
+            elif self.args.prepared_sens_dict_files:
+                additional_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
+            elif self.args.input_dir:
+                additional_file_name = os.path.basename(self.args.input_dir)
 
-                log_file = f"{self.args.mode.value}__{base_file_name}.log"
-            else:
-                if self.args.prepared_sens_dict_files:
-                    base_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
-                else:
-                    base_file_name = os.path.basename(self.args.input_dir)
+            log_file_name_parts = [self.start_time, self.args.mode.value]
+            if additional_file_name:
+                log_file_name_parts.append(simple_slugify(additional_file_name))
 
-                log_file = f"{self.args.mode.value}__{base_file_name}.log"
-
-            log_file = f"{self.start_time}__{log_file}"
+            log_file = "__".join(log_file_name_parts) + ".log"
 
             f_handler = RotatingFileHandler(
                 os.path.join(self.current_dir, "log", log_file),
@@ -193,6 +185,7 @@ class MainRoutine:
             return result
 
         if self.ctx.args.mode in (
+                AnonMode.CREATE_DICT,
                 AnonMode.DUMP,
                 AnonMode.SYNC_DATA_DUMP,
                 AnonMode.SYNC_STRUCT_DUMP,
