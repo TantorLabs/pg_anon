@@ -48,6 +48,6 @@ class BaseRunner:
         )
 
         if not self.result or self.result.result_code == ResultCode.FAIL:
-            raise ValueError('Operation not completed successfully')
+            raise RuntimeError('Operation not completed successfully')
 
         return self.result

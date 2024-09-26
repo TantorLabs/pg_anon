@@ -344,7 +344,7 @@ class ScanRequest(StatelessRunnerRequest):
     sens_dict_contents: Union[Dict[str, str], None] = None
     no_sens_dict_contents: Union[Dict[str, str], None] = None
 
-    need_no_sens_dict: bool
+    need_no_sens_dict: bool = False
 
     depth: Union[int, None] = None
     proc_count: Union[int, None] = None
@@ -394,6 +394,7 @@ class ViewFieldsRequest(BaseModel):
     table_mask: Union[str, None] = None
 
     view_only_sensitive_fields: bool = False
+    fields_limit_count: Union[int, None] = None
 
 
 class ViewFieldsContent(BaseModel):
@@ -435,4 +436,4 @@ class ViewDataContent(BaseModel):
 
 class ViewDataResponse(BaseModel):
     status_id: int
-    content: Union[List[ViewDataContent], None] = None
+    content: Union[ViewDataContent, None] = None
