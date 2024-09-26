@@ -4,7 +4,7 @@ import asyncpg
 from asyncpg import Connection
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
-from pg_anon.common.db_queries import get_query_get_scan_fields
+from pg_anon.common.db_queries import get_query_get_scan_fields, get_query_count
 from pg_anon.common.dto import FieldInfo, ConnectionParams
 
 
@@ -102,6 +102,22 @@ async def get_fields_list(connection_params: ConnectionParams, table_schema: str
     )
     await db_conn.close()
     return fields_list
+
+
+async def get_rows_count(connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: Dict = SERVER_SETTINGS) -> int:
+    """
+    Get rows count in table
+    :param connection_params: Required connection parameters such as host, login, password and etc.
+    :param schema_name: Schema name
+    :param table_name: Table name
+    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
+    :return: rows count in table
+    """
+    query = get_query_count(schema_name=schema_name, table_name=table_name)
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    count = await db_conn.fetchval(query)
+    await db_conn.close()
+    return count
 
 
 async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
