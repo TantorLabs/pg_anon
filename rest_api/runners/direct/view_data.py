@@ -4,18 +4,18 @@ from pg_anon import MainRoutine
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.context import Context
-from pg_anon.view_fields import ViewFieldsMode
-from rest_api.pydantic_models import ViewFieldsRequest, ViewFieldsContent
+from pg_anon.view_data import ViewDataMode
+from rest_api.pydantic_models import ViewDataRequest, ViewDataContent
 from rest_api.utils import write_dictionary_contents
 
 
-class ViewFieldsRunner:
-    request: ViewFieldsRequest
+class ViewDataRunner:
+    request: ViewDataRequest
     cli_params: List[str] = None
     result: PgAnonResult = None
-    _executor = Type[ViewFieldsMode]
+    _executor = Type[ViewDataMode]
 
-    def __init__(self, request: ViewFieldsRequest):
+    def __init__(self, request: ViewDataRequest):
         self.request = request
         self._prepare_cli_params()
         self._init_context()
@@ -37,35 +37,23 @@ class ViewFieldsRunner:
         )
 
     def _prepare_filters_cli_params(self):
-        if self.request.schema_name:
+        self.cli_params.append(
+            f'--schema-name={self.request.schema_name}',
+        )
+
+        self.cli_params.append(
+            f'--table-name={self.request.table_name}',
+        )
+
+    def _prepare_pagination_cli_params(self):
+        if self.request.limit:
             self.cli_params.append(
-                f'--schema-name={self.request.schema_name}',
+                f'--limit={self.request.limit}',
             )
 
-        if self.request.schema_mask:
+        if self.request.offset:
             self.cli_params.append(
-                f'--schema-mask={self.request.schema_mask}',
-            )
-
-        if self.request.table_name:
-            self.cli_params.append(
-                f'--table-name={self.request.table_name}',
-            )
-
-        if self.request.table_mask:
-            self.cli_params.append(
-                f'--table-mask={self.request.table_mask}',
-            )
-
-        if self.request.view_only_sensitive_fields:
-            self.cli_params.append(
-                f'--view-only-sensitive-fields',
-            )
-
-    def _prepare_limit_cli_params(self):
-        if self.request.fields_limit_count:
-            self.cli_params.append(
-                f'--fields-count={self.request.fields_limit_count}',
+                f'--offset={self.request.offset}',
             )
 
     def _prepare_json_cli_params(self):
@@ -84,7 +72,7 @@ class ViewFieldsRunner:
         self._prepare_db_credentials_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_filters_cli_params()
-        self._prepare_limit_cli_params()
+        self._prepare_pagination_cli_params()
         self._prepare_json_cli_params()
         self._prepare_verbosity_cli_params()
 
@@ -94,30 +82,30 @@ class ViewFieldsRunner:
         self.context = MainRoutine(run_args).ctx
 
     def _init_executor(self):
-        self._executor = ViewFieldsMode(self.context)
+        self._executor = ViewDataMode(
+            self.context,
+            need_raw_data=True
+        )
 
-    def _format_output(self) -> List[ViewFieldsContent]:
-        result = []
-        for field in self._executor.fields:
-            dict_name = field.dict_file_name
-            if dict_name != self._executor.empty_data_filler:
-                dict_name = self._input_sens_dict_file_names[dict_name]
+    def _format_output(self) -> ViewDataContent:
+        def _format_data_to_str(records: List[List[str]]):
+            return [[str(data) for data in record] for record in records]
 
-            result.append(
-                ViewFieldsContent(
-                    schema_name=field.nspname,
-                    table_name=field.relname,
-                    field_name=field.column_name,
-                    type=field.type,
-                    dict_name=dict_name,
-                    rule=field.rule,
-                )
-            )
+        rows_before = _format_data_to_str(self._executor.raw_data)
+        rows_after = _format_data_to_str(self._executor.data)
 
-        return result
+        return ViewDataContent(
+            schema_name=self.request.schema_name,
+            table_name=self.request.table_name,
+            field_names=self._executor.raw_field_names,
+            total_rows_count=self._executor.rows_count,
+            rows_before=rows_before,
+            rows_after=rows_after,
+        )
 
     async def run(self):
         self.result = await self._executor.run()
+        await self._executor.get_rows_count()
 
         if not self.result or self.result.result_code == ResultCode.FAIL:
             raise RuntimeError('Operation not completed successfully')

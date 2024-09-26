@@ -1,4 +1,3 @@
-import asyncio
 import json
 import time
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from pg_anon.common.db_utils import check_db_connection
 from pg_anon.common.dto import ConnectionParams
+from pg_anon.common.utils import simple_slugify
 from rest_api.callbacks import scan_callback, dump_callback
 from rest_api.dict_templates import TEMPLATE_META_DICT, TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
 from rest_api.enums import ResponseStatusesHandbook
@@ -17,11 +17,11 @@ from rest_api.pydantic_models import Project, DbConnection, TaskStatus, DumpType
     DbCheckConnectionStatus, DictionaryShort, DictionaryDetailed, DictionaryCreate, DictionaryType, DictionaryUpdate, \
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
-    Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewFieldsContent, \
-    ViewDataResponse, ViewDataRequest, ViewDataContent, DumpDeleteRequest
+    Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewDataResponse, \
+    ViewDataRequest, DumpDeleteRequest
 from rest_api.runners.direct import ViewFieldsRunner
+from rest_api.runners.direct.view_data import ViewDataRunner
 from rest_api.utils import get_full_dump_path, delete_folder
-from pg_anon.common.utils import simple_slugify
 
 app = FastAPI(
     title='Web service for pg_anon'
@@ -1354,33 +1354,12 @@ async def stateless_view_fields(request: ViewFieldsRequest):
 )
 async def stateless_view_data(request: ViewDataRequest):
     print("Preview data request=", request)
-
-    await asyncio.sleep(2)  # emulate working
+    runner = ViewDataRunner(request)
+    data = await runner.run()
 
     return ViewDataResponse(
-        status_id=2,  # success
-        content=[
-            ViewDataContent(
-                schema_name='public',
-                table_name='users',
-                field_names=[
-                    'id',
-                    'email',
-                    'login',
-                ],
-                total_rows_count=3,
-                rows_before=[
-                    ['1', 'user1001@example.com', 'user1001'],
-                    ['2', 'user1002@example.com', 'user1002'],
-                    ['3', 'user1003@example.com', 'user1003'],
-                ],
-                rows_after=[
-                    ['1', '385513d80895c4c5e19c91d1df9eacae@abc.com', 'user1001'],
-                    ['2', '9f4c0c30f85b0353c4d5fe3c9cc633e3@abc.com', 'user1002'],
-                    ['3', 'e4e9fe7090f5be634be77db8f86e453c@abc.com', 'user1003'],
-                ],
-            ),
-        ]
+        status_id=ResponseStatusesHandbook.SUCCESS.value,
+        content=data
     )
 
 
