@@ -239,8 +239,8 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
 
         await pool.close()
 
-    nest_asyncio.apply()
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     try:
         loop.run_until_complete(run())
