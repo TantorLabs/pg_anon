@@ -411,7 +411,7 @@ class ViewFieldsContent(BaseModel):
     table_name: str
     field_name: str
     type: str
-    dict: Union[DictionaryMetadata, None] = None
+    dict_data: Union[DictionaryMetadata, None] = None
     rule: Union[str, None] = None
 
 

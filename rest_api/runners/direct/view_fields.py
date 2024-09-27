@@ -113,7 +113,7 @@ class ViewFieldsRunner:
                     table_name=field.relname,
                     field_name=field.column_name,
                     type=field.type,
-                    dict=dict_data,
+                    dict_data=dict_data,
                     rule=field_rule,
                 )
             )
