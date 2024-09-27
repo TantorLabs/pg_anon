@@ -99,9 +99,13 @@ class ViewFieldsRunner:
     def _format_output(self) -> List[ViewFieldsContent]:
         result = []
         for field in self._executor.fields:
-            dict_name = field.dict_file_name
-            if dict_name != self._executor.empty_data_filler:
-                dict_name = self._input_sens_dict_file_names[dict_name]
+            dict_data = None
+            if field.dict_file_name != self._executor.empty_data_filler:
+                dict_data = self._input_sens_dict_file_names[field.dict_file_name]
+
+            field_rule = None
+            if field.rule != self._executor.empty_data_filler:
+                field_rule = field.rule
 
             result.append(
                 ViewFieldsContent(
@@ -109,8 +113,8 @@ class ViewFieldsRunner:
                     table_name=field.relname,
                     field_name=field.column_name,
                     type=field.type,
-                    dict_name=dict_name,
-                    rule=field.rule,
+                    dict=dict_data,
+                    rule=field_rule,
                 )
             )
 

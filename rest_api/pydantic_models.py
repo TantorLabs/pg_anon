@@ -334,15 +334,24 @@ class StatelessRunnerRequest(BaseModel):
     webhook_status_url: str
 
 
+class DictionaryMetadata(BaseModel):
+    name: str
+    additional_info: Union[str, None] = None  # specific data for integrations purposes
+
+
+class DictionaryContent(DictionaryMetadata):
+    content: str
+
+
 #############################################
 # Stateless | Scan
 #############################################
 class ScanRequest(StatelessRunnerRequest):
     type_id: int
 
-    meta_dict_contents: Dict[str, str]
-    sens_dict_contents: Union[Dict[str, str], None] = None
-    no_sens_dict_contents: Union[Dict[str, str], None] = None
+    meta_dict_contents: List[DictionaryContent]
+    sens_dict_contents: Union[List[DictionaryContent], None] = None
+    no_sens_dict_contents: Union[List[DictionaryContent], None] = None
 
     need_no_sens_dict: bool = False
 
@@ -363,7 +372,7 @@ class ScanStatusResponse(BaseModel):
 #############################################
 class DumpRequest(StatelessRunnerRequest):
     type_id: int
-    sens_dict_contents: Dict[str, str]
+    sens_dict_contents: List[DictionaryContent]
     output_path: str
     pg_dump_path: Union[str, None] = None
 
@@ -386,7 +395,7 @@ class DumpDeleteRequest(BaseModel):
 #############################################
 class ViewFieldsRequest(BaseModel):
     db_connection_params: DbConnectionParams
-    sens_dict_contents: Dict[str, str]
+    sens_dict_contents: List[DictionaryContent]
 
     schema_name: Union[str, None] = None
     schema_mask: Union[str, None] = None
@@ -402,8 +411,8 @@ class ViewFieldsContent(BaseModel):
     table_name: str
     field_name: str
     type: str
-    dict_name: str
-    rule: str
+    dict: Union[DictionaryMetadata, None] = None
+    rule: Union[str, None] = None
 
 
 class ViewFieldsResponse(BaseModel):
@@ -416,7 +425,7 @@ class ViewFieldsResponse(BaseModel):
 #############################################
 class ViewDataRequest(BaseModel):
     db_connection_params: DbConnectionParams
-    sens_dict_contents: Dict[str, str]
+    sens_dict_contents: List[DictionaryContent]
 
     schema_name: str
     table_name: str

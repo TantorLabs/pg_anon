@@ -9,6 +9,7 @@ import aioprocessing
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.utils import validate_exists_mode, simple_slugify
 from pg_anon.pg_anon import run_pg_anon
+from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DUMP_STORAGE_BASE_DIR = os.path.join(BASE_DIR, 'output')
@@ -18,15 +19,18 @@ def get_full_dump_path(dump_path: str) -> str:
     return os.path.join(DUMP_STORAGE_BASE_DIR, dump_path.lstrip("/"))
 
 
-def write_dictionary_contents(dictionary_contents: Dict[str, str]) -> Dict[str, str]:
+def write_dictionary_contents(dictionary_contents: List[DictionaryContent]) -> Dict[str, DictionaryMetadata]:
     file_names = {}
 
-    for dict_name, content in dictionary_contents.items():
-        file_name = f'/tmp/{simple_slugify(dict_name)}-{uuid.uuid4()}.py'
+    for dictionary_content in dictionary_contents:
+        file_name = f'/tmp/{simple_slugify(dictionary_content.name)}-{uuid.uuid4()}.py'
         with open(file_name, "w") as out_file:
-            out_file.write(content)
+            out_file.write(dictionary_content.content)
 
-        file_names[file_name] = dict_name
+        file_names[file_name] = DictionaryMetadata(
+            name=dictionary_content.name,
+            additional_info=dictionary_content.additional_info,
+        )
 
     return file_names
 
