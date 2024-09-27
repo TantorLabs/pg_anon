@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 from pydantic import BaseModel
 
@@ -7,27 +9,29 @@ from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, Dum
 from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner
 from rest_api.utils import read_dictionary_contents
 
+logger = logging.getLogger(__name__)
+
 
 def send_webhook(url: str, response_body: BaseModel):
-    print(f'Send webhook on {url} with requst:{response_body.model_dump(by_alias=True)}')
+    logger.info(f'Send webhook on {url} with requst:{response_body.model_dump(by_alias=True)}')
     response = httpx.post(
         url=url,
         json=response_body.model_dump(by_alias=True),
         verify=False
     )
-    print(f'Webhook response code: {response.status_code}')
+    logger.info(f'Webhook response code: {response.status_code}')
 
 
 async def scan_callback(request: ScanRequest):
-    print("[DEBUG] Run scan callback")
+    logger.info("[DEBUG] Run scan callback")
     try:
-        print("[DEBUG] Run init")
+        logger.info("[DEBUG] Run init")
         init_runner = InitRunner(request)
         await init_runner.run()
 
         scan_runner = ScanRunner(request)
 
-        print("[DEBUG] Send RUN webhook")
+        logger.info("[DEBUG] Send RUN webhook")
         send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
@@ -36,21 +40,21 @@ async def scan_callback(request: ScanRequest):
             )
         )
 
-        print("[DEBUG] Run SCAN operation")
+        logger.info("[DEBUG] Run SCAN operation")
         await scan_runner.run()
 
-        print("[DEBUG] SCAN completed - OK")
+        logger.info("[DEBUG] SCAN completed - OK")
         sens_dict_contents = read_dictionary_contents(scan_runner.output_sens_dict_file_name)
-        print("[DEBUG] Read sens_dict_contents")
+        logger.info("[DEBUG] Read sens_dict_contents")
         no_sens_dict_contents = None
         if scan_runner.output_no_sens_dict_file_name:
-            print("[DEBUG] Read no_sens_dict_contents")
+            logger.info("[DEBUG] Read no_sens_dict_contents")
             no_sens_dict_contents = read_dictionary_contents(scan_runner.output_no_sens_dict_file_name)
-        print("[DEBUG] Complete main operation")
+        logger.info("[DEBUG] Complete main operation")
     except Exception as ex:
-        print("[DEBUG] SCAN completed - FAIL")
-        print(ex)
-        print("[DEBUG] Send ERROR webhook")
+        logger.info("[DEBUG] SCAN completed - FAIL")
+        logger.error(ex)
+        logger.info("[DEBUG] Send ERROR webhook")
         send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
@@ -60,7 +64,7 @@ async def scan_callback(request: ScanRequest):
         )
         return
 
-    print("[DEBUG] Send COMPLETE webhook")
+    logger.info("[DEBUG] Send COMPLETE webhook")
     send_webhook(
         url=request.webhook_status_url,
         response_body=ScanStatusResponse(
@@ -90,7 +94,7 @@ async def dump_callback(request: DumpRequest):
         await dump_runner.run()
         dump_size = get_folder_size(dump_runner.full_dump_path)
     except Exception as ex:
-        print(ex)
+        logger.error(ex)
         send_webhook(
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
