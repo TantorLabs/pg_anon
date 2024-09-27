@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Union, List, Dict
+from typing import Union, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 #############################################
@@ -350,8 +350,8 @@ class ScanRequest(StatelessRunnerRequest):
     type_id: int
 
     meta_dict_contents: List[DictionaryContent]
-    sens_dict_contents: Union[List[DictionaryContent], None] = None
-    no_sens_dict_contents: Union[List[DictionaryContent], None] = None
+    sens_dict_contents: List[DictionaryContent] = Field(default_factory=list)
+    no_sens_dict_contents: List[DictionaryContent] = Field(default_factory=list)
 
     need_no_sens_dict: bool = False
 
