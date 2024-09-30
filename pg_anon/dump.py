@@ -254,11 +254,11 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         ctx.logger.error(f"================> Process [{name}]: {ex}")
         raise ex
     finally:
-        ctx.logger.error(f"================> Process [{name}] closing")
+        ctx.logger.info(f"================> Process [{name}] closing")
         loop.close()
         queue.put(None)  # Shut down the worker
         queue.close()
-        ctx.logger.error(f"================> Process [{name}] closed")
+        ctx.logger.info(f"================> Process [{name}] closed")
 
 
 async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
