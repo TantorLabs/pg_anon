@@ -10,7 +10,6 @@ from hashlib import sha256
 from typing import List, Tuple
 
 import asyncpg
-import nest_asyncio
 from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
 
@@ -240,16 +239,11 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         await pool.close()
 
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
     try:
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(run())
-    except asyncio.exceptions.TimeoutError:
-        ctx.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
-    finally:
-        loop.close()
 
-    try:
         tasks_res_final = []
         for task in tasks_res:
             if task.result() is not None and len(task.result()) > 0:
@@ -258,9 +252,13 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         queue.put(tasks_res_final)
     except Exception as ex:
         ctx.logger.error(f"================> Process [{name}]: {ex}")
+        raise ex
     finally:
+        ctx.logger.error(f"================> Process [{name}] closing")
+        loop.close()
         queue.put(None)  # Shut down the worker
         queue.close()
+        ctx.logger.error(f"================> Process [{name}] closed")
 
 
 async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
