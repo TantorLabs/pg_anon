@@ -213,30 +213,33 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         )
         tasks = set()
 
-        for idx, (file_name, query) in enumerate(query_tasks):
-            if len(tasks) >= ctx.args.db_connections_per_process:
-                # Wait for some dump to finish before adding a new one
-                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                exception = done.pop().exception()
-                if exception is not None:
-                    await pool.close()
-                    raise exception
+        try:
+            for idx, (file_name, query) in enumerate(query_tasks):
+                if len(tasks) >= ctx.args.db_connections_per_process:
+                    # Wait for some dump to finish before adding a new one
+                    done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    exception = done.pop().exception()
+                    if exception is not None:
+                        ctx.logger.error(f"================> Process [{name}]: {exception}")
+                        raise exception
 
-            task_res = loop.create_task(
-                dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name)
-            )
+                task_res = loop.create_task(
+                    dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name)
+                )
 
-            tasks.add(task_res)
-            tasks_res.append(task_res)
+                tasks.add(task_res)
+                tasks_res.append(task_res)
 
-            if idx % status_ratio:
-                progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
-                ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
+                if idx % status_ratio:
+                    progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
+                    ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
 
-        if len(tasks) > 0:
-            await asyncio.wait(tasks)
-
-        await pool.close()
+            if len(tasks) > 0:
+                await asyncio.wait(tasks)
+        finally:
+            ctx.logger.info(f"================> Process [{name}] Connection pool closing")
+            await pool.close()
+            ctx.logger.info(f"================> Process [{name}] Connection pool closed")
 
     loop = asyncio.new_event_loop()
 
