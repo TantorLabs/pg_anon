@@ -253,7 +253,7 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
 
                 ctx.logger.debug(f"================> Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
                 task_res = loop.create_task(
-                    dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name)
+                    dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name, name)
                 )
 
                 tasks.add(task_res)
