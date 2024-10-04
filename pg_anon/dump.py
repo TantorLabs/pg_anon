@@ -119,7 +119,7 @@ async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapsh
     ctx.logger.info(f"================> Process [{process_name}] Task [{task_id}] Started task {query} to file {binary_output_file_path}")
 
     try:
-        ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Connection opening")
+        ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Connection acquiring")
         async with pool.acquire() as db_conn:
             ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Connection acquired")
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
@@ -246,12 +246,12 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                     exception = done.pop().exception()
                     if exception is not None:
-                        ctx.logger.error(f"================> Process [{name}]: {exception}")
+                        ctx.logger.error(f"<================ Process [{name}]: {exception}")
                         raise exception
 
-                    ctx.logger.debug(f"================> Process [{name}] One of tasks has been completed")
+                    ctx.logger.debug(f"Process [{name}] One of tasks has been completed")
 
-                ctx.logger.debug(f"================> Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
+                ctx.logger.debug(f"Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
                 task_res = loop.create_task(
                     dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name, name)
                 )
@@ -259,53 +259,53 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
                 tasks.add(task_res)
                 tasks_res.append(task_res)
 
-                ctx.logger.debug(f"================> Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
+                ctx.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
 
                 if idx % status_ratio:
                     progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
                     ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
 
-            ctx.logger.debug(f"================> Process [{name}] All tasks was started")
+            ctx.logger.debug(f"Process [{name}] All tasks was started")
 
             if len(tasks) > 0:
-                ctx.logger.debug(f"================> Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
+                ctx.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
                 await asyncio.wait(tasks)
         finally:
-            ctx.logger.info(f"================> Process [{name}] Connection pool closing")
+            ctx.logger.info(f"<================ Process [{name}] Connection pool closing")
 
             if pool.is_closing():
-                ctx.logger.info(f"================> Process [{name}] Connection pool already has been closed!")
+                ctx.logger.info(f"<================ Process [{name}] Connection pool already has been closed!")
             else:
                 await pool.close()
-                ctx.logger.info(f"================> Process [{name}] Connection pool closed")
+                ctx.logger.info(f"<================ Process [{name}] Connection pool closed")
 
     ctx.logger.info(f"================> Process [{name}] Started process_dump_impl")
     loop = asyncio.new_event_loop()
 
     try:
-        ctx.logger.debug(f"================> Process [{name}] Setup event loop")
+        ctx.logger.debug(f"Process [{name}] Setup event loop")
         asyncio.set_event_loop(loop)
 
-        ctx.logger.debug(f"================> Process [{name}] Run dump tasks")
+        ctx.logger.debug(f"Process [{name}] Run dump tasks")
         loop.run_until_complete(run())
 
-        ctx.logger.debug(f"================> Process [{name}] Processing results start")
+        ctx.logger.debug(f"Process [{name}] Processing results start")
         tasks_res_final = []
         for task in tasks_res:
             if task.result() is not None and len(task.result()) > 0:
                 tasks_res_final.append(task.result())
 
         queue.put(tasks_res_final)
-        ctx.logger.debug(f"================> Process [{name}] Processing results end")
+        ctx.logger.debug(f"Process [{name}] Processing results end")
     except Exception as ex:
-        ctx.logger.error(f"================> Process [{name}]: {exception_helper()}")
+        ctx.logger.error(f"<================ Process [{name}]: {exception_helper()}")
         raise ex
     finally:
-        ctx.logger.info(f"================> Process [{name}] closing")
+        ctx.logger.info(f"<================ Process [{name}] closing")
         loop.close()
         queue.put(None)  # Shut down the worker
         queue.close()
-        ctx.logger.info(f"================> Process [{name}] closed")
+        ctx.logger.info(f"<================ Process [{name}] closed")
 
 
 async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
