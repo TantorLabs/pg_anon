@@ -8,6 +8,13 @@ def get_query_limit(limit: int) -> str:
     return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
 
 
+def get_query_count(schema_name: str, table_name: str) -> str:
+    return f"""
+        SELECT count(*)
+        FROM \"{schema_name}\".\"{table_name}\"
+    """
+
+
 def get_query_get_scan_fields(limit: int = None, count_only: bool = False):
     if not count_only:
         fields = f"""

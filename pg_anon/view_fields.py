@@ -19,6 +19,7 @@ class ViewFieldsMode:
     table: PrettyTable = None
     json: str = None
     fields_cut_by_limits: bool = False
+    empty_data_filler: str = '---'
 
     def __init__(self, context: Context):
         self.context = context
@@ -66,7 +67,7 @@ class ViewFieldsMode:
         :return: list of fields for view mode
         """
         fields_list = await get_scan_fields_list(
-            connection_params=self.context.conn_params,
+            connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             limit=self._processing_fields_limit
         )
@@ -81,7 +82,7 @@ class ViewFieldsMode:
 
     async def _make_notice_fields_cut_by_limits(self):
         fields_count = await get_scan_fields_count(
-            connection_params=self.context.conn_params,
+            connection_params=self.context.connection_params,
             server_settings=self.context.server_settings
         )
 
@@ -115,8 +116,8 @@ class ViewFieldsMode:
                     continue
 
             if not self.context.args.view_only_sensitive_fields:
-                field.rule = '---'
-                field.dict_file_name = '---'
+                field.rule = self.empty_data_filler
+                field.dict_file_name = self.empty_data_filler
                 fields_with_find_rules.append(field)
 
         self.fields = fields_with_find_rules

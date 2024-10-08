@@ -1,3 +1,4 @@
+import concurrent.futures
 import decimal
 import hashlib
 import json
@@ -87,7 +88,9 @@ def pretty_size(bytes_v):
 
 
 def chunkify(lst, n):
-    return [lst[i::n] for i in range(n)]
+    result = [lst[i::n] for i in range(n)]
+    result = [x for x in result if x]  # clear empty lists
+    return result
 
 
 def recordset_to_list_flat(rs):
@@ -240,7 +243,7 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
         else:
             # the table is transferred with the specific fields for anonymization
             fields_list = await get_fields_list(
-                connection_params=ctx.conn_params,
+                connection_params=ctx.connection_params,
                 server_settings=ctx.server_settings,
                 table_schema=table_schema,
                 table_name=table_name
@@ -287,3 +290,40 @@ def get_file_name_from_path(path: str) -> str:
     """
     file_name = os.path.basename(path)
     return os.path.splitext(file_name)[0]
+
+
+def validate_exists_mode(mode: str):
+    from pg_anon.common.enums import AnonMode
+
+    try:
+        AnonMode(mode)
+    except ValueError:
+        return False
+
+    return True
+
+
+def get_file_size(file_path: str) -> int:
+    if os.path.exists(file_path):
+        return os.path.getsize(file_path)
+    return 0
+
+
+def get_folder_size(folder_path: str) -> int:
+    total_size = 0
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_file = []
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                future_to_file.append(executor.submit(get_file_size, file_path))
+
+        # Собираем результаты
+        for future in concurrent.futures.as_completed(future_to_file):
+            total_size += future.result()
+
+    return total_size
+
+
+def simple_slugify(value: str):
+    return re.sub(r'\W+', '-', value).strip('-').lower()

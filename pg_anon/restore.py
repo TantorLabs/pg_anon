@@ -9,6 +9,7 @@ import subprocess
 import asyncpg
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pg_anon.common.db_utils import create_connection, create_pool
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, AnonMode
 from pg_anon.common.utils import (
@@ -52,7 +53,7 @@ async def run_pg_restore(ctx, section):
 
 
 async def seq_init(ctx):
-    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
     if ctx.args.seq_init_by_max_value:
         query = """
             DO $$
@@ -156,8 +157,8 @@ async def restore_table_data(
 
 
 async def make_restore_impl(ctx: Context, transaction_snapshot_id: str):
-    pool = await asyncpg.create_pool(
-        **ctx.conn_params,
+    pool = await create_pool(
+        connection_params=ctx.connection_params,
         server_settings=ctx.server_settings,
         min_size=ctx.args.db_connections_per_process,
         max_size=ctx.args.db_connections_per_process
@@ -233,7 +234,7 @@ async def make_restore(ctx):
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
-    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
     db_is_empty = await db_conn.fetchval(
         f"""
         SELECT NOT EXISTS(
@@ -249,7 +250,7 @@ async def make_restore(ctx):
 
     if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
         await db_conn.close()
-        raise Exception(f"Target DB {ctx.conn_params['database']} is not empty!")
+        raise Exception(f"Target DB {ctx.connection_params['database']} is not empty!")
 
     metadata_file = open(
         os.path.join(ctx.args.input_dir, "metadata.json"), "r"
@@ -383,8 +384,8 @@ async def run_custom_query(ctx, pool, query):
 
 async def run_analyze(ctx):
     ctx.logger.info("-------------> Started analyze")
-    pool = await asyncpg.create_pool(
-        **ctx.conn_params,
+    pool = await create_pool(
+        connection_params=ctx.connection_params,
         server_settings=ctx.server_settings,
         min_size=ctx.args.db_connections_per_process,
         max_size=ctx.args.db_connections_per_process
@@ -420,7 +421,7 @@ async def validate_restore(ctx):
         return [], {}
 
     if "validate_tables" in ctx.prepared_dictionary_obj:
-        db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+        db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
         db_objs = await db_conn.fetch(
             """
             select n.nspname, c.relname --, c.reltuples

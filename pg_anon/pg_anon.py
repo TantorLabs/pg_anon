@@ -6,17 +6,13 @@ import sys
 import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-
-import asyncpg
+from typing import Optional, List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
-from pg_anon.common.db_utils import check_anon_utils_db_schema_exists
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
-from pg_anon.common.utils import (
-    check_pg_util,
-    exception_helper,
-)
+from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
 from pg_anon.context import Context
 from pg_anon.create_dict import create_dict
 from pg_anon.dump import make_dump
@@ -26,6 +22,17 @@ from pg_anon.view_data import ViewDataMode
 from pg_anon.view_fields import ViewFieldsMode
 
 
+async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
+    """
+    Run pg_anon
+    :param cli_run_params: list of params in command line format
+    :return: result of pg_anon
+    """
+    parser = Context.get_arg_parser()
+    args = parser.parse_args(cli_run_params)
+    return await MainRoutine(args).run()
+
+
 async def make_init(ctx):
     result = PgAnonResult()
     ctx.logger.info("-------------> Started init mode")
@@ -33,7 +40,7 @@ async def make_init(ctx):
     async def handle_notice(connection, message):
         ctx.logger.info("NOTICE: %s" % message)
 
-    db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
     db_conn.add_log_listener(handle_notice)
 
     tr = db_conn.transaction()
@@ -100,24 +107,19 @@ class MainRoutine:
             if not os.path.exists(os.path.join(self.current_dir, "log")):
                 os.makedirs(os.path.join(self.current_dir, "log"))
 
-            if self.args.mode == AnonMode.INIT:
-                log_file = f"{self.args.mode.value}.log"
-            elif self.args.mode == AnonMode.CREATE_DICT:
-                if self.args.meta_dict_files:
-                    base_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
-                else:
-                    base_file_name = os.path.basename(self.args.input_dir)
+            additional_file_name = None
+            if self.args.mode == AnonMode.CREATE_DICT and self.args.meta_dict_files:
+                additional_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
+            elif self.args.prepared_sens_dict_files:
+                additional_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
+            elif self.args.input_dir:
+                additional_file_name = os.path.basename(self.args.input_dir)
 
-                log_file = f"{self.args.mode.value}__{base_file_name}.log"
-            else:
-                if self.args.prepared_sens_dict_files:
-                    base_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
-                else:
-                    base_file_name = os.path.basename(self.args.input_dir)
+            log_file_name_parts = [self.start_time, self.args.mode.value]
+            if additional_file_name:
+                log_file_name_parts.append(simple_slugify(additional_file_name))
 
-                log_file = f"{self.args.mode.value}__{base_file_name}.log"
-
-            log_file = f"{self.start_time}__{log_file}"
+            log_file = "__".join(log_file_name_parts) + ".log"
 
             f_handler = RotatingFileHandler(
                 os.path.join(self.current_dir, "log", log_file),
@@ -167,7 +169,7 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            db_conn = await asyncpg.connect(**self.ctx.conn_params, server_settings=self.ctx.server_settings)
+            db_conn = await create_connection(self.ctx.connection_params, server_settings=self.ctx.server_settings)
             self.ctx.pg_version = await db_conn.fetchval("select version()")
             self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
             await db_conn.close()
@@ -183,13 +185,14 @@ class MainRoutine:
             return result
 
         if self.ctx.args.mode in (
+                AnonMode.CREATE_DICT,
                 AnonMode.DUMP,
                 AnonMode.SYNC_DATA_DUMP,
                 AnonMode.SYNC_STRUCT_DUMP,
             ):
             try:
                 anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
-                    connection_params=self.ctx.conn_params,
+                    connection_params=self.ctx.connection_params,
                     server_settings=self.ctx.server_settings
                 )
                 if not anon_utils_schema_exists:
@@ -254,4 +257,4 @@ class MainRoutine:
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(MainRoutine().run())
+    loop.run_until_complete(run_pg_anon())
