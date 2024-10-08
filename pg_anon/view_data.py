@@ -25,7 +25,7 @@ class ViewDataMode:
     raw_query: Optional[str] = None
     raw_data: Optional[List[List[str]]] = None
     table: PrettyTable = None
-    _need_raw_data: bool = True
+    _need_raw_data: bool = False
 
     def __init__(self, context: Context, need_raw_data: bool = False):
         self.context = context

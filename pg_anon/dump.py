@@ -154,9 +154,9 @@ async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapsh
             ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Pool closed!")
 
         error_message = "Something went wrong"
-        if not compress_is_complete:
+        if not dump_is_complete:
             error_message = f"Can't execute query: {query}"
-        elif not dump_is_complete:
+        elif not compress_is_complete:
             error_message = f"Can't compress file: {binary_output_file_path}"
 
         ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Error: {error_message}")
