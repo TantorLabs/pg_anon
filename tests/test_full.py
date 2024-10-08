@@ -1826,6 +1826,40 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_04_view_data_null")
 
+    async def test_05_view_data_without_matched_rule(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_with_no_existing_schema.py')
+        schema_name: str = 'schm_mask_ext_exclude_2'
+        table_name: str = 'card_numbers'
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-data",
+                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+                f"--schema-name={schema_name}",
+                f"--table-name={table_name}",
+                "--limit=10",
+                "--offset=0",
+                "--verbose=debug",
+                "--debug",
+        ])
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewDataMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(len(executor.table.rows) > 0)
+
+        passed_stages.append("test_05_view_data_without_matched_rule")
+
 
 class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 

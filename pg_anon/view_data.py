@@ -53,7 +53,7 @@ class ViewDataMode:
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
 
-            if field_name in self.table_rule["fields"]:
+            if self.table_rule and field_name in self.table_rule["fields"]:
                 self.field_names.append('* ' + field_name)
             else:
                 self.field_names.append(field_name)
