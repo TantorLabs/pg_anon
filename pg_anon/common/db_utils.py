@@ -1,7 +1,7 @@
 from typing import Dict, List
 
 import asyncpg
-from asyncpg import Connection
+from asyncpg import Connection, Pool
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
 from pg_anon.common.db_queries import get_query_get_scan_fields, get_query_count
@@ -15,7 +15,7 @@ async def create_connection(connection_params: ConnectionParams, server_settings
     )
 
 
-async def create_pool(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Connection:
+async def create_pool(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Pool:
     return await asyncpg.create_pool(
         **connection_params.as_dict(),
         server_settings=server_settings,

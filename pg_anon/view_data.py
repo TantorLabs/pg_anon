@@ -25,7 +25,7 @@ class ViewDataMode:
     raw_query: Optional[str] = None
     raw_data: Optional[List[List[str]]] = None
     table: PrettyTable = None
-    _need_raw_data: bool = True
+    _need_raw_data: bool = False
 
     def __init__(self, context: Context, need_raw_data: bool = False):
         self.context = context
@@ -62,7 +62,7 @@ class ViewDataMode:
         db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
         table_result = await db_conn.fetch(query)
         await db_conn.close()
-        
+
         data = [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
         return data
 
