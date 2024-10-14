@@ -1,18 +1,20 @@
 import asyncio
 import gzip
+import hashlib
 import json
 import os
 import re
 import subprocess
+import uuid
 from datetime import datetime
 from hashlib import sha256
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import asyncpg
-import nest_asyncio
 from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
 
+from pg_anon.common.db_utils import create_connection, create_pool
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -107,40 +109,62 @@ async def compress_file(ctx: Context, file_path: str, remove_origin_file_after_c
         os.remove(file_path)
 
 
-async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str):
+async def dump_by_query(ctx: Context, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str, process_name: Optional[str] = None):
     file_path = str(os.path.join(ctx.args.output_dir, file_name.split(".")[0]))
     binary_output_file_path = f'{file_path}.bin'
-    ctx.logger.info(f"================> Started task {query} to file {binary_output_file_path}")
+
+    task_id = uuid.uuid4()
+    dump_is_complete = False
+    compress_is_complete = False
+    ctx.logger.info(f"================> Process [{process_name}] Task [{task_id}] Started task {query} to file {binary_output_file_path}")
 
     try:
+        ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Connection acquiring")
         async with pool.acquire() as db_conn:
+            ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Connection acquired")
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                 await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
-
+                ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Transaction opened. Starting dump query")
                 result = await dump_into_file(
                     ctx,
                     db_conn=db_conn,
                     query=query,
                     file_name=binary_output_file_path,
                 )
+                ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Transaction setup to snapshot {transaction_snapshot_id}")
 
+        dump_is_complete = True
         count_rows = re.findall(r"(\d+)", result)[0]
-        ctx.logger.debug(f"COPY {count_rows} [rows] Task: {query}")
+        ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] COPY {count_rows} [rows] Task: {query}")
 
         if not ctx.args.dbg_stage_1_validate_dict:
             # Processing files no need to keep connection, after receiving data into binary file
+            ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file start - {binary_output_file_path}")
+
             await compress_file(
                 ctx=ctx,
                 file_path=binary_output_file_path
             )
+            compress_is_complete = True
+            ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file end - {binary_output_file_path}")
 
     except Exception as e:
-        ctx.logger.error("Exception in dump_obj_func:\n" + exception_helper())
-        raise Exception(f"Can't execute task: {query}")
+        ctx.logger.error(f"Process [{process_name}] Task [{task_id}] Exception in dump_obj_func:\n" + exception_helper())
+        if pool.is_closing():
+            ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Pool closed!")
 
-    ctx.logger.info(f"<================ Finished task {query}")
+        error_message = "Something went wrong"
+        if not dump_is_complete:
+            error_message = f"Can't execute query: {query}"
+        elif not compress_is_complete:
+            error_message = f"Can't compress file: {binary_output_file_path}"
 
-    return {hash(query): count_rows}
+        ctx.logger.debug(f"Process [{process_name}] Task [{task_id}] Error: {error_message}")
+        raise Exception(error_message)
+
+    ctx.logger.info(f"<================ Process [{process_name}] Task [{task_id}] Finished task {query}")
+
+    return {hashlib.sha256(query.encode()).hexdigest(): count_rows}
 
 
 async def get_tables_to_dump(excluded_schemas: list, db_conn: asyncpg.Connection):
@@ -204,57 +228,84 @@ def process_dump_impl(name: str, ctx: Context, queue: AioQueue, query_tasks: Lis
         status_ratio = 1000
 
     async def run():
-        pool = await asyncpg.create_pool(
-            **ctx.conn_params,
+        ctx.logger.debug(f"================> Process [{name}] Connection pool opening")
+        pool = await create_pool(
+            connection_params=ctx.connection_params,
             server_settings=ctx.server_settings,
             min_size=ctx.args.db_connections_per_process,
             max_size=ctx.args.db_connections_per_process
         )
         tasks = set()
 
-        for idx, (file_name, query) in enumerate(query_tasks):
-            if len(tasks) >= ctx.args.db_connections_per_process:
-                # Wait for some dump to finish before adding a new one
-                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                exception = done.pop().exception()
-                if exception is not None:
-                    await pool.close()
-                    raise exception
+        try:
+            query_tasks_count = len(query_tasks)
+            for idx, (file_name, query) in enumerate(query_tasks):
+                if len(tasks) >= ctx.args.db_connections_per_process:
+                    ctx.logger.debug(f"================> Process [{name}] Tasks pool is full. Waiting results by already started tasks")
+                    # Wait for some dump to finish before adding a new one
+                    done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    exception = done.pop().exception()
+                    if exception is not None:
+                        ctx.logger.error(f"<================ Process [{name}]: {exception}")
+                        raise exception
 
-            task_res = loop.create_task(
-                dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name)
-            )
+                    ctx.logger.debug(f"Process [{name}] One of tasks has been completed")
 
-            tasks.add(task_res)
-            tasks_res.append(task_res)
+                ctx.logger.debug(f"Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
+                task_res = loop.create_task(
+                    dump_by_query(ctx, pool, query, transaction_snapshot_id, file_name, name)
+                )
 
-            if idx % status_ratio:
-                progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
-                ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
+                tasks.add(task_res)
+                tasks_res.append(task_res)
 
-        if len(tasks) > 0:
-            await asyncio.wait(tasks)
+                ctx.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
 
-        await pool.close()
+                if idx % status_ratio:
+                    progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
+                    ctx.logger.info(f"Process [{name}] Progress {progress_percents}%")
 
-    nest_asyncio.apply()
+            ctx.logger.debug(f"Process [{name}] All tasks was started")
+
+            if len(tasks) > 0:
+                ctx.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {ctx.args.db_connections_per_process}")
+                await asyncio.wait(tasks)
+        finally:
+            ctx.logger.info(f"<================ Process [{name}] Connection pool closing")
+
+            if pool.is_closing():
+                ctx.logger.info(f"<================ Process [{name}] Connection pool already has been closed!")
+            else:
+                await pool.close()
+                ctx.logger.info(f"<================ Process [{name}] Connection pool closed")
+
+    ctx.logger.info(f"================> Process [{name}] Started process_dump_impl")
     loop = asyncio.new_event_loop()
 
     try:
+        ctx.logger.debug(f"Process [{name}] Setup event loop")
+        asyncio.set_event_loop(loop)
+
+        ctx.logger.debug(f"Process [{name}] Run dump tasks")
         loop.run_until_complete(run())
-    except asyncio.exceptions.TimeoutError:
-        ctx.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
+
+        ctx.logger.debug(f"Process [{name}] Processing results start")
+        tasks_res_final = []
+        for task in tasks_res:
+            if task.result() is not None and len(task.result()) > 0:
+                tasks_res_final.append(task.result())
+
+        queue.put(tasks_res_final)
+        ctx.logger.debug(f"Process [{name}] Processing results end")
+    except Exception as ex:
+        ctx.logger.error(f"<================ Process [{name}]: {exception_helper()}")
+        raise ex
     finally:
+        ctx.logger.info(f"<================ Process [{name}] closing")
         loop.close()
-
-    tasks_res_final = []
-    for task in tasks_res:
-        if task.result() is not None and len(task.result()) > 0:
-            tasks_res_final.append(task.result())
-
-    queue.put(tasks_res_final)
-    queue.put(None)  # Shut down the worker
-    queue.close()
+        queue.put(None)  # Shut down the worker
+        queue.close()
+        ctx.logger.info(f"<================ Process [{name}] closed")
 
 
 async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot_id: str):
@@ -262,7 +313,7 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
     if not queries:
         raise Exception("No objects for dump!")
 
-    queries_chunks = list(chunkify(list(zip(files.keys(), queries)), ctx.args.processes))
+    queries_chunks = chunkify(list(zip(files.keys(), queries)), ctx.args.processes)
 
     process_tasks = []
     for idx, queries_chunk in enumerate(queries_chunks):
@@ -296,7 +347,11 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
 
     task_results = {}
     for process_task in process_tasks:
-        for res in process_task.result():
+        process_task_result = process_task.result()
+        if not process_task_result:
+            raise ValueError("One or more dump queries has been failed!")
+
+        for res in process_task_result:
             task_results.update(res)
 
     # Generate metadata.json
@@ -358,7 +413,8 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
     metadata["prepared_sens_dict_files"] = ','.join(ctx.args.prepared_sens_dict_files)
 
     for query, file in zip(queries, files):
-        files[file].update({"rows": task_results[hash(query)]})
+        key = hashlib.sha256(query.encode()).hexdigest()
+        files[file].update({"rows": task_results[key]})
 
     metadata["files"] = files
 
@@ -457,7 +513,7 @@ async def make_dump(ctx: Context):
     result.result_code = ResultCode.DONE
 
     if ctx.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP):
-        db_conn = await asyncpg.connect(**ctx.conn_params, server_settings=ctx.server_settings)
+        db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
         try:
             async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                 transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")

@@ -7,10 +7,8 @@ import unittest
 from decimal import Decimal
 from typing import Dict, Set
 
-import asyncpg
-
 from pg_anon import MainRoutine
-from pg_anon.common.db_utils import get_scan_fields_count
+from pg_anon.common.db_utils import get_scan_fields_count, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import (
@@ -154,7 +152,7 @@ class BasicUnitTest:
 
         ctx = Context(args)
 
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db(db_conn, params.test_source_db)
         await DBOperations.init_db(db_conn, params.test_target_db)
         await DBOperations.init_db(db_conn, params.test_target_db + "_2")
@@ -166,11 +164,11 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db + "_8")  # for PGAnonValidateUnitTest 05
         await db_conn.close()
 
-        sourse_db_params = ctx.conn_params.copy()
-        sourse_db_params["database"] = params.test_source_db
+        source_db_params = copy.copy(ctx.connection_params)
+        source_db_params.database = params.test_source_db
 
         print("============> Started init_env")
-        db_conn = await asyncpg.connect(**sourse_db_params)
+        db_conn = await create_connection(source_db_params)
         await DBOperations.init_env(db_conn, "init_env.sql", params.test_scale)
         await db_conn.close()
         print("<============ Finished init_env")
@@ -216,11 +214,11 @@ class BasicUnitTest:
 
         ctx = Context(args)
 
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db_once(db_conn, params.test_source_db + "_stress")
 
-        sourse_db_params = ctx.conn_params.copy()
-        sourse_db_params["database"] = params.test_source_db + "_stress"
+        source_db_params = copy.copy(ctx.connection_params)
+        source_db_params.database = params.test_source_db + "_stress"
 
         args = parser.parse_args(
             [
@@ -243,7 +241,7 @@ class BasicUnitTest:
         await db_conn.close()
         if len(schema_exists) == 0:
             print("============> Started init_stress_env")
-            db_conn = await asyncpg.connect(**sourse_db_params)
+            db_conn = await create_connection(source_db_params)
             await DBOperations.init_env(
                 db_conn, "init_stress_env.sql", params.test_scale
             )
@@ -260,7 +258,7 @@ class BasicUnitTest:
 
     async def check_rows(self, args, schema, table, fields, rows):
         ctx = Context(args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         if fields is None:
             db_rows = await db_conn.fetch(
                 """select * from "%s"."%s" limit 10000""" % (schema, table)
@@ -327,12 +325,12 @@ class BasicUnitTest:
         """
 
         ctx = Context(source_args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
 
         ctx = Context(target_args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
 
@@ -344,7 +342,7 @@ class BasicUnitTest:
     async def check_rows_count(self, args, objs) -> bool:
         failed_objs = []
         ctx = Context(args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
 
         for obj in objs:
             try:
@@ -379,7 +377,7 @@ class BasicUnitTest:
         """
 
         ctx = Context(args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         db_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
 
@@ -411,7 +409,7 @@ class BasicUnitTest:
         """
 
         ctx = Context(source_args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
         for row in db_source_rows:
             data_query = """SELECT "%s" FROM "%s"."%s" LIMIT 5""" % (
@@ -424,7 +422,7 @@ class BasicUnitTest:
         await db_conn.close()
 
         ctx = Context(target_args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
         for row in db_target_rows:
             data_query = """SELECT "%s" FROM "%s"."%s" LIMIT 5""" % (
@@ -891,7 +889,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
         ctx = Context(args)
-        db_conn = await asyncpg.connect(**ctx.conn_params)
+        db_conn = await create_connection(ctx.connection_params)
         # pg_anon does not clear tables on its own
         await db_conn.execute("TRUNCATE TABLE schm_other_1.some_tbl")  # manual clean
         await db_conn.execute("TRUNCATE TABLE schm_other_2.some_tbl")
@@ -1828,6 +1826,40 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_04_view_data_null")
 
+    async def test_05_view_data_without_matched_rule(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_with_no_existing_schema.py')
+        schema_name: str = 'schm_mask_ext_exclude_2'
+        table_name: str = 'card_numbers'
+
+        parser = Context.get_arg_parser()
+        args = parser.parse_args([
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                "--mode=view-data",
+                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+                f"--schema-name={schema_name}",
+                f"--table-name={table_name}",
+                "--limit=10",
+                "--offset=0",
+                "--verbose=debug",
+                "--debug",
+        ])
+
+        context = MainRoutine(args).ctx  # Setup for context reusing only
+
+        executor = ViewDataMode(context)
+        res = await executor.run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(len(executor.table.rows) > 0)
+
+        passed_stages.append("test_05_view_data_without_matched_rule")
+
 
 class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
@@ -1883,7 +1915,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await executor.run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        all_rows_count = await get_scan_fields_count(context.conn_params)
+        all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertEqual(len(executor.table.rows), all_rows_count)
 
         fields_counters = self._count_fields_by_type(executor)
@@ -2043,7 +2075,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await executor.run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        all_rows_count = await get_scan_fields_count(context.conn_params)
+        all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertNotEqual(len(executor.table.rows), all_rows_count)
         self.assertEqual(len(executor.table.rows), fields_scan_length)
         self.assertEqual(len(executor.fields), fields_scan_length)
@@ -2093,7 +2125,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res_full = await executor_full.run()
         self.assertEqual(res_full.result_code, ResultCode.DONE)
 
-        all_rows_count = await get_scan_fields_count(context_full.conn_params)
+        all_rows_count = await get_scan_fields_count(context_full.connection_params)
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
         self.assertEqual(len(executor_full.table.rows), all_rows_count)
         self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count)
@@ -2138,7 +2170,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertIsNone(executor.table)
         self.assertIsNotNone(executor.json)
 
-        all_rows_count = await get_scan_fields_count(context.conn_params)
+        all_rows_count = await get_scan_fields_count(context.connection_params)
         json_data_len = len(json.loads(executor.json))
         self.assertEqual(json_data_len, all_rows_count)
         self.assertEqual(json_data_len, len(executor.fields))
