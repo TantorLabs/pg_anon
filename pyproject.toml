@@ -22,7 +22,7 @@ build-backend = "setuptools.build_meta"
 exclude = ["tests", "dict"]
 
 [project.scripts]
-pg_anon = "pg_anon.__main__"
+pg_anon = "pg_anon.__main__:main"
 
 [tool.setuptools]
 include-package-data = false
