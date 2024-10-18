@@ -15,7 +15,7 @@ from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
 from pg_anon.context import Context
 from pg_anon.create_dict import create_dict
-from pg_anon.dump import make_dump
+from pg_anon.dump import DumpMode
 from pg_anon.restore import make_restore, run_analyze, validate_restore
 from pg_anon.version import __version__
 from pg_anon.view_data import ViewDataMode
@@ -211,7 +211,7 @@ class MainRoutine:
                 AnonMode.SYNC_DATA_DUMP,
                 AnonMode.SYNC_STRUCT_DUMP,
             ):
-                result = await make_dump(self.ctx)
+                result = await DumpMode(self.ctx).run()
             elif self.ctx.args.mode in (
                 AnonMode.RESTORE,
                 AnonMode.SYNC_DATA_RESTORE,

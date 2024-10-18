@@ -1,5 +1,6 @@
+import json
 from dataclasses import dataclass
-from typing import Optional, Callable, List
+from typing import Optional, Callable, Dict, List
 
 from pg_anon.common.enums import ResultCode
 
@@ -65,3 +66,86 @@ class ConnectionParams:
 
     def as_dict(self) -> dict:
         return self.__dict__
+
+
+class Metadata:
+    created: str
+    pg_version: str
+    pg_dump_version: str
+
+    dictionary_content_hash: Dict[str, str]
+    prepared_sens_dict_files: str
+    dbg_stage_2_validate_data: bool = False
+    dbg_stage_3_validate_full: bool = False
+
+    # only in data dumps cases
+    sequences_last_values: Optional[Dict] = None
+    files: Optional[Dict[str, Dict[str, str]]] = None
+    total_tables_size: Optional[int] = None
+    total_rows: Optional[int] = None
+    db_size: Optional[int] = None
+
+    # only in struct dump cases
+    schemas: Optional[List[str]] = None
+
+    def _serialize_data(self) -> Dict:
+        data = {
+            'created': self.created,
+            'pg_version': self.pg_version,
+            'pg_dump_version': self.pg_dump_version,
+            'dictionary_content_hash': self.dictionary_content_hash,
+            'prepared_sens_dict_files': self.prepared_sens_dict_files,
+            'dbg_stage_2_validate_data': self.dbg_stage_2_validate_data,
+            'dbg_stage_3_validate_full': self.dbg_stage_3_validate_full,
+
+            'seq_lastvals': self.sequences_last_values,
+            'files': self.files,
+            'total_tables_size': self.total_tables_size,
+            'total_rows': self.total_rows,
+            'db_size': self.db_size,
+
+            'schemas': self.schemas,
+        }
+
+        if self.sequences_last_values is None:
+            del data['seq_lastvals']
+        if self.files is None:
+            del data['files']
+        if self.total_tables_size is None:
+            del data['total_tables_size']
+        if self.total_rows is None:
+            del data['total_rows']
+        if self.db_size is None:
+            del data['db_size']
+
+        if self.schemas is None:
+            del data['schemas']
+
+        return data
+
+    def _deserialize_data(self, data: Dict):
+        self.created = data.get('created')
+        self.pg_version = data.get('pg_version')
+        self.pg_dump_version = data.get('pg_dump_version')
+        self.db_size = data.get('db_size')
+        self.dictionary_content_hash = data.get('dictionary_content_hash')
+        self.prepared_sens_dict_files = data.get('prepared_sens_dict_files')
+        self.dbg_stage_2_validate_data = data.get('dbg_stage_2_validate_data')
+        self.dbg_stage_3_validate_full = data.get('dbg_stage_3_validate_full')
+
+        self.sequences_last_values = data.get('seq_lastvals')
+        self.files = data.get('files')
+        self.total_tables_size = data.get('total_tables_size')
+        self.total_rows = data.get('total_rows')
+
+        self.schemas = data.get('schemas')
+
+    def save_into_file(self, file_name: str):
+        data = self._serialize_data()
+        with open(file_name, "w", encoding='utf-8') as out_file:
+            out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+
+    def load_from_file(self, file_name: str):
+        with open(file_name, "r") as metadata_file:
+            data = json.loads(metadata_file.read())
+            self._deserialize_data(data)
