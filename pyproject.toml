@@ -23,7 +23,7 @@ pg_anon = "pg_anon.__main__:main"
 
 [tool.setuptools]
 include-package-data = false
-packages.find.include = ["pg_anon"]
+packages.find.include = ["pg_anon", "pg_anon.*"]
 packages.find.exclude = ["tests", "dict"]
 
 [tool.poetry]
