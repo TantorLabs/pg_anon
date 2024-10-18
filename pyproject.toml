@@ -35,6 +35,10 @@ description = ""
 authors = ["Tantor Labs <tantor@tantorlabs.ru>"]
 readme = "README.md"
 
+packages = [
+    { include = "pg_anon" }
+]
+
 [tool.poetry.dependencies]
 python = "^3.8"
 aioprocessing = "2.0.1"
