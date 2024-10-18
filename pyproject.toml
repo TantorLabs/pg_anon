@@ -18,15 +18,13 @@ dependencies=[
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-exclude = ["tests", "dict"]
-
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
 
 [tool.setuptools]
 include-package-data = false
-
+packages.find.include = ["pg_anon"]
+packages.find.exclude = ["tests", "dict"]
 
 [tool.poetry]
 name = "pg_anon"
