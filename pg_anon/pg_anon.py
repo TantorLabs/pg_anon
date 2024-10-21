@@ -5,7 +5,6 @@ import re
 import sys
 import time
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
 from typing import Optional, List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
@@ -15,8 +14,9 @@ from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
 from pg_anon.context import Context
 from pg_anon.create_dict import create_dict
-from pg_anon.dump import make_dump
-from pg_anon.restore import make_restore, run_analyze, validate_restore
+from pg_anon.dump import DumpMode
+from pg_anon.logger import get_logger, logger_add_file_handler, logger_set_log_level
+from pg_anon.restore import RestoreMode
 from pg_anon.version import __version__
 from pg_anon.view_data import ViewDataMode
 from pg_anon.view_fields import ViewFieldsMode
@@ -75,11 +75,8 @@ class MainRoutine:
         else:
             self.args = Context.get_arg_parser().parse_args()
         self.setup_logger()
-        self.ctx = Context(self.args)
-        self.ctx.logger = self.logger
-
-    def __del__(self):
-        self.close_logger_handlers()
+        self.context = Context(self.args)
+        self.context.logger = self.logger
 
     def setup_logger(self):
         log_level = logging.NOTSET
@@ -92,99 +89,66 @@ class MainRoutine:
             elif self.args.verbose == VerboseOptions.ERROR:
                 log_level = logging.ERROR
 
-        self.logger = logging.getLogger(os.path.basename(__file__))
+        additional_file_name = None
+        if self.args.mode == AnonMode.CREATE_DICT and self.args.meta_dict_files:
+            additional_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
+        elif self.args.prepared_sens_dict_files:
+            additional_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
+        elif self.args.input_dir:
+            additional_file_name = os.path.basename(self.args.input_dir)
 
-        if not len(self.logger.handlers):
-            formatter = logging.Formatter(
-                datefmt="%Y-%m-%d %H:%M:%S",
-                fmt="%(asctime)s,%(msecs)03d %(levelname)8s %(lineno)3d - %(message)s",
-            )
+        log_file_name_parts = [self.start_time, self.args.mode.value]
+        if additional_file_name:
+            log_file_name_parts.append(simple_slugify(additional_file_name))
 
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+        log_file_name = "__".join(log_file_name_parts) + ".log"
+        log_dir = os.path.join(self.current_dir, "log")
 
-            if not os.path.exists(os.path.join(self.current_dir, "log")):
-                os.makedirs(os.path.join(self.current_dir, "log"))
-
-            additional_file_name = None
-            if self.args.mode == AnonMode.CREATE_DICT and self.args.meta_dict_files:
-                additional_file_name = os.path.splitext(os.path.basename(self.args.meta_dict_files[0]))[0]
-            elif self.args.prepared_sens_dict_files:
-                additional_file_name = os.path.splitext(os.path.basename(self.args.prepared_sens_dict_files[0]))[0]
-            elif self.args.input_dir:
-                additional_file_name = os.path.basename(self.args.input_dir)
-
-            log_file_name_parts = [self.start_time, self.args.mode.value]
-            if additional_file_name:
-                log_file_name_parts.append(simple_slugify(additional_file_name))
-
-            log_file = "__".join(log_file_name_parts) + ".log"
-
-            f_handler = RotatingFileHandler(
-                os.path.join(self.current_dir, "log", log_file),
-                maxBytes=1024 * 10000,
-                backupCount=10,
-            )
-            f_handler.setFormatter(formatter)
-
-            self.logger.addHandler(f_handler)
-            self.logger.setLevel(log_level)
-
-    def close_logger_handlers(self):
-        if not self.logger:  # FIXME: Return an exception for --help command
-            return
-        for handler in self.logger.handlers[
-            :
-        ]:  # iterate over a copy of the handlers list
-            try:
-                handler.acquire()
-                handler.flush()
-                handler.close()
-            except Exception as e:
-                print(f"Error closing log handler: {e}")
-            finally:
-                handler.release()
-                self.logger.removeHandler(handler)
+        self.logger = get_logger()
+        logger_add_file_handler(
+            log_dir=log_dir,
+            log_file_name=log_file_name
+        )
+        logger_set_log_level(log_level=log_level)
 
     async def run(self) -> PgAnonResult:
         if self.args.version:
-            self.ctx.logger.info("Version %s" % __version__)
+            self.context.logger.info("Version %s" % __version__)
             sys.exit(0)
 
-        self.ctx.logger.info(
+        self.context.logger.info(
             "============ %s version %s ============"
             % (os.path.basename(__file__), __version__)
         )
-        self.ctx.logger.info(
-            "============> Started MainRoutine.run in mode: %s" % self.ctx.args.mode
+        self.context.logger.info(
+            "============> Started MainRoutine.run in mode: %s" % self.context.args.mode
         )
-        if self.ctx.args.debug:
+        if self.context.args.debug:
             params_info = "#--------------- Incoming parameters\n"
             for arg in vars(self.args):
                 if arg not in ("db_user_password"):
                     params_info += "#   %s = %s\n" % (arg, getattr(self.args, arg))
             params_info += "#-----------------------------------"
-            self.ctx.logger.info(params_info)
+            self.context.logger.info(params_info)
 
         result = PgAnonResult()
         try:
-            db_conn = await create_connection(self.ctx.connection_params, server_settings=self.ctx.server_settings)
-            self.ctx.pg_version = await db_conn.fetchval("select version()")
-            self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
+            db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
+            self.context.pg_version = await db_conn.fetchval("select version()")
+            self.context.pg_version = re.findall(r"(\d+\.\d+)", str(self.context.pg_version))[0]
             await db_conn.close()
         except:
-            self.ctx.logger.error(exception_helper(show_traceback=True))
+            self.context.logger.error(exception_helper(show_traceback=True))
             result.result_code = ResultCode.FAIL
             return result
 
         if not check_pg_util(
-            self.ctx, self.ctx.args.pg_dump, "pg_dump"
-        ) or not check_pg_util(self.ctx, self.ctx.args.pg_restore, "pg_restore"):
+            self.context, self.context.args.pg_dump, "pg_dump"
+        ) or not check_pg_util(self.context, self.context.args.pg_restore, "pg_restore"):
             result.result_code = ResultCode.FAIL
             return result
 
-        if self.ctx.args.mode in (
+        if self.context.args.mode in (
                 AnonMode.CREATE_DICT,
                 AnonMode.DUMP,
                 AnonMode.SYNC_DATA_DUMP,
@@ -192,55 +156,53 @@ class MainRoutine:
             ):
             try:
                 anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
-                    connection_params=self.ctx.connection_params,
-                    server_settings=self.ctx.server_settings
+                    connection_params=self.context.connection_params,
+                    server_settings=self.context.server_settings
                 )
                 if not anon_utils_schema_exists:
                     raise ValueError(
                         f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
                     )
             except:
-                self.ctx.logger.error(exception_helper(show_traceback=True))
+                self.context.logger.error(exception_helper(show_traceback=True))
                 result.result_code = ResultCode.FAIL
                 return result
 
         start_t = time.time()
         try:
-            if self.ctx.args.mode in (
+            if self.context.args.mode in (
                 AnonMode.DUMP,
                 AnonMode.SYNC_DATA_DUMP,
                 AnonMode.SYNC_STRUCT_DUMP,
             ):
-                result = await make_dump(self.ctx)
-            elif self.ctx.args.mode in (
+                result = await DumpMode(self.context).run()
+            elif self.context.args.mode in (
                 AnonMode.RESTORE,
                 AnonMode.SYNC_DATA_RESTORE,
                 AnonMode.SYNC_STRUCT_RESTORE,
             ):
-                result = await make_restore(self.ctx)
-                if (self.ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE)
-                        and not self.ctx.metadata["dbg_stage_2_validate_data"]
-                        and not self.ctx.metadata["dbg_stage_3_validate_full"]):
-                    await run_analyze(self.ctx)
-            elif self.ctx.args.mode == AnonMode.INIT:
-                result = await make_init(self.ctx)
-            elif self.ctx.args.mode == AnonMode.CREATE_DICT:
-                result = await create_dict(self.ctx)
-            elif self.ctx.args.mode == AnonMode.VIEW_FIELDS:
-                result = await ViewFieldsMode(self.ctx).run()
-            elif self.ctx.args.mode == AnonMode.VIEW_DATA:
-                result = await ViewDataMode(self.ctx).run()
+                restore_mode = RestoreMode(self.context)
+                result = await restore_mode.run()
+                await restore_mode.run_analyze()
+            elif self.context.args.mode == AnonMode.INIT:
+                result = await make_init(self.context)
+            elif self.context.args.mode == AnonMode.CREATE_DICT:
+                result = await create_dict(self.context)
+            elif self.context.args.mode == AnonMode.VIEW_FIELDS:
+                result = await ViewFieldsMode(self.context).run()
+            elif self.context.args.mode == AnonMode.VIEW_DATA:
+                result = await ViewDataMode(self.context).run()
             else:
-                raise Exception("Unknown mode: " + self.ctx.args.mode)
+                raise Exception("Unknown mode: " + self.context.args.mode)
 
-            self.ctx.logger.info(f"MainRoutine.run result_code = {result.result_code}")
+            self.context.logger.info(f"MainRoutine.run result_code = {result.result_code}")
         except:
-            self.ctx.logger.error(exception_helper(show_traceback=True))
+            self.context.logger.error(exception_helper(show_traceback=True))
         finally:
             end_t = time.time()
             result.elapsed = round(end_t - start_t, 2)
-            self.ctx.logger.info(
-                f"<============ Finished MainRoutine.run in mode: {self.ctx.args.mode}, elapsed: {result.elapsed} sec"
+            self.context.logger.info(
+                f"<============ Finished MainRoutine.run in mode: {self.context.args.mode}, elapsed: {result.elapsed} sec"
             )
 
             return result
@@ -248,9 +210,9 @@ class MainRoutine:
     async def validate_target_tables(self) -> PgAnonResult:
         result = PgAnonResult()
         try:
-            result = await validate_restore(self.ctx)
+            result = await RestoreMode.validate_restore(self.context)
         except:
-            self.ctx.logger.error(exception_helper(show_traceback=True))
+            self.context.logger.error(exception_helper(show_traceback=True))
         finally:
             return result
 

@@ -7,3 +7,9 @@ SERVER_SETTINGS = {
     "idle_in_transaction_session_timeout": "0",
     "idle_session_timeout": "0",
 }
+
+DEFAULT_EXCLUDED_SCHEMAS = [
+    ANON_UTILS_DB_SCHEMA_NAME,
+    "pg_catalog",
+    "information_schema"
+]

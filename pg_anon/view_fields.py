@@ -1,5 +1,4 @@
 import json
-from dataclasses import asdict
 from typing import List, Dict
 
 from prettytable import PrettyTable, SINGLE_BORDER

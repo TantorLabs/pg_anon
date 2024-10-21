@@ -251,15 +251,15 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
 
             sql_expr = ""
 
-            def check_field(field_name: str):
-                if field_name in table_rule["fields"]:
-                    return field_name, table_rule["fields"][field_name]
+            def _check_field(_field_name: str):
+                if _field_name in table_rule["fields"]:
+                    return _field_name, table_rule["fields"][_field_name]
                 return None, None
 
             for cnt, column_info in enumerate(fields_list):
                 column_name = column_info["column_name"]
                 udt_name = column_info["udt_name"]
-                field_name, field_value = check_field(column_name)
+                field_name, field_value = _check_field(column_name)
 
                 if field_name:
                     if field_value.find("SQL:") == 0:
