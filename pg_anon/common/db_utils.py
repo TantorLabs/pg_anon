@@ -6,6 +6,9 @@ from asyncpg import Connection, Pool
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, DEFAULT_EXCLUDED_SCHEMAS
 from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query
 from pg_anon.common.dto import FieldInfo, ConnectionParams
+from pg_anon.logger import get_logger
+
+logger = get_logger()
 
 
 async def create_connection(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> Connection:
@@ -169,3 +172,35 @@ async def get_tables_to_dump(connection: Connection, excluded_schemas: List[str]
 
     db_objs = await connection.fetch(query_db_obj)
     return db_objs
+
+
+async def check_db_is_empty(connection: Connection) -> bool:
+    return await connection.fetchval(
+            f"""
+            SELECT NOT EXISTS(
+                SELECT table_schema, table_name
+                FROM information_schema.tables
+                WHERE table_schema not in (
+                        'pg_catalog',
+                        'information_schema',
+                        '{ANON_UTILS_DB_SCHEMA_NAME}'
+                    ) AND table_type = 'BASE TABLE'
+            )"""
+        )
+
+
+async def run_query_in_pool(pool: Pool, query: str):
+    from pg_anon.common.utils import exception_helper
+
+    logger.info(f"================> Started query {query}")
+
+    try:
+        async with pool.acquire() as connection:
+            await connection.execute(query)
+            logger.info(f"Execute query: {query}")
+    except Exception as e:
+        logger.error("Exception in run_query_in_pool:\n" + exception_helper())
+        raise Exception(f"Can't execute query: {query}")
+
+    logger.info(f"<================ Finished query {query}")
+

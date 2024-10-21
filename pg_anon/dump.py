@@ -299,7 +299,10 @@ class DumpMode:
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file end - {binary_output_file_path}")
 
         except Exception as e:
-            self.context.logger.error(f"Process [{process_name}] Task [{task_id}] Exception in dump_obj_func:\n" + exception_helper())
+            self.context.logger.error(
+                f"Process [{process_name}] Task [{task_id}] Exception in DumpMode._dump_data_by_query:\n"
+                + exception_helper()
+            )
             if pool.is_closing():
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Pool closed!")
 
@@ -538,7 +541,7 @@ class DumpMode:
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
     async def run(self):
-        self.context.logger.info("-------------> Started dump mode")
+        self.context.logger.info("-------------> Started dump")
         result = PgAnonResult()
         result.result_code = ResultCode.DONE
 
@@ -555,9 +558,9 @@ class DumpMode:
             await self._dump_data()
             await self._prepare_and_save_metadata()
         except:
-            self.context.logger.error("<------------- make_dump failed\n" + exception_helper())
+            self.context.logger.error("<------------- Dump failed\n" + exception_helper())
             result.result_code = ResultCode.FAIL
         finally:
             if result.result_code == ResultCode.DONE:
-                self.context.logger.info("<------------- Finished dump mode")
+                self.context.logger.info("<------------- Finished dump")
             return result

@@ -136,3 +136,64 @@ def get_sequences_query():
             AND d.classid = 'pg_catalog.pg_class'::regclass
             AND d.refclassid = 'pg_catalog.pg_class'::regclass
             """
+
+
+def get_check_constraint_query():
+    return """
+        SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
+        FROM (
+            SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
+            from (
+                SELECT T.v as v, t.conoid
+                FROM (
+                        SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
+                        FROM (
+                            SELECT conbin::text as v, oid as conoid
+                            FROM pg_constraint
+                            WHERE contype = 'c'
+                        ) T
+                ) T WHERE length(T.v) > 0
+            ) T
+        ) T
+        INNER JOIN pg_constraint pc on T.conoid = pc.oid
+        INNER JOIN pg_class cl on cl.oid = pc.conrelid
+        INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
+        WHERE T.func_oid in (
+            SELECT  p.oid
+            FROM    pg_namespace n
+            INNER JOIN pg_proc p ON p.pronamespace = n.oid
+            WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
+        )
+    """
+
+
+def get_sequences_max_value_init_query():
+    return """
+    DO $$
+    DECLARE
+        cmd text;
+        schema text;
+    BEGIN
+        FOR cmd, schema IN (
+            select
+               ('SELECT setval(''' || T.seq_name || ''', max("' || T.column_name || '") + 1) FROM "' || T.table_name || '"') as cmd,
+               T.table_schema as schema
+            FROM (
+                    select
+                       substring(t.column_default from 10 for length(t.column_default) - 21) as seq_name,
+                       t.table_schema,
+                       t.table_name,
+                       t.column_name
+                       FROM (
+                           SELECT table_schema, table_name, column_name, column_default
+                           FROM information_schema.columns
+                           WHERE column_default LIKE 'nextval%'
+                       ) T
+            ) T
+        ) LOOP
+            EXECUTE 'SET search_path = ''' || schema || ''';';
+            -- EXECUTE cmd;
+            raise notice '%', cmd;
+        END LOOP;
+        SET search_path = 'public';
+    END$$;"""
