@@ -9,7 +9,7 @@ from aioprocessing import AioQueue
 from asyncpg import Connection
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
-from pg_anon.common.db_queries import get_data_from_field
+from pg_anon.common.db_queries import get_data_from_field_query
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
 from pg_anon.common.dto import PgAnonResult, FieldInfo
 from pg_anon.common.enums import ResultCode, ScanMode
@@ -402,7 +402,7 @@ async def scan_obj_func(
     try:
         async with pool.acquire() as db_conn:
             if scan_mode == ScanMode.PARTIAL:
-                query = get_data_from_field(
+                query = get_data_from_field_query(
                     field_info=field_info,
                     limit=scan_partial_rows,
                     condition=condition
@@ -419,7 +419,7 @@ async def scan_obj_func(
                 )
             elif scan_mode == ScanMode.FULL:
                 async with db_conn.transaction(isolation='repeatable_read', readonly=True):
-                    query = get_data_from_field(
+                    query = get_data_from_field_query(
                         field_info=field_info,
                         condition=condition
                     )

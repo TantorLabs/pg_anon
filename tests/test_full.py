@@ -1783,7 +1783,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--debug",
             ]
         )
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
         res = await executor.run()
@@ -1850,7 +1850,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--debug",
         ])
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
         res = await executor.run()
@@ -1909,7 +1909,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -1943,7 +1943,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -1974,7 +1974,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2006,7 +2006,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2037,7 +2037,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2069,7 +2069,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2103,7 +2103,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--view-only-sensitive-fields",
             ]
         )
-        context_only_sensitive = MainRoutine(args_only_sensitive).ctx  # Setup for context reusing only
+        context_only_sensitive = MainRoutine(args_only_sensitive).context  # Setup for context reusing only
         executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
         res_only_sensitive = await executor_only_sensitive.run()
         self.assertEqual(res_only_sensitive.result_code, ResultCode.DONE)
@@ -2120,7 +2120,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             ]
         )
-        context_full = MainRoutine(args_full).ctx  # Setup for context reusing only
+        context_full = MainRoutine(args_full).context  # Setup for context reusing only
         executor_full = ViewFieldsMode(context_full)
         res_full = await executor_full.run()
         self.assertEqual(res_full.result_code, ResultCode.DONE)
@@ -2161,7 +2161,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2196,7 +2196,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2227,7 +2227,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2257,7 +2257,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
@@ -2280,7 +2280,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        context = MainRoutine(args).ctx  # Setup for context reusing only
+        context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         res = await executor.run()
