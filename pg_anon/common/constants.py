@@ -8,4 +8,8 @@ SERVER_SETTINGS = {
     "idle_session_timeout": "0",
 }
 
-DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
+DEFAULT_EXCLUDED_SCHEMAS = [
+    ANON_UTILS_DB_SCHEMA_NAME,
+    "pg_catalog",
+    "information_schema"
+]
