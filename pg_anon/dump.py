@@ -7,6 +7,7 @@ import re
 import subprocess
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 
 from aioprocessing import AioQueue
@@ -94,13 +95,13 @@ class DumpMode:
 
         for root, dirs, files in os.walk(self.output_dir):
             for file in files:
-                for expected_file_extension in expected_file_extensions:
-                    if not file.endswith(expected_file_extension):
-                        msg = f"Option --clear-output-dir enabled. Unexpected file extension: {os.path.join(root, file)}"
-                        self.context.logger.error(msg)
-                        raise Exception(msg)
+                file_extension = Path(file).suffix.lower()
+                if file_extension not in expected_file_extensions:
+                    msg = f"Option --clear-output-dir enabled. Unexpected file extension: {os.path.join(root, file)}"
+                    self.context.logger.error(msg)
+                    raise Exception(msg)
 
-                    os.remove(os.path.join(root, file))
+                os.remove(os.path.join(root, file))
 
     @property
     def output_dir_is_empty(self) -> bool:
