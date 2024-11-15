@@ -104,7 +104,7 @@ class DumpMode:
 
     @property
     def output_dir_is_empty(self) -> bool:
-        return bool(os.listdir(self.output_dir))
+        return not bool(os.listdir(self.output_dir))
 
     async def _count_totals(self, connection: Connection):
         for query, file_key in zip(self._data_dump_queries, self._data_dump_files):
