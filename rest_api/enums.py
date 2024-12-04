@@ -12,6 +12,12 @@ class DumpModeHandbook(Enum):
     DATA = 3
 
 
+class RestoreModeHandbook(Enum):
+    FULL = 1
+    STRUCT = 2
+    DATA = 3
+
+
 class ResponseStatusesHandbook(Enum):
     UNKNOWN = 1
     SUCCESS = 2

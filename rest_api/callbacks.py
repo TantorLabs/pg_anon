@@ -5,8 +5,9 @@ from pydantic import BaseModel
 
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatusesHandbook
-from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest
-from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner
+from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest, RestoreRequest, \
+    RestoreStatusResponse
+from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner, RestoreRunner
 from rest_api.utils import read_dictionary_contents
 
 logger = logging.getLogger(__name__)
@@ -110,5 +111,38 @@ async def dump_callback(request: DumpRequest):
             operation_id=request.operation_id,
             status_id=ResponseStatusesHandbook.SUCCESS.value,
             size=dump_size,
+        )
+    )
+
+
+async def restore_callback(request: RestoreRequest):
+    try:
+        restore_runner = RestoreRunner(request)
+
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=RestoreStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+            )
+        )
+
+        await restore_runner.run()
+    except Exception as ex:
+        logger.error(ex)
+        send_webhook(
+            url=request.webhook_status_url,
+            response_body=RestoreStatusResponse(
+                operation_id=request.operation_id,
+                status_id=ResponseStatusesHandbook.ERROR.value,
+            )
+        )
+        return
+
+    send_webhook(
+        url=request.webhook_status_url,
+        response_body=RestoreStatusResponse(
+            operation_id=request.operation_id,
+            status_id=ResponseStatusesHandbook.SUCCESS.value,
         )
     )

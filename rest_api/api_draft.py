@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pg_anon.common.db_utils import check_db_connection
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.utils import simple_slugify
-from rest_api.callbacks import scan_callback, dump_callback
+from rest_api.callbacks import scan_callback, dump_callback, restore_callback
 from rest_api.dict_templates import TEMPLATE_META_DICT, TEMPLATE_SENS_DICT, TEMPLATE_NO_SENS_DICT
 from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import Project, DbConnection, TaskStatus, DumpType, ProjectCreate, \
@@ -18,7 +18,7 @@ from rest_api.pydantic_models import Project, DbConnection, TaskStatus, DumpType
     DbConnectionCredentials, ScanType, Scan, ScanCreate, DictionaryDuplicate, DumpCreate, Dump, Preview, PreviewCreate, \
     ErrorResponse, ProjectUpdate, DbConnectionCreate, DbConnectionUpdate, DbConnectionFullCredentials, PreviewUpdate, \
     Content, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, DumpDeleteRequest
+    ViewDataRequest, DumpDeleteRequest, RestoreRequest, RestoreType
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
 from rest_api.utils import get_full_dump_path, delete_folder
@@ -26,6 +26,11 @@ from rest_api.utils import get_full_dump_path, delete_folder
 app = FastAPI(
     title='Web service for pg_anon'
 )
+
+
+def generate_openapi_doc_file():
+    with open("openapi.json", "w") as f:
+        json.dump(app.openapi(), f, indent=2)
 
 #############################################
 # DB Connections
@@ -1241,6 +1246,31 @@ async def dump_types():
         ),
     ]
 
+@app.get(
+    '/handbook/restore-types',
+    tags=['Handbooks'],
+    summary='List of restore types',
+    response_model=List[RestoreType],
+)
+async def restore_types():
+    return [
+        RestoreType(
+            id=1,
+            title="Полный",
+            slug="full",
+        ),
+        RestoreType(
+            id=2,
+            title="Только структура",
+            slug="structure",
+        ),
+        RestoreType(
+            id=3,
+            title="Только данные",
+            slug="data",
+        ),
+    ]
+
 
 @app.get(
     '/handbook/scan-types',
@@ -1394,3 +1424,19 @@ async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: Ba
     print(f'Delete dump dir in path {dump_path}')
 
     background_tasks.add_task(delete_folder, dump_path)
+
+
+@app.post(
+    '/api/stateless/restore',
+    tags=['Stateless'],
+    summary='Run restore operation',
+    description='Run restore operation',
+    status_code=201,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_dump_start(request: RestoreRequest, background_tasks: BackgroundTasks):
+    print("Restore request=", request)
+    background_tasks.add_task(restore_callback, request)

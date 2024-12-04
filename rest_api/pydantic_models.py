@@ -37,6 +37,12 @@ class DumpType(BaseModel):
     slug: str
 
 
+class RestoreType(BaseModel):
+    id: int
+    title: str
+    slug: str
+
+
 class DictionaryType(BaseModel):
     id: int
     title: str
@@ -388,6 +394,22 @@ class DumpStatusResponse(BaseModel):
 
 class DumpDeleteRequest(BaseModel):
     path: str
+
+
+#############################################
+# Stateless | Restore
+#############################################
+class RestoreRequest(StatelessRunnerRequest):
+    type_id: int
+    input_path: str
+    pg_restore_path: Union[str, None] = None
+    proc_conn_count: Union[int, None] = None
+    drop_custom_check_constr: bool = False
+
+
+class RestoreStatusResponse(BaseModel):
+    operation_id: str
+    status_id: int
 
 
 #############################################
