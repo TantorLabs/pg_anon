@@ -7,6 +7,7 @@ import shutil
 import subprocess
 
 import asyncpg
+from asyncpg import Connection
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.db_utils import create_connection, create_pool
@@ -222,149 +223,157 @@ async def check_free_disk_space(ctx, db_conn):
 async def make_restore(ctx):
     result = PgAnonResult()
     ctx.logger.info("-------------> Started restore")
+    db_conn = None
 
-    if (
-        ctx.args.input_dir.find("""/""") == -1
-        and ctx.args.input_dir.find("""\\""") == -1
-    ):
-        ctx.args.input_dir = os.path.join(ctx.current_dir, "output", ctx.args.input_dir)
-
-    if not os.path.exists(ctx.args.input_dir):
-        msg = f"ERROR: input directory {ctx.args.input_dir} does not exists"
-        ctx.logger.error(msg)
-        raise RuntimeError(msg)
-
-    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
-    db_is_empty = await db_conn.fetchval(
-        f"""
-        SELECT NOT EXISTS(
-            SELECT table_schema, table_name
-            FROM information_schema.tables
-            WHERE table_schema not in (
-                    'pg_catalog',
-                    'information_schema',
-                    '{ANON_UTILS_DB_SCHEMA_NAME}'
-                ) AND table_type = 'BASE TABLE'
-        )"""
-    )
-
-    if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
-        await db_conn.close()
-        raise Exception(f"Target DB {ctx.connection_params['database']} is not empty!")
-
-    metadata_file = open(
-        os.path.join(ctx.args.input_dir, "metadata.json"), "r"
-    )
-    metadata_content = metadata_file.read()
-    metadata_file.close()
-    ctx.metadata = json.loads(metadata_content)
-
-    if not ctx.args.disable_checks:
-        if get_major_version(ctx.pg_version) < get_major_version(
-            ctx.metadata["pg_version"]
+    try:
+        if (
+            ctx.args.input_dir.find("""/""") == -1
+            and ctx.args.input_dir.find("""\\""") == -1
         ):
-            await db_conn.close()
-            raise Exception(
-                "Target PostgreSQL major version %s is below than source %s!"
-                % (ctx.pg_version, ctx.metadata["pg_version"])
-            )
-        if get_major_version(
-            get_pg_util_version(ctx.args.pg_restore)
-        ) < get_major_version(ctx.metadata["pg_dump_version"]):
-            await db_conn.close()
-            raise Exception(
-                "pg_restore major version %s is below than source pg_dump version %s!"
-                % (
-                    get_pg_util_version(ctx.args.pg_restore),
-                    ctx.metadata["pg_dump_version"],
-                )
-            )
-        # await check_free_disk_space(ctx, db_conn)
+            ctx.args.input_dir = os.path.join(ctx.current_dir, "output", ctx.args.input_dir)
 
-    if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
-        for v in ctx.metadata["schemas"]:
-            query = 'CREATE SCHEMA IF NOT EXISTS "%s"' % v
-            ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
-            await db_conn.execute(query)
+        if not os.path.exists(ctx.args.input_dir):
+            msg = f"ERROR: input directory {ctx.args.input_dir} does not exists"
+            ctx.logger.error(msg)
+            raise RuntimeError(msg)
 
-    if (ctx.args.mode in (AnonMode.SYNC_STRUCT_RESTORE, AnonMode.RESTORE)
-            and not ctx.metadata["dbg_stage_2_validate_data"]):
-        await run_pg_restore(ctx, "pre-data")
-
-    if ctx.args.drop_custom_check_constr:
-        # drop all CHECK constrains containing user-defined procedures to avoid
-        # performance degradation at the data loading stage
-        check_constraints = await db_conn.fetch(
-            """
-            SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
-            -- pc.consrc removed in 12 version
-            FROM (
-                SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
-                from (
-                    SELECT T.v as v, t.conoid
-                    FROM (
-                            SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
-                            FROM (
-                                SELECT conbin::text as v, oid as conoid
-                                FROM pg_constraint
-                                WHERE contype = 'c'
-                            ) T
-                    ) T WHERE length(T.v) > 0
-                ) T
-            ) T
-            INNER JOIN pg_constraint pc on T.conoid = pc.oid
-            INNER JOIN pg_class cl on cl.oid = pc.conrelid
-            INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
-            WHERE T.func_oid in (
-                SELECT  p.oid
-                FROM    pg_namespace n
-                INNER JOIN pg_proc p ON p.pronamespace = n.oid
-                WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
-            )
-        """
+        db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
+        db_is_empty = await db_conn.fetchval(
+            f"""
+            SELECT NOT EXISTS(
+                SELECT table_schema, table_name
+                FROM information_schema.tables
+                WHERE table_schema not in (
+                        'pg_catalog',
+                        'information_schema',
+                        '{ANON_UTILS_DB_SCHEMA_NAME}'
+                    ) AND table_type = 'BASE TABLE'
+            )"""
         )
 
-        if check_constraints is not None:
-            for conn in check_constraints:
-                ctx.logger.info("Removing constraints: " + conn[2])
-                query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(
-                    conn[0], conn[1], conn[2]
+        if not db_is_empty and ctx.args.mode != AnonMode.SYNC_DATA_RESTORE:
+            await db_conn.close()
+            raise Exception(f"Target DB '{ctx.connection_params.database}' is not empty!")
+
+        metadata_file = open(
+            os.path.join(ctx.args.input_dir, "metadata.json"), "r"
+        )
+        metadata_content = metadata_file.read()
+        metadata_file.close()
+        ctx.metadata = json.loads(metadata_content)
+
+        if not ctx.args.disable_checks:
+            if get_major_version(ctx.pg_version) < get_major_version(
+                ctx.metadata["pg_version"]
+            ):
+                await db_conn.close()
+                raise Exception(
+                    "Target PostgreSQL major version %s is below than source %s!"
+                    % (ctx.pg_version, ctx.metadata["pg_version"])
                 )
+            if get_major_version(
+                get_pg_util_version(ctx.args.pg_restore)
+            ) < get_major_version(ctx.metadata["pg_dump_version"]):
+                await db_conn.close()
+                raise Exception(
+                    "pg_restore major version %s is below than source pg_dump version %s!"
+                    % (
+                        get_pg_util_version(ctx.args.pg_restore),
+                        ctx.metadata["pg_dump_version"],
+                    )
+                )
+            # await check_free_disk_space(ctx, db_conn)
+
+        if ctx.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+            for v in ctx.metadata["schemas"]:
+                query = 'CREATE SCHEMA IF NOT EXISTS "%s"' % v
+                ctx.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
                 await db_conn.execute(query)
 
-    result.result_code = ResultCode.DONE
-    if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
-        try:
-            async with db_conn.transaction(isolation='repeatable_read'):
-                await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
-                transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")
-                await make_restore_impl(ctx, transaction_snapshot_id)
-        except:
-            ctx.logger.error(
-                "<------------- make_restore failed\n" + exception_helper()
+        if (ctx.args.mode in (AnonMode.SYNC_STRUCT_RESTORE, AnonMode.RESTORE)
+                and not ctx.metadata["dbg_stage_2_validate_data"]):
+            await run_pg_restore(ctx, "pre-data")
+
+        if ctx.args.drop_custom_check_constr:
+            # drop all CHECK constrains containing user-defined procedures to avoid
+            # performance degradation at the data loading stage
+            check_constraints = await db_conn.fetch(
+                """
+                SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
+                -- pc.consrc removed in 12 version
+                FROM (
+                    SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
+                    from (
+                        SELECT T.v as v, t.conoid
+                        FROM (
+                                SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
+                                FROM (
+                                    SELECT conbin::text as v, oid as conoid
+                                    FROM pg_constraint
+                                    WHERE contype = 'c'
+                                ) T
+                        ) T WHERE length(T.v) > 0
+                    ) T
+                ) T
+                INNER JOIN pg_constraint pc on T.conoid = pc.oid
+                INNER JOIN pg_class cl on cl.oid = pc.conrelid
+                INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
+                WHERE T.func_oid in (
+                    SELECT  p.oid
+                    FROM    pg_namespace n
+                    INNER JOIN pg_proc p ON p.pronamespace = n.oid
+                    WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
+                )
+            """
             )
-            result.result_code = "fail"
-        finally:
+
+            if check_constraints is not None:
+                for conn in check_constraints:
+                    ctx.logger.info("Removing constraints: " + conn[2])
+                    query = 'ALTER TABLE "{0}"."{1}" DROP CONSTRAINT IF EXISTS "{2}" CASCADE'.format(
+                        conn[0], conn[1], conn[2]
+                    )
+                    await db_conn.execute(query)
+
+        result.result_code = ResultCode.DONE
+        if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
+            try:
+                async with db_conn.transaction(isolation='repeatable_read'):
+                    await db_conn.execute("SET CONSTRAINTS ALL DEFERRED;")
+                    transaction_snapshot_id = await db_conn.fetchval("select pg_export_snapshot()")
+                    await make_restore_impl(ctx, transaction_snapshot_id)
+            except:
+                ctx.logger.error(
+                    "<------------- make_restore failed\n" + exception_helper()
+                )
+                result.result_code = ResultCode.FAIL
+            finally:
+                await db_conn.close()
+
+            if ctx.total_rows != int(ctx.metadata["total_rows"]):
+                ctx.logger.error(
+                    "The number of restored rows (%s) is different from the metadata (%s)"
+                    % (str(ctx.total_rows), ctx.metadata["total_rows"])
+                )
+                result.result_code = ResultCode.FAIL
+
+        if (ctx.args.mode in (AnonMode.SYNC_STRUCT_RESTORE, AnonMode.RESTORE)
+                and not ctx.metadata["dbg_stage_2_validate_data"]
+                and not ctx.metadata["dbg_stage_3_validate_full"]):
+            await run_pg_restore(ctx, "post-data")
+
+        if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
+            await seq_init(ctx)
+    except:
+        ctx.logger.error("<------------- make_restore failed\n" + exception_helper())
+        result.result_code = ResultCode.FAIL
+        return result
+    finally:
+        if isinstance(db_conn, Connection):
             await db_conn.close()
 
-        if ctx.total_rows != int(ctx.metadata["total_rows"]):
-            ctx.logger.error(
-                "The number of restored rows (%s) is different from the metadata (%s)"
-                % (str(ctx.total_rows), ctx.metadata["total_rows"])
-            )
-            result.result_code = ResultCode.FAIL
-
-    if (ctx.args.mode in (AnonMode.SYNC_STRUCT_RESTORE, AnonMode.RESTORE)
-            and not ctx.metadata["dbg_stage_2_validate_data"]
-            and not ctx.metadata["dbg_stage_3_validate_full"]):
-        await run_pg_restore(ctx, "post-data")
-
-    if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
-        await seq_init(ctx)
-
-    await db_conn.close()
-    ctx.logger.info("<------------- Finished restore")
-    return result
+        ctx.logger.info("<------------- Finished restore")
+        return result
 
 
 async def run_custom_query(ctx, pool, query):
