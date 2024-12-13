@@ -48,9 +48,16 @@ async def run_pg_restore(ctx, section):
 
     ctx.logger.debug(str(command))
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    err, out = proc.communicate()
-    for v in out.decode("utf-8").split("\n"):
-        ctx.logger.info(v)
+    out, err = proc.communicate()
+
+    if proc.returncode != 0:
+        msg = "ERROR: database restore has failed! \n%s" % err.decode("utf-8")
+        ctx.logger.error(msg)
+        raise RuntimeError(msg)
+
+    if out:
+        for v in out.decode("utf-8").split("\n"):
+            ctx.logger.info(v)
 
 
 async def seq_init(ctx):

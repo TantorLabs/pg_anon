@@ -70,14 +70,16 @@ async def run_pg_dump(ctx, section):
 
     ctx.logger.debug(str(command))
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    err, out = proc.communicate()
-    if err.decode("utf-8") != "":
-        msg = "ERROR: database schema dump has failed! \n%s" % err.decode("utf-8")
+    out, err = proc.communicate()
+
+    if proc.returncode != 0:
+        msg = "ERROR: database dump has failed! \n%s" % err.decode("utf-8")
         ctx.logger.error(msg)
         raise RuntimeError(msg)
 
-    for v in out.decode("utf-8").split("\n"):
-        ctx.logger.info(v)
+    if out:
+        for v in out.decode("utf-8").split("\n"):
+            ctx.logger.info(v)
 
 
 async def dump_into_file(ctx: Context, db_conn: Connection, query: str, file_name: str):
