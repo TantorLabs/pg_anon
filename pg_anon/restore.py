@@ -365,8 +365,8 @@ async def make_restore(ctx):
                 result.result_code = ResultCode.FAIL
 
         if (ctx.args.mode in (AnonMode.SYNC_STRUCT_RESTORE, AnonMode.RESTORE)
-                and not ctx.metadata["dbg_stage_2_validate_data"]
-                and not ctx.metadata["dbg_stage_3_validate_full"]):
+                or not ctx.metadata["dbg_stage_2_validate_data"]
+                or not ctx.metadata["dbg_stage_3_validate_full"]):
             await run_pg_restore(ctx, "post-data")
 
         if ctx.args.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.RESTORE):
