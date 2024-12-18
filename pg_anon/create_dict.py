@@ -514,24 +514,29 @@ def process_impl(name: str, ctx: Context, queue: AioQueue, fields_info_chunk: Li
         await pool.close()
 
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
     try:
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(run())
+
+        tasks_res_final = []
+        for task in tasks_res:
+            if task.result() is not None and len(task.result()) > 0:
+                tasks_res_final.append(task.result())
+
+        queue.put(tasks_res_final)
     except asyncio.exceptions.TimeoutError:
         ctx.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
+    except Exception as ex:
+        ctx.logger.error(f"================> Process [{name}]: {ex}")
+        queue.put([ex])  # For processing exception on top
+        raise ex
     finally:
+        ctx.logger.error(f"================> Process [{name}] closing")
         loop.close()
-
-    tasks_res_final = []
-    for v in tasks_res:
-        if v.result() is not None and len(v.result()) > 0:
-            tasks_res_final.append(v.result())
-
-    queue.put(tasks_res_final)
-    queue.put(None)  # Shut down the worker
-    queue.close()
-
+        queue.put(None)  # Shut down the worker
+        queue.close()
+        ctx.logger.error(f"================> Process [{name}] closed")
 
 def prepare_sens_dict_rule(meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
     res_hash_func = field_info.rule
@@ -605,13 +610,17 @@ async def create_dict_impl(ctx):
         # Fill results based on processes
         # ============================================================================================
         for v in tasks:
-            for res in v.result():
-                for field_info in res.values():
-                    prepared_sens_dict_rules = prepare_sens_dict_rule(
-                        ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
-                    )
-                    if need_prepare_no_sens_dict:
-                        del fields_info[field_info.obj_id]
+            if v.result() is not None:
+                for res in v.result():
+                    if isinstance(res, Exception):
+                        raise res
+
+                    for field_info in res.values():
+                        prepared_sens_dict_rules = prepare_sens_dict_rule(
+                            ctx.meta_dictionary_obj, field_info, prepared_sens_dict_rules
+                        )
+                        if need_prepare_no_sens_dict:
+                            del fields_info[field_info.obj_id]
 
     # ============================================================================================
     # Fill results based on check_sensitive_fld_names
