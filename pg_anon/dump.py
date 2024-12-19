@@ -387,14 +387,8 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
         total_rows += int(v["rows"])
     metadata["total_tables_size"] = total_tables_size
     metadata["total_rows"] = total_rows
-    if ctx.args.dbg_stage_2_validate_data:
-        metadata["dbg_stage_2_validate_data"] = True
-    else:
-        metadata["dbg_stage_2_validate_data"] = False
-    if ctx.args.dbg_stage_3_validate_full:
-        metadata["dbg_stage_3_validate_full"] = True
-    else:
-        metadata["dbg_stage_3_validate_full"] = False
+    metadata["dbg_stage_2_validate_data"] = ctx.args.dbg_stage_2_validate_data
+    metadata["dbg_stage_3_validate_full"] = ctx.args.dbg_stage_3_validate_full
 
     if not ctx.args.dbg_stage_1_validate_dict:
         with open(os.path.join(ctx.args.output_dir, "metadata.json"), "w", encoding='utf-8') as out_file:
@@ -497,8 +491,8 @@ async def make_dump(ctx: Context):
 
         metadata["total_tables_size"] = 0
         metadata["total_rows"] = 0
-        metadata["dbg_stage_2_validate_data"] = False
-        metadata["dbg_stage_3_validate_full"] = False
+        metadata["dbg_stage_2_validate_data"] = ctx.args.dbg_stage_2_validate_data
+        metadata["dbg_stage_3_validate_full"] = ctx.args.dbg_stage_3_validate_full
 
         tmp_list = []
         for v in ctx.prepared_dictionary_obj["dictionary"]:
