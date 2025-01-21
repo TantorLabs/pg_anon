@@ -1309,7 +1309,6 @@ async def dump_types():
     }
 )
 async def db_connection_check(request: DbConnectionParams):
-    print("DB connection check request=", request)
     connection_is_ok = await check_db_connection(
         connection_params=ConnectionParams(
             host=request.host,
@@ -1343,7 +1342,6 @@ async def db_connection_check(request: DbConnectionParams):
     }
 )
 async def stateless_scan_start(request: ScanRequest, background_tasks: BackgroundTasks):
-    print("Scan request=", request)
     background_tasks.add_task(scan_callback, request)
 
 
@@ -1359,8 +1357,6 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
     }
 )
 async def stateless_view_fields(request: ViewFieldsRequest):
-    print("Preview fields request=", request)
-
     runner = ViewFieldsRunner(request)
     data = await runner.run()
 
@@ -1382,7 +1378,6 @@ async def stateless_view_fields(request: ViewFieldsRequest):
     }
 )
 async def stateless_view_data(request: ViewDataRequest):
-    print("Preview data request=", request)
     runner = ViewDataRunner(request)
     data = await runner.run()
 
@@ -1404,7 +1399,6 @@ async def stateless_view_data(request: ViewDataRequest):
     }
 )
 async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks):
-    print("Dump request=", request)
     background_tasks.add_task(dump_callback, request)
 
 
@@ -1421,8 +1415,6 @@ async def stateless_dump_start(request: DumpRequest, background_tasks: Backgroun
 )
 async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
     dump_path = get_full_dump_path(request.path)
-    print(f'Delete dump dir in path {dump_path}')
-
     background_tasks.add_task(delete_folder, dump_path)
 
 
@@ -1438,5 +1430,4 @@ async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: Ba
     }
 )
 async def stateless_dump_start(request: RestoreRequest, background_tasks: BackgroundTasks):
-    print("Restore request=", request)
     background_tasks.add_task(restore_callback, request)
