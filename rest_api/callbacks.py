@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest, RestoreRequest, \
-    RestoreStatusResponse
+    StatelessRunnerResponse
 from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner, RestoreRunner
 from rest_api.utils import read_dictionary_contents
 
@@ -38,6 +38,7 @@ async def scan_callback(request: ScanRequest):
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
 
@@ -61,6 +62,7 @@ async def scan_callback(request: ScanRequest):
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.ERROR.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
         return
@@ -71,6 +73,7 @@ async def scan_callback(request: ScanRequest):
         response_body=ScanStatusResponse(
             operation_id=request.operation_id,
             status_id=ResponseStatusesHandbook.SUCCESS.value,
+            webhook_metadata=request.webhook_metadata,
             sens_dict_content=sens_dict_contents,
             no_sens_dict_content=no_sens_dict_contents,
         )
@@ -89,6 +92,7 @@ async def dump_callback(request: DumpRequest):
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
 
@@ -101,6 +105,7 @@ async def dump_callback(request: DumpRequest):
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.ERROR.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
         return
@@ -110,6 +115,7 @@ async def dump_callback(request: DumpRequest):
         response_body=DumpStatusResponse(
             operation_id=request.operation_id,
             status_id=ResponseStatusesHandbook.SUCCESS.value,
+            webhook_metadata=request.webhook_metadata,
             size=dump_size,
         )
     )
@@ -121,9 +127,10 @@ async def restore_callback(request: RestoreRequest):
 
         send_webhook(
             url=request.webhook_status_url,
-            response_body=RestoreStatusResponse(
+            response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
 
@@ -132,17 +139,19 @@ async def restore_callback(request: RestoreRequest):
         logger.error(ex)
         send_webhook(
             url=request.webhook_status_url,
-            response_body=RestoreStatusResponse(
+            response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
                 status_id=ResponseStatusesHandbook.ERROR.value,
+                webhook_metadata=request.webhook_metadata,
             )
         )
         return
 
     send_webhook(
         url=request.webhook_status_url,
-        response_body=RestoreStatusResponse(
+        response_body=StatelessRunnerResponse(
             operation_id=request.operation_id,
             status_id=ResponseStatusesHandbook.SUCCESS.value,
+            webhook_metadata=request.webhook_metadata,
         )
     )
