@@ -338,6 +338,13 @@ class StatelessRunnerRequest(BaseModel):
     operation_id: str
     db_connection_params: DbConnectionParams
     webhook_status_url: str
+    webhook_metadata: Union[str, None] = None  # data what will be sent on webhook "as is"
+
+
+class StatelessRunnerResponse(BaseModel):
+    operation_id: str
+    status_id: int
+    webhook_metadata: Union[str, None] = None  # data what will be sent on webhook "as is"
 
 
 class DictionaryMetadata(BaseModel):
@@ -366,9 +373,7 @@ class ScanRequest(StatelessRunnerRequest):
     proc_conn_count: Union[int, None] = None
 
 
-class ScanStatusResponse(BaseModel):
-    operation_id: str
-    status_id: int
+class ScanStatusResponse(StatelessRunnerResponse):
     sens_dict_content: Union[str, None] = None
     no_sens_dict_content: Union[str, None] = None
 
@@ -386,9 +391,7 @@ class DumpRequest(StatelessRunnerRequest):
     proc_conn_count: Union[int, None] = None
 
 
-class DumpStatusResponse(BaseModel):
-    operation_id: str
-    status_id: int
+class DumpStatusResponse(StatelessRunnerResponse):
     size: Union[int, None] = None
 
 
@@ -405,11 +408,6 @@ class RestoreRequest(StatelessRunnerRequest):
     pg_restore_path: Union[str, None] = None
     proc_conn_count: Union[int, None] = None
     drop_custom_check_constr: bool = False
-
-
-class RestoreStatusResponse(BaseModel):
-    operation_id: str
-    status_id: int
 
 
 #############################################
