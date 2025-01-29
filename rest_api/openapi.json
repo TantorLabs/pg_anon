@@ -421,6 +421,106 @@
           }
         }
       }
+    },
+    "/handbook/task-statuses": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of task statuses",
+        "operationId": "task_statuses_handbook_task_statuses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskStatus"
+                  },
+                  "type": "array",
+                  "title": "Response Task Statuses Handbook Task Statuses Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/dump-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of dump types",
+        "operationId": "dump_types_handbook_dump_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DumpType"
+                  },
+                  "type": "array",
+                  "title": "Response Dump Types Handbook Dump Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/restore-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of restore types",
+        "operationId": "restore_types_handbook_restore_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RestoreType"
+                  },
+                  "type": "array",
+                  "title": "Response Restore Types Handbook Restore Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/scan-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of scan types",
+        "operationId": "dump_types_handbook_scan_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScanType"
+                  },
+                  "type": "array",
+                  "title": "Response Dump Types Handbook Scan Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -608,6 +708,29 @@
         ],
         "title": "DumpRequest"
       },
+      "DumpType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "DumpType"
+      },
       "ErrorResponse": {
         "properties": {
           "message": {
@@ -703,6 +826,29 @@
           "input_path"
         ],
         "title": "RestoreRequest"
+      },
+      "RestoreType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "RestoreType"
       },
       "ScanRequest": {
         "properties": {
@@ -801,6 +947,52 @@
           "meta_dict_contents"
         ],
         "title": "ScanRequest"
+      },
+      "ScanType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "ScanType"
+      },
+      "TaskStatus": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "TaskStatus"
       },
       "ValidationError": {
         "properties": {
