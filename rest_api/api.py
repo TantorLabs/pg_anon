@@ -1,4 +1,5 @@
 import json
+from typing import List
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.encoders import jsonable_encoder
@@ -10,7 +11,7 @@ from rest_api.callbacks import scan_callback, dump_callback, restore_callback
 from rest_api.enums import ResponseStatusesHandbook
 from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, \
     ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, DumpDeleteRequest, RestoreRequest
+    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, DictionaryType
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
 from rest_api.utils import get_full_dump_path, delete_folder
@@ -159,3 +160,105 @@ async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: Ba
 )
 async def stateless_dump_start(request: RestoreRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(restore_callback, request)
+
+
+#############################################
+# Handbooks
+#############################################
+
+@app.get(
+    '/handbook/task-statuses',
+    tags=['Handbooks'],
+    summary='List of task statuses',
+    response_model=List[TaskStatus],
+)
+async def task_statuses():
+    return [
+        TaskStatus(
+            id=1,
+            title="В процессе",
+            slug="in_process",
+        ),
+        TaskStatus(
+            id=2,
+            title="Завершено",
+            slug="done",
+        ),
+        TaskStatus(
+            id=3,
+            title="Ошибка",
+            slug="error",
+        ),
+    ]
+
+
+@app.get(
+    '/handbook/dump-types',
+    tags=['Handbooks'],
+    summary='List of dump types',
+    response_model=List[DumpType],
+)
+async def dump_types():
+    return [
+        DumpType(
+            id=1,
+            title="Полный",
+            slug="full",
+        ),
+        DumpType(
+            id=2,
+            title="Только структура",
+            slug="structure",
+        ),
+        DumpType(
+            id=3,
+            title="Только данные",
+            slug="data",
+        ),
+    ]
+
+@app.get(
+    '/handbook/restore-types',
+    tags=['Handbooks'],
+    summary='List of restore types',
+    response_model=List[RestoreType],
+)
+async def restore_types():
+    return [
+        RestoreType(
+            id=1,
+            title="Полный",
+            slug="full",
+        ),
+        RestoreType(
+            id=2,
+            title="Только структура",
+            slug="structure",
+        ),
+        RestoreType(
+            id=3,
+            title="Только данные",
+            slug="data",
+        ),
+    ]
+
+
+@app.get(
+    '/handbook/scan-types',
+    tags=['Handbooks'],
+    summary='List of scan types',
+    response_model=List[ScanType],
+)
+async def dump_types():
+    return [
+        ScanType(
+            id=1,
+            title="Полное сканирование",
+            slug="full",
+        ),
+        ScanType(
+            id=2,
+            title="Частичное сканирование",
+            slug="partial",
+        ),
+    ]
