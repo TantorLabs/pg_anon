@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Union, List
+from typing import Union, List, Any
 
 from pydantic import BaseModel, Field
 
@@ -338,13 +338,13 @@ class StatelessRunnerRequest(BaseModel):
     operation_id: str
     db_connection_params: DbConnectionParams
     webhook_status_url: str
-    webhook_metadata: Union[str, None] = None  # data what will be sent on webhook "as is"
+    webhook_metadata: Union[Any, None] = None  # data what will be sent on webhook "as is"
 
 
 class StatelessRunnerResponse(BaseModel):
     operation_id: str
     status_id: int
-    webhook_metadata: Union[str, None] = None  # data what will be sent on webhook "as is"
+    webhook_metadata: Union[Any, None] = None  # data what will be sent on webhook "as is"
 
 
 class DictionaryMetadata(BaseModel):
