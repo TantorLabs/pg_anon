@@ -347,12 +347,13 @@ python pg_anon.py --help
 
 Common pg_anon options:
 
-| Option                          | Description                                                          |
-|---------------------------------|----------------------------------------------------------------------|
-| `--debug`                       | Enable debug mode (default false)                                    |
-| `--verbose`                     | Configure verbose mode: [info, debug, error] (default info)          |
-| `--db-connections-per-process`  | Amount of connections for IO operations for each process (default 4) |
-| `--processes`                   | Amount of processes for multiprocessing operations (default 4)       |
+| Option                         | Description                                                                       |
+|--------------------------------|-----------------------------------------------------------------------------------|
+| `--debug`                      | Enable debug mode (default false)                                                 |
+| `--verbose`                    | Configure verbose mode: [info, debug, error] (default info)                       |
+| `--db-connections-per-process` | Amount of connections for IO operations for each process (default 4)              |
+| `--processes`                  | Amount of processes for multiprocessing operations (default 4)                    |
+| `--config`                     | Path to the config file, where can be specified `pg_dump` and `pg_restore` utils. |
 
 Database configuration options:
 
@@ -545,15 +546,15 @@ var = {
 
 Possible options in mode=dump:
 
-| Option                         | Description                                                                                                                                |
-|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
-| `--dbg-stage-1-validate-dict`  | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
-| `--dbg-stage-2-validate-data`  | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
-| `--dbg-stage-3-validate-full`  | Makes all logic with "limit" in SQL queries (default false)                                                                                |
-| `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
-| `--pg-dump`                    | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
-| `--output-dir`                 | Output directory for dump files. (default "")                                                                                              |
+| Option                        | Description                                                                                                                                |
+|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`   | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
+| `--dbg-stage-1-validate-dict` | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
+| `--dbg-stage-2-validate-data` | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
+| `--dbg-stage-3-validate-full` | Makes all logic with "limit" in SQL queries (default false)                                                                                |
+| `--clear-output-dir`          | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
+| `--pg-dump`                   | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
+| `--output-dir`                | Output directory for dump files. (default "")                                                                                              |
 
 ### Run restore mode
 
@@ -720,6 +721,40 @@ from (
 	    }
 	]
 ```
+
+### Configuring of pg_anon
+
+For specifying `pg_dump` and `pg_restore` utils, the parameters `--pg-dump` and `--pg-restore` can be used. 
+Also `--config` can be used for advanced configuring. This parameter accept YAML file in this format:
+```yaml
+pg-utils-versions:
+  <postgres_major_version>:
+    pg_dump: "/path/to/<postgres_major_version>/pg_dump"
+    pg_restore: "/path/to/<postgres_major_version>/pg_restore"
+  <another_postgres_major_version>:
+    pg_dump: "/path/to/<postgres_major_version>/pg_dump"
+    pg_restore: "/path/to/<postgres_major_version>/pg_restore"
+  default:
+      pg_dump: "/path/to/default_postgres_version/pg_dump"
+      pg_restore: "/path/to/default_postgres_version/pg_restore"
+```
+
+For example can be specified config for postgres 15, postgres 17:
+
+```yaml
+pg-utils-versions:
+  15:
+    pg_dump: "/usr/lib/postgresql/14/bin/pg_dump"
+    pg_restore: "/usr/lib/postgresql/14/bin/pg_restore"
+  17:
+    pg_dump: "/usr/lib/postgresql/17/bin/pg_dump"
+    pg_restore: "/usr/lib/postgresql/17/bin/pg_restore"
+  default:
+      pg_dump: "/usr/lib/postgresql/17/bin/pg_dump"
+      pg_restore: "/usr/lib/postgresql/17/bin/pg_restore"
+```
+
+In case of mismatch current postgres version with this config, will be used version of `pg_dump` and `pg_restore` from `default` section. For example `pg_anon` can be run with this config on postgres 16. In this case will be used `pg_dump 17` and `pg_restore 17`, i.e. from `default` section.
 
 ### Debug stages in dump and restore modes
 

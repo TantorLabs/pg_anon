@@ -85,7 +85,7 @@ class RestoreMode:
         target_postgres_version = get_major_version(self.context.pg_version)
         source_postgres_version = get_major_version(self.metadata.pg_version)
 
-        target_pg_restore_version = get_major_version(get_pg_util_version(self.context.args.pg_restore))
+        target_pg_restore_version = get_major_version(get_pg_util_version(self.context.pg_restore))
         source_pg_dump_version = get_major_version(self.metadata.pg_dump_version)
 
         if target_postgres_version < source_postgres_version:
@@ -126,7 +126,7 @@ class RestoreMode:
     async def _run_pg_restore(self, section):
         os.environ["PGPASSWORD"] = self.context.args.db_user_password
         command = [
-            self.context.args.pg_restore,
+            self.context.pg_restore,
             "-h",
             self.context.args.db_host,
             "-p",
@@ -142,16 +142,24 @@ class RestoreMode:
             os.path.join(self.input_dir, section.replace("-", "_") + ".backup"),
         ]
         if not self.context.args.db_host:
-            del command[command.index("-h") : command.index("-h") + 2]
+            del command[command.index("-h"): command.index("-h") + 2]
 
         if not self.context.args.db_user:
-            del command[command.index("-U") : command.index("-U") + 2]
+            del command[command.index("-U"): command.index("-U") + 2]
 
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        err, out = proc.communicate()
-        for v in out.decode("utf-8").split("\n"):
-            self.context.logger.info(v)
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
+        # pg_restore put logs into stderr
+        _, pg_restore_logs = proc.communicate()
+
+        for log_line in pg_restore_logs.split("\n"):
+            self.context.logger.info(log_line)
+
+        if proc.returncode != 0:
+            msg = "ERROR: database restore has failed!"
+            self.context.logger.error(msg)
+            raise RuntimeError(msg)
 
     async def _sequences_init(self, connection: Connection):
         if self.context.args.mode == AnonMode.SYNC_STRUCT_RESTORE:

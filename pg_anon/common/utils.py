@@ -3,12 +3,14 @@ import decimal
 import hashlib
 import json
 import os.path
+import pathlib
 import re
 import subprocess
 import sys
 import traceback
 from typing import List, Optional, Dict, Union
 
+import yaml
 from pkg_resources import parse_version as version
 
 from pg_anon.common.db_utils import get_fields_list
@@ -56,6 +58,7 @@ def exception_handler(func):
             func(*args, **kwargs)
         except:
             print(exception_helper(show_traceback=True))
+            raise
 
     return f
 
@@ -327,3 +330,14 @@ def get_folder_size(folder_path: str) -> int:
 
 def simple_slugify(value: str):
     return re.sub(r'\W+', '-', value).strip('-').lower()
+
+
+def read_yaml(file_path: str) -> Dict:
+    path = pathlib.Path(file_path)
+    if path.suffix not in ('.yml', '.yaml'):
+        raise ValueError("File must be .yml or .yaml")
+
+    with open(os.path.abspath(file_path), "r") as file:
+        data = yaml.safe_load(file)
+
+    return data

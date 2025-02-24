@@ -1,25 +1,25 @@
 import asyncio
 import logging
 import os
-import re
 import sys
 import time
 from datetime import datetime
 from typing import Optional, List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
-from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, get_pg_version
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
 from pg_anon.context import Context
-from pg_anon.create_dict import create_dict
-from pg_anon.dump import DumpMode
+from pg_anon.modes.create_dict import create_dict
+from pg_anon.modes.dump import DumpMode
 from pg_anon.logger import get_logger, logger_add_file_handler, logger_set_log_level
-from pg_anon.restore import RestoreMode
+from pg_anon.modes.initialization import make_init
+from pg_anon.modes.restore import RestoreMode
 from pg_anon.version import __version__
-from pg_anon.view_data import ViewDataMode
-from pg_anon.view_fields import ViewFieldsMode
+from pg_anon.modes.view_data import ViewDataMode
+from pg_anon.modes.view_fields import ViewFieldsMode
 
 
 async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
@@ -31,34 +31,6 @@ async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResul
     parser = Context.get_arg_parser()
     args = parser.parse_args(cli_run_params)
     return await MainRoutine(args).run()
-
-
-async def make_init(ctx):
-    result = PgAnonResult()
-    ctx.logger.info("-------------> Started init mode")
-
-    async def handle_notice(connection, message):
-        ctx.logger.info("NOTICE: %s" % message)
-
-    db_conn = await create_connection(ctx.connection_params, server_settings=ctx.server_settings)
-    db_conn.add_log_listener(handle_notice)
-
-    tr = db_conn.transaction()
-    await tr.start()
-    try:
-        with open(os.path.join(ctx.current_dir, "init.sql"), "r") as f:
-            data = f.read()
-        await db_conn.execute(data)
-        await tr.commit()
-        result.result_code = ResultCode.DONE
-    except:
-        await tr.rollback()
-        ctx.logger.error(exception_helper(show_traceback=True))
-        result.result_code = ResultCode.FAIL
-    finally:
-        await db_conn.close()
-    ctx.logger.info("<------------- Finished init mode")
-    return result
 
 
 class MainRoutine:
@@ -133,18 +105,19 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
-            self.context.pg_version = await db_conn.fetchval("select version()")
-            self.context.pg_version = re.findall(r"(\d+\.\d+)", str(self.context.pg_version))[0]
-            await db_conn.close()
+            pg_version = await get_pg_version(self.context.connection_params, server_settings=self.context.server_settings)
+            self.context.set_postgres_version(pg_version)
+            self.context.logger.debug(f"Target DB version: {pg_version}")
+            self.context.logger.debug(f"pg_dump path: {self.context.pg_dump}")
+            self.context.logger.debug(f"pg_restore path: {self.context.pg_restore}")
         except:
             self.context.logger.error(exception_helper(show_traceback=True))
             result.result_code = ResultCode.FAIL
             return result
 
-        if not check_pg_util(
-            self.context, self.context.args.pg_dump, "pg_dump"
-        ) or not check_pg_util(self.context, self.context.args.pg_restore, "pg_restore"):
+        pg_dump_exists = check_pg_util(self.context, self.context.pg_dump, "pg_dump")
+        pg_restore_exists = check_pg_util(self.context, self.context.pg_restore, "pg_restore")
+        if not pg_dump_exists or not pg_restore_exists:
             result.result_code = ResultCode.FAIL
             return result
 

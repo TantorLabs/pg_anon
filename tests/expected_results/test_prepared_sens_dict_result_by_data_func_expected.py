@@ -73,7 +73,7 @@
             "fields": {
                 "email": "anon_funcs.partial_email(\"%s\")",
                 "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {
@@ -89,7 +89,7 @@
             "schema": "public",
             "table": "inn_info",
             "fields": {
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {

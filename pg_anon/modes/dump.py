@@ -63,13 +63,13 @@ class DumpMode:
         self._need_dump_pre_and_post_sections = self.context.args.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
         self._need_dump_data = self.context.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
         self._skip_pre_data_dump = (
-                not self._need_dump_pre_and_post_sections
-                or self.context.args.dbg_stage_2_validate_data
+            not self._need_dump_pre_and_post_sections
+            or self.context.args.dbg_stage_2_validate_data
         )
         self._skip_post_data_dump = (
-                not self._need_dump_pre_and_post_sections
-                or self.context.args.dbg_stage_2_validate_data
-                or self.context.args.dbg_stage_3_validate_full
+            not self._need_dump_pre_and_post_sections
+            or self.context.args.dbg_stage_2_validate_data
+            or self.context.args.dbg_stage_3_validate_full
         )
 
     def _prepare_output_dir(self):
@@ -152,7 +152,7 @@ class DumpMode:
 
         self.metadata.created = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.metadata.pg_version = self.context.pg_version
-        self.metadata.pg_dump_version = get_pg_util_version(self.context.args.pg_dump)
+        self.metadata.pg_dump_version = get_pg_util_version(self.context.pg_dump)
 
         self.metadata.dictionary_content_hash = {}
         for dictionary_file_name, dictionary_content in self.context.prepared_dictionary_contents.items():
@@ -179,8 +179,8 @@ class DumpMode:
                 db_name=self.context.args.db_name
             )
 
-            self.metadata.dbg_stage_2_validate_data = self.context.args.dbg_stage_2_validate_data
-            self.metadata.dbg_stage_3_validate_full = self.context.args.dbg_stage_3_validate_full
+        self.metadata.dbg_stage_2_validate_data = self.context.args.dbg_stage_2_validate_data
+        self.metadata.dbg_stage_3_validate_full = self.context.args.dbg_stage_3_validate_full
 
         self.metadata.save_into_file(file_name=self.metadata_file_path)
 
@@ -199,7 +199,7 @@ class DumpMode:
         exclude_schemas = [item for sublist in tmp_list for item in sublist]
 
         command = [
-            self.context.args.pg_dump,
+            self.context.pg_dump,
             "-h",
             self.context.args.db_host,
             "-p",
@@ -225,15 +225,18 @@ class DumpMode:
             del command[command.index("-h"): command.index("-h") + 2]
 
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        err, out = proc.communicate()
-        if err.decode("utf-8") != "":
-            msg = "ERROR: database schema dump has failed! \n%s" % err.decode("utf-8")
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
+        # pg_dump put logs into stderr
+        _, pg_dump_logs = proc.communicate()
+
+        for log_line in pg_dump_logs.split("\n"):
+            self.context.logger.info(log_line)
+
+        if proc.returncode != 0:
+            msg = "ERROR: database schema dump has failed!"
             self.context.logger.error(msg)
             raise RuntimeError(msg)
-
-        for v in out.decode("utf-8").split("\n"):
-            self.context.logger.info(v)
 
     async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str):
         try:

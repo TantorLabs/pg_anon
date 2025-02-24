@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List
 
 import asyncpg
@@ -204,3 +205,9 @@ async def run_query_in_pool(pool: Pool, query: str):
 
     logger.info(f"<================ Finished query {query}")
 
+
+async def get_pg_version(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS):
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    pg_version = await db_conn.fetchval("select version()")
+    await db_conn.close()
+    return re.findall(r"(\d+\.\d+)", str(pg_version))[0]
