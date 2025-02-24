@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional, List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
-from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection
+from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, create_connection, get_pg_version
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
 from pg_anon.common.utils import check_pg_util, exception_helper, simple_slugify
@@ -169,18 +169,18 @@ class MainRoutine:
 
         result = PgAnonResult()
         try:
-            db_conn = await create_connection(self.ctx.connection_params, server_settings=self.ctx.server_settings)
-            self.ctx.pg_version = await db_conn.fetchval("select version()")
-            self.ctx.pg_version = re.findall(r"(\d+\.\d+)", str(self.ctx.pg_version))[0]
-            await db_conn.close()
+            pg_version = await get_pg_version(self.ctx.connection_params, server_settings=self.ctx.server_settings)
+            self.ctx.set_postgres_version(pg_version)
         except:
             self.ctx.logger.error(exception_helper(show_traceback=True))
             result.result_code = ResultCode.FAIL
             return result
 
         if not check_pg_util(
-            self.ctx, self.ctx.args.pg_dump, "pg_dump"
-        ) or not check_pg_util(self.ctx, self.ctx.args.pg_restore, "pg_restore"):
+            self.ctx, self.ctx.pg_dump, "pg_dump"
+        ) or not check_pg_util(
+            self.ctx, self.ctx.pg_restore, "pg_restore"
+        ):
             result.result_code = ResultCode.FAIL
             return result
 

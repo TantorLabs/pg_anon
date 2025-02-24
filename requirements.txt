@@ -2,6 +2,5 @@ aioprocessing==2.0.1
 async-timeout==4.0.3
 asyncpg==0.29.0
 nest-asyncio==1.6.0
-prettytable==3.10.2
+pyyaml==6.0.2
 setuptools==68.2.0
-wcwidth==0.2.13

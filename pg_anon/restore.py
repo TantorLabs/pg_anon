@@ -25,7 +25,7 @@ from pg_anon.context import Context
 async def run_pg_restore(ctx, section):
     os.environ["PGPASSWORD"] = ctx.args.db_user_password
     command = [
-        ctx.args.pg_restore,
+        ctx.pg_restore,
         "-h",
         ctx.args.db_host,
         "-p",
@@ -279,13 +279,13 @@ async def make_restore(ctx):
                     % (ctx.pg_version, ctx.metadata["pg_version"])
                 )
             if get_major_version(
-                get_pg_util_version(ctx.args.pg_restore)
+                get_pg_util_version(ctx.pg_restore)
             ) < get_major_version(ctx.metadata["pg_dump_version"]):
                 await db_conn.close()
                 raise Exception(
                     "pg_restore major version %s is below than source pg_dump version %s!"
                     % (
-                        get_pg_util_version(ctx.args.pg_restore),
+                        get_pg_util_version(ctx.pg_restore),
                         ctx.metadata["pg_dump_version"],
                     )
                 )

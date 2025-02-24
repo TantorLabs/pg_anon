@@ -43,7 +43,7 @@ async def run_pg_dump(ctx, section):
     exclude_schemas = [item for sublist in tmp_list for item in sublist]
 
     command = [
-        ctx.args.pg_dump,
+        ctx.pg_dump,
         "-h",
         ctx.args.db_host,
         "-p",
@@ -360,7 +360,7 @@ async def make_dump_impl(ctx: Context, db_conn: Connection, transaction_snapshot
     metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     metadata["seq_lastvals"] = seq_res_dict
     metadata["pg_version"] = ctx.pg_version
-    metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
+    metadata["pg_dump_version"] = get_pg_util_version(ctx.pg_dump)
 
     metadata["dictionary_content_hash"] = {}
     for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
@@ -479,7 +479,7 @@ async def make_dump(ctx: Context):
         metadata = {}
         metadata["created"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         metadata["pg_version"] = ctx.pg_version
-        metadata["pg_dump_version"] = get_pg_util_version(ctx.args.pg_dump)
+        metadata["pg_dump_version"] = get_pg_util_version(ctx.pg_dump)
 
         metadata["dictionary_content_hash"] = {}
         for dictionary_file_name, dictionary_content in ctx.prepared_dictionary_contents.items():
