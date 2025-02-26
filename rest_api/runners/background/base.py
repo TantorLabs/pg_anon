@@ -1,3 +1,4 @@
+import os.path
 from typing import List
 
 from pg_anon.common.dto import PgAnonResult
@@ -27,6 +28,13 @@ class BaseRunner:
             f'--db-name={self.request.db_connection_params.db_name}',
         ])
 
+    def _prepare_config(self):
+        config_file_path = "config.yml"
+        if os.path.exists(config_file_path):
+            self.cli_params.extend([
+                f"--config={config_file_path}",
+            ])
+
     def _prepare_verbosity_cli_params(self):
         self.cli_params.extend([
             "--verbose=debug",
@@ -36,6 +44,7 @@ class BaseRunner:
     def _prepare_cli_params(self):
         self.cli_params = []
         self._prepare_db_credentials_cli_params()
+        self._prepare_config()
 
     async def run(self):
         if not self.mode:
