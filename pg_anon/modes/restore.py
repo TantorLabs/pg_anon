@@ -11,8 +11,8 @@ from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool
-from pg_anon.common.dto import PgAnonResult, Metadata
-from pg_anon.common.enums import ResultCode, AnonMode
+from pg_anon.common.dto import Metadata
+from pg_anon.common.enums import AnonMode
 from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
@@ -367,8 +367,6 @@ class RestoreMode:
 
     @staticmethod
     async def validate_restore(context: Context):
-        result = PgAnonResult()
-        result.result_code = ResultCode.DONE
         context.logger.info("-------------> Started validate_restore")
 
         try:
@@ -403,32 +401,32 @@ class RestoreMode:
             diff_r = list(set(tables_in_dict) - set(tables_in_target_db))
 
             if len(diff_r) > 0:
-                context.logger.error(
+                msg = (
                     "validate_tables: in target DB not found tables:\n%s"
                     % json.dumps(diff_r, indent=4)
                 )
-                result.result_code = ResultCode.FAIL
+                context.logger.error(msg)
+                raise RuntimeError(msg)
 
             if len(diff_l) > 0:
-                context.logger.error(
+                msg = (
                     """validate_tables: non-empty tables were found in target database that
                     are not described in the dictionary:\n%s"""
                     % json.dumps(diff_l, indent=4)
                 )
-                result.result_code = ResultCode.FAIL
+                context.logger.error(msg)
+                raise RuntimeError(msg)
         else:
-            context.logger.error("Section validate_tables is not found in dictionary!")
-            result.result_code = ResultCode.FAIL
+            msg = "Section validate_tables is not found in dictionary!"
+            context.logger.error(msg)
+            raise RuntimeError(msg)
 
         context.logger.info("<------------- Finished validate_restore")
-        return result
 
-    async def run(self):
+    async def run(self) -> None:
         self.context.logger.info("-------------> Started restore")
-        result = PgAnonResult()
-        result.result_code = ResultCode.DONE
-
         connection = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
+
         try:
             await self._check_db_is_empty(connection=connection)
             self._check_utils_version_for_dump()
@@ -442,13 +440,12 @@ class RestoreMode:
 
             await self._restore_post_data()
             await self._sequences_init(connection=connection)
-        except:
+
+            await self.run_analyze()
+
+            self.context.logger.info("<------------- Finished restore")
+        except Exception as ex:
             self.context.logger.error("<------------- Restore failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
+            raise ex
         finally:
             await connection.close()
-
-            if result.result_code == ResultCode.DONE:
-                self.context.logger.info("<------------- Finished restore")
-
-            return result

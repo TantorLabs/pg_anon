@@ -266,6 +266,7 @@ Installation processes slightly differ depending on your operating system.
 ## Testing
 
 To test `pg_anon`, you need to have a local database installed. This section covers the installation of postgres and running the test suite.
+Your operating system also need have a locale `en_US.UTF-8`, because in tests creating database in this locale.
 
 ### Setting Up PostgreSQL
 
@@ -335,6 +336,7 @@ set TEST_DB_HOST=127.0.0.1
 set TEST_DB_PORT=5432
 set TEST_SOURCE_DB=test_source_db
 set TEST_TARGET_DB=test_target_db
+set TEST_CONFIG=/path/to/pg_anon/tests/config.yaml
 ```
 
 ## Usage

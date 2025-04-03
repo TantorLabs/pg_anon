@@ -39,6 +39,8 @@ class TestParams:
     test_processes = 4
 
     def __init__(self):
+        config_path = os.path.dirname(os.path.abspath(__file__)) + '/config.yml'
+
         if os.environ.get("TEST_DB_USER") is not None:
             self.test_db_user = os.environ["TEST_DB_USER"]
         if os.environ.get("PGPASSWORD") is not None:
@@ -59,8 +61,7 @@ class TestParams:
             self.db_connections_per_process = os.environ["TEST_DB_CONNECTIONS_PER_PROCESS"]
         if os.environ.get("TEST_PROCESSES") is not None:
             self.test_processes = os.environ["TEST_PROCESSES"]
-        if os.environ.get("TEST_CONFIG") is not None:
-            self.test_config = os.environ["TEST_CONFIG"]
+        self.test_config = os.environ.get("TEST_CONFIG", config_path)
 
 
 params = TestParams()
@@ -1828,8 +1829,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         row_len = set(len(row) for row in list(json.loads(executor.json).values()))
         self.assertEqual(len(row_len), 1)  # all fields have equal length of rows
@@ -1893,12 +1893,10 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--verbose=debug",
                 "--debug",
         ])
-
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         self.assertTrue(len(executor.table.rows) > 0)
 
@@ -1957,8 +1955,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertEqual(len(executor.table.rows), all_rows_count)
@@ -1992,8 +1989,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             self.assertEqual(field.nspname, schema_name)
@@ -2024,8 +2020,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             match = re.search(schema_mask, field.nspname)
@@ -2057,8 +2052,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             self.assertEqual(field.relname, table_name)
@@ -2089,8 +2083,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             match = re.search(table_mask, field.relname)
@@ -2122,8 +2115,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertNotEqual(len(executor.table.rows), all_rows_count)
@@ -2156,8 +2148,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         context_only_sensitive = MainRoutine(args_only_sensitive).context  # Setup for context reusing only
         executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
-        res_only_sensitive = await executor_only_sensitive.run()
-        self.assertEqual(res_only_sensitive.result_code, ResultCode.DONE)
+        await executor_only_sensitive.run()
 
         # Full executor run
         args_full = parser.parse_args(
@@ -2174,8 +2165,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         context_full = MainRoutine(args_full).context  # Setup for context reusing only
         executor_full = ViewFieldsMode(context_full)
-        res_full = await executor_full.run()
-        self.assertEqual(res_full.result_code, ResultCode.DONE)
+        await executor_full.run()
 
         all_rows_count = await get_scan_fields_count(context_full.connection_params)
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
@@ -2217,8 +2207,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         self.assertIsNone(executor.table)
         self.assertIsNotNone(executor.json)
@@ -2249,13 +2238,17 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--fields-count=0",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
 
+        self.assertTrue(executor_failed)
         self.assertIsNone(executor.fields)
         self.assertIsNone(executor.table)
 
@@ -2281,13 +2274,17 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--schema-name={schema_name}",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
 
+        self.assertTrue(executor_failed)
         self.assertEqual(len(executor.fields), 0)
         self.assertIsNone(executor.table)
         self.assertFalse(executor.fields_cut_by_limits)
@@ -2312,12 +2309,17 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--mode=view-fields",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
+
+        self.assertTrue(executor_failed)
 
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 
@@ -2336,12 +2338,17 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--mode=view-fields",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
+
+        self.assertTrue(executor_failed)
 
         passed_stages.append("test_13_view_without_prepared_dictionary")
 

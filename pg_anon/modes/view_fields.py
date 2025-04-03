@@ -4,8 +4,7 @@ from typing import List, Dict
 from prettytable import PrettyTable, SINGLE_BORDER
 
 from pg_anon.common.db_utils import get_scan_fields_list, get_scan_fields_count
-from pg_anon.common.dto import PgAnonResult, FieldInfo
-from pg_anon.common.enums import ResultCode
+from pg_anon.common.dto import FieldInfo
 from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
 from pg_anon.context import Context
 
@@ -171,36 +170,18 @@ class ViewFieldsMode:
             self._prepare_table()
             print(self.table)
 
-    async def run(self):
-        result = PgAnonResult()
-        result.result_code = ResultCode.DONE
+    async def run(self) -> None:
         self.context.logger.info("-------------> Started view_fields mode")
 
         try:
             if self._processing_fields_limit < 1:
                 raise ValueError("Processing fields limit must be greater than zero!")
-        except ValueError:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-            return result
-
-        try:
             self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
             if not self.context.prepared_dictionary_obj.get("dictionary"):
                 raise ValueError("Prepared dictionary is empty!")
-        except:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-            return result
-
-        try:
             await self._output_fields()
-        except:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-            return result
 
-        if result.result_code == ResultCode.DONE:
             self.context.logger.info("<------------- Finished view_fields mode")
-
-        return result
+        except Exception as ex:
+            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
+            raise ex

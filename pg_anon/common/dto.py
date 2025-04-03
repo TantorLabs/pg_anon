@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import dataclass
 from typing import Optional, Callable, Dict, List
 
@@ -9,7 +10,29 @@ class PgAnonResult:
     params = None  # JSON
     result_code = ResultCode.UNKNOWN
     result_data = None
-    elapsed = None
+    start_time = None
+    end_time = None
+    _elapsed = None
+
+    def start(self):
+        self.start_time = time.time()
+
+    def fail(self):
+        self.end_time = time.time()
+        self.result_code = ResultCode.FAIL
+
+    def complete(self):
+        self.end_time = time.time()
+        self.result_code = ResultCode.DONE
+
+    @property
+    def elapsed(self):
+        if not self._elapsed:
+            if self.start_time is None or self.end_time is None:
+                return None
+
+            self._elapsed = round(self.end_time - self.start_time, 2)
+        return self._elapsed
 
 
 @dataclass
