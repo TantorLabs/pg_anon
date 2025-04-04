@@ -30,26 +30,38 @@ class CreateDictMode:
         self.context = context
 
     def _check_field_match_by_rule(self, field: Dict, rule: Dict) -> bool:
-        schema_match = False
-        tbl_match = False
-        fld_match = False
+        schema_matched = False
+        table_matched = False
+        field_matched = False
 
         if "schema" in rule and field["nspname"] == rule["schema"]:
-            schema_match = True
+                schema_matched = True
+        elif "schema_mask" in rule:
+            if rule["schema_mask"] == "*":
+                schema_matched = True
+            elif re.search(rule["schema_mask"], field["nspname"]) is not None:
+                schema_matched = True
+        else:
+            # Required schema or schema_mask
+            return False
 
-        if "table" in rule and field["relname"] == rule["table"]:
-            tbl_match = True
+        if "table" not in rule:
+            if "table_mask" not in rule:
+                table_matched = True
+            else:
+                if rule["table_mask"] == "*":
+                    table_matched = True
+                elif re.search(rule["table_mask"], field["relname"]) is not None:
+                    table_matched = True
+        elif field["relname"] == rule["table"]:
+            table_matched = True
 
-        if "fields" in rule and field["column_name"] in rule["fields"]:
-            fld_match = True
+        if "fields" not in rule:
+            field_matched = True
+        elif field["column_name"] in rule["fields"]:
+            field_matched = True
 
-        if schema_match and tbl_match and fld_match:
-            return True
-
-        if "fields" not in rule and schema_match and tbl_match:
-            return True
-
-        if "table" not in rule and "fields" not in rule and schema_match:
+        if schema_matched and table_matched and field_matched:
             return True
 
         return False
@@ -95,7 +107,8 @@ class CreateDictMode:
 
         regex_for_compile = []
         for v in self.context.meta_dictionary_obj["data_regex"]["rules"]:
-            regex_for_compile.append(re.compile(v))
+            # re.DOTALL using for searching in text with \n
+            regex_for_compile.append(re.compile(v, re.DOTALL))
 
         self.context.meta_dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
 
@@ -225,8 +238,9 @@ class CreateDictMode:
             if value is None:
                 continue
 
+            lower_value = value.lower()
             for partial_constant in dictionary_obj["data_const"]["partial_constants"]:
-                if partial_constant in value:
+                if partial_constant.lower() in lower_value:
                     self.context.logger.debug(
                         f"========> Process[{name}]: check_sensitive_data: match by partial constant {partial_constant} , {field_info}"
                     )

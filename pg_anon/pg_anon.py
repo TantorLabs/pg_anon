@@ -152,7 +152,7 @@ class MainRoutine:
         elif self.context.args.mode == AnonMode.VIEW_DATA:
             return ViewDataMode(self.context)
         else:
-            raise Exception("Unknown mode: " + self.context.args.mode)
+            raise RuntimeError("Unknown mode: " + self.context.args.mode)
 
     async def run(self) -> PgAnonResult:
         self._bootstrap()

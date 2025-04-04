@@ -1470,8 +1470,47 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_07_create_dict_using_include_rules")
+    
+    async def test_08_create_dict_using_include_and_skip_rules_with_masks(self):
+        # self.assertTrue("init_env" in passed_stages)
 
-    async def test_08_create_dict_using_partial_constants(self):
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_include_and_skip_rules.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--db-connections-per-process={params.db_connections_per_process}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_08_create_dict_using_include_and_skip_rules_with_masks")
+
+    async def test_09_create_dict_using_partial_constants(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1508,9 +1547,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_08_create_dict_using_partial_constants")
+        passed_stages.append("test_09_create_dict_using_partial_constants")
 
-    async def test_09_create_dict_using_data_sql_condition(self):
+    async def test_10_create_dict_using_data_sql_condition(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1547,9 +1586,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_09_create_dict_using_data_sql_condition")
+        passed_stages.append("test_10_create_dict_using_data_sql_condition")
 
-    async def test_10_create_dict_using_data_func(self):
+    async def test_11_create_dict_using_data_func(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1586,7 +1625,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_10_create_dict_using_data_func")
+        passed_stages.append("test_11_create_dict_using_data_func")
 
 
 class TmpResults:

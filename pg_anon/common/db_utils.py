@@ -201,7 +201,7 @@ async def run_query_in_pool(pool: Pool, query: str):
             logger.info(f"Execute query: {query}")
     except Exception as e:
         logger.error("Exception in run_query_in_pool:\n" + exception_helper())
-        raise Exception(f"Can't execute query: {query}")
+        raise RuntimeError(f"Can't execute query: {query}")
 
     logger.info(f"<================ Finished query {query}")
 

@@ -431,18 +431,18 @@ var = {
     },
     "skip_rules": [  # List of schemas, tables, and fields to skip
         {
-            # possibly some schema or table contains a lot of data that is not worth scanning. Skipped objects will not be automatically included in the resulting dictionary. Masks are not supported in this object.
-            "schema": "schm_mask_ext_exclude_2",  # Schema specification is mandatory
-            "table": "card_numbers",  # Optional. If there is no "table", the entire schema will be skipped.
+            # possibly some schema or table contains a lot of data that is not worth scanning. Skipped objects will not be automatically included in the resulting dictionary
+            "schema": "schm_mask_ext_exclude_2",  # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "card_numbers",  # Optional. Can use "table" for full name matching or "table_mask" for regexp matching. If there is no "table"/"table_mask", the entire schema will be skipped.
             "fields": ["val_skip"]  # Optional. If there are no "fields", the entire table will be skipped.
         }
     ],
     "include_rules": [ # List of schemas, tables, and fields which will be scanning
         {
             # possibly you need specific fields for scanning or you can debug some functions on specific field
-            "schema": "schm_other_2", # Required. Schema specification is mandatory
-            "table": "tbl_test_anon_functions", # Optional. If there is no "table", the entire schema will be included.
-            "fields": ["fld_5_email"] # Optional. If there are no "fields", the entire table will be included.             
+            "schema": "schm_other_2",  # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "tbl_test_anon_functions",  # Optional. Can use "table" for full name matching or "table_mask" for regexp matching. If there is no "table"/"table_mask", the entire schema will be skipped.
+            "fields": ["fld_5_email"]  # Optional. If there are no "fields", the entire table will be skipped.
         }
     ],
     "data_regex": {  # List of regular expressions to search for sensitive data
