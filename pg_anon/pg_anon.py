@@ -47,7 +47,12 @@ class MainRoutine:
         self.context.logger = self.logger
         self.result = PgAnonResult()
 
-        self._skip_check_postgres_utils = self.context.args.mode in (AnonMode.INIT, AnonMode.CREATE_DICT)
+        self._skip_check_postgres_utils = self.context.args.mode in (
+            AnonMode.INIT,
+            AnonMode.CREATE_DICT,
+            AnonMode.VIEW_FIELDS,
+            AnonMode.VIEW_DATA,
+        )
 
     def setup_logger(self):
         log_level = logging.NOTSET
