@@ -106,10 +106,13 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int = None, conditio
     query_limit = get_limit_query(limit)
 
     query = f"""
-    SELECT distinct(substring(\"{field_info.column_name}\"::text, 1, 8196))
-    FROM \"{field_info.nspname}\".\"{field_info.relname}\"
-    {query_condition}
-    {query_limit}
+    SELECT distinct t1._field 
+    FROM (
+        SELECT (substring(\"{field_info.column_name}\"::text, 1, 8196)) as _field
+        FROM \"{field_info.nspname}\".\"{field_info.relname}\"
+        {query_condition}
+        {query_limit}
+    ) as t1
     """
 
     return query

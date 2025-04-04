@@ -412,7 +412,7 @@ python pg_anon.py --mode=create-dict \
 | `--output-sens-dict-file`      | Output file with sensitive fields will be saved to this value                                                                                                |
 | `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                                 |
 | `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                                  |
-| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000)                                                                                      |
+| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000). Actual rows count can be smaller after getting unique values                        |
 
 #### Requirements for input --meta-dict-file (metadict):
 
