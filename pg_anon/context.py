@@ -2,7 +2,7 @@ import argparse
 import os
 from typing import Dict, Optional
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
 from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml
@@ -413,10 +413,13 @@ class Context:
 
     def set_postgres_version(self, pg_version: str):
         self.pg_version = pg_version
+        pg_major_version = int(pg_version.split('.')[0])
+
+        if pg_major_version >= 14:
+            self.server_settings.update(TRANSACTIONS_SERVER_SETTINGS)
+
         if not self.config:
             return
-
-        pg_major_version = int(pg_version.split('.')[0])
 
         utils_versions = self.config.get('pg-utils-versions')
         pg_utils = utils_versions.get(pg_major_version)
