@@ -18,8 +18,8 @@ from pg_anon.common.utils import (
     get_file_name_from_path,
 )
 from pg_anon.context import Context
-from pg_anon.view_data import ViewDataMode
-from pg_anon.view_fields import ViewFieldsMode
+from pg_anon.modes.view_data import ViewDataMode
+from pg_anon.modes.view_fields import ViewFieldsMode
 
 input_args = None
 passed_stages = []
@@ -39,6 +39,8 @@ class TestParams:
     test_processes = 4
 
     def __init__(self):
+        config_path = os.path.dirname(os.path.abspath(__file__)) + '/config.yml'
+
         if os.environ.get("TEST_DB_USER") is not None:
             self.test_db_user = os.environ["TEST_DB_USER"]
         if os.environ.get("PGPASSWORD") is not None:
@@ -59,6 +61,7 @@ class TestParams:
             self.db_connections_per_process = os.environ["TEST_DB_CONNECTIONS_PER_PROCESS"]
         if os.environ.get("TEST_PROCESSES") is not None:
             self.test_processes = os.environ["TEST_PROCESSES"]
+        self.test_config = os.environ.get("TEST_CONFIG", config_path)
 
 
 params = TestParams()
@@ -145,6 +148,7 @@ class BasicUnitTest:
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=init",
                 "--debug",
             ]
@@ -180,6 +184,7 @@ class BasicUnitTest:
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=init",
                 "--verbose=debug",
                 "--debug",
@@ -207,6 +212,7 @@ class BasicUnitTest:
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=init",
                 "--debug",
             ]
@@ -227,6 +233,7 @@ class BasicUnitTest:
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=init",
                 "--verbose=debug",
                 "--debug",
@@ -503,6 +510,7 @@ class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicU
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--mode=create-dict",
             ]
         )
@@ -523,6 +531,7 @@ class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicU
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--meta-dict-file={meta_dict_file_name}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--prepared-no-sens-dict-file={prepared_no_sens_dict_file_name}",
@@ -554,6 +563,7 @@ class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicU
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--meta-dict-file={','.join(meta_dict_file_names)}",
                 f"--prepared-sens-dict-file={','.join(prepared_sens_dict_file_names)}",
                 f"--prepared-no-sens-dict-file={','.join(prepared_no_sens_dict_file_names)}",
@@ -584,6 +594,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--output-dir={output_dir}",
@@ -612,6 +623,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={input_dir}",
@@ -639,6 +651,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--output-dir={output_dir}",
@@ -668,6 +681,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={input_dir}",
@@ -687,6 +701,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 "--verbose=debug",
@@ -712,6 +727,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-struct-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
@@ -733,6 +749,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-struct-restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={output_dir}",
@@ -781,6 +798,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-data-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
@@ -802,6 +820,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-data-restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={output_dir}",
@@ -859,6 +878,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-data-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
@@ -880,6 +900,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-data-restore",  # just sync data of specific tables from test_sync_data_2.py
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={output_dir}",
@@ -927,6 +948,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-struct-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
@@ -949,6 +971,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-struct-restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={output_dir}",
@@ -975,6 +998,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--processes={params.test_processes}",
@@ -1005,6 +1029,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--processes={params.test_processes}",
@@ -1027,6 +1052,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=sync-data-restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 "--verbose=debug",
@@ -1054,6 +1080,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--processes={params.test_processes}",
@@ -1076,6 +1103,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 "--verbose=debug",
@@ -1195,6 +1223,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict}",
@@ -1232,6 +1261,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     f"--db-user={params.test_db_user}",
                     f"--db-port={params.test_db_port}",
                     f"--db-user-password={params.test_db_user_password}",
+                    f"--config={params.test_config}",
                     "--mode=dump",
                     f"--prepared-sens-dict-file={self.target_sens_dict}",
                     f"--output-dir={output_dir}",
@@ -1262,6 +1292,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 "--mode=restore",
                 f"--input-dir={input_dir}",
@@ -1337,6 +1368,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict_file}",
@@ -1375,6 +1407,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict_file}",
@@ -1417,6 +1450,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={','.join(meta_dicts)}",
@@ -1436,8 +1470,47 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_07_create_dict_using_include_rules")
+    
+    async def test_08_create_dict_using_include_and_skip_rules_with_masks(self):
+        # self.assertTrue("init_env" in passed_stages)
 
-    async def test_08_create_dict_using_partial_constants(self):
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_include_and_skip_rules.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--db-connections-per-process={params.db_connections_per_process}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_08_create_dict_using_include_and_skip_rules_with_masks")
+
+    async def test_09_create_dict_using_partial_constants(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1455,6 +1528,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={','.join(meta_dicts)}",
@@ -1473,9 +1547,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_08_create_dict_using_partial_constants")
+        passed_stages.append("test_09_create_dict_using_partial_constants")
 
-    async def test_09_create_dict_using_data_sql_condition(self):
+    async def test_10_create_dict_using_data_sql_condition(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1493,6 +1567,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={','.join(meta_dicts)}",
@@ -1511,9 +1586,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_09_create_dict_using_data_sql_condition")
+        passed_stages.append("test_10_create_dict_using_data_sql_condition")
 
-    async def test_10_create_dict_using_data_func(self):
+    async def test_11_create_dict_using_data_func(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -1531,6 +1606,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={','.join(meta_dicts)}",
@@ -1549,7 +1625,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_10_create_dict_using_data_func")
+        passed_stages.append("test_11_create_dict_using_data_func")
 
 
 class TmpResults:
@@ -1581,6 +1657,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=partial",
                 f"--meta-dict-file={meta_dict_file}",
@@ -1610,6 +1687,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=create-dict",
                 "--scan-mode=full",
                 f"--meta-dict-file={meta_dict_file}",
@@ -1660,6 +1738,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=dump",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--output-dir={output_dir}",
@@ -1688,6 +1767,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=restore",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--input-dir={input_dir}",
@@ -1744,6 +1824,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-data",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 "--schema-name=public",
@@ -1772,6 +1853,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--json",
                 "--mode=view-data",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
@@ -1786,8 +1868,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         row_len = set(len(row) for row in list(json.loads(executor.json).values()))
         self.assertEqual(len(row_len), 1)  # all fields have equal length of rows
@@ -1806,6 +1887,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-data",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 "--schema-name=schm_mask_ext_exclude_2",
@@ -1840,6 +1922,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-data",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--schema-name={schema_name}",
@@ -1849,12 +1932,10 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 "--verbose=debug",
                 "--debug",
         ])
-
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         self.assertTrue(len(executor.table.rows) > 0)
 
@@ -1904,6 +1985,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             ]
@@ -1912,8 +1994,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertEqual(len(executor.table.rows), all_rows_count)
@@ -1937,6 +2018,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--schema-name={schema_name}",
@@ -1946,8 +2028,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             self.assertEqual(field.nspname, schema_name)
@@ -1968,6 +2049,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--schema-mask={schema_mask}",
@@ -1977,8 +2059,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             match = re.search(schema_mask, field.nspname)
@@ -2000,6 +2081,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--table-name={table_name}",
@@ -2009,8 +2091,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             self.assertEqual(field.relname, table_name)
@@ -2031,6 +2112,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--table-mask={table_mask}",
@@ -2040,8 +2122,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         for field in executor.fields:
             match = re.search(table_mask, field.relname)
@@ -2063,6 +2144,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--fields-count={fields_scan_length}",
@@ -2072,8 +2154,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
         self.assertNotEqual(len(executor.table.rows), all_rows_count)
@@ -2098,6 +2179,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 "--view-only-sensitive-fields",
@@ -2105,8 +2187,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         context_only_sensitive = MainRoutine(args_only_sensitive).context  # Setup for context reusing only
         executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
-        res_only_sensitive = await executor_only_sensitive.run()
-        self.assertEqual(res_only_sensitive.result_code, ResultCode.DONE)
+        await executor_only_sensitive.run()
 
         # Full executor run
         args_full = parser.parse_args(
@@ -2116,14 +2197,14 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             ]
         )
         context_full = MainRoutine(args_full).context  # Setup for context reusing only
         executor_full = ViewFieldsMode(context_full)
-        res_full = await executor_full.run()
-        self.assertEqual(res_full.result_code, ResultCode.DONE)
+        await executor_full.run()
 
         all_rows_count = await get_scan_fields_count(context_full.connection_params)
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
@@ -2155,6 +2236,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--json",
@@ -2164,8 +2246,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
+        await executor.run()
 
         self.assertIsNone(executor.table)
         self.assertIsNotNone(executor.json)
@@ -2190,18 +2271,23 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 "--fields-count=0",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
 
+        self.assertTrue(executor_failed)
         self.assertIsNone(executor.fields)
         self.assertIsNone(executor.table)
 
@@ -2221,18 +2307,23 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 f"--schema-name={schema_name}",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
 
+        self.assertTrue(executor_failed)
         self.assertEqual(len(executor.fields), 0)
         self.assertIsNone(executor.table)
         self.assertFalse(executor.fields_cut_by_limits)
@@ -2252,16 +2343,22 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
                 "--mode=view-fields",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
+
+        self.assertTrue(executor_failed)
 
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 
@@ -2276,15 +2373,21 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
                 "--mode=view-fields",
             ]
         )
+        executor_failed = False
 
         context = MainRoutine(args).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
-        res = await executor.run()
-        self.assertEqual(res.result_code, ResultCode.FAIL)
+        try:
+            await executor.run()
+        except ValueError:
+            executor_failed = True
+
+        self.assertTrue(executor_failed)
 
         passed_stages.append("test_13_view_without_prepared_dictionary")
 

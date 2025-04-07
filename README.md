@@ -221,6 +221,8 @@ It uses the following tools:
 - PostgreSQL [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) tool for dumping the database structure.
 - PostgreSQL [`pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html) tool for restoring the database structure.
 
+**Warning:** Requires PostgreSQL 14 or higher
+
 ## Installation Guide
 
 ### Preconditions
@@ -266,6 +268,7 @@ Installation processes slightly differ depending on your operating system.
 ## Testing
 
 To test `pg_anon`, you need to have a local database installed. This section covers the installation of postgres and running the test suite.
+Your operating system also need have a locale `en_US.UTF-8`, because in tests creating database in this locale.
 
 ### Setting Up PostgreSQL
 
@@ -335,6 +338,7 @@ set TEST_DB_HOST=127.0.0.1
 set TEST_DB_PORT=5432
 set TEST_SOURCE_DB=test_source_db
 set TEST_TARGET_DB=test_target_db
+set TEST_CONFIG=/path/to/pg_anon/tests/config.yaml
 ```
 
 ## Usage
@@ -347,12 +351,13 @@ python pg_anon.py --help
 
 Common pg_anon options:
 
-| Option                          | Description                                                          |
-|---------------------------------|----------------------------------------------------------------------|
-| `--debug`                       | Enable debug mode (default false)                                    |
-| `--verbose`                     | Configure verbose mode: [info, debug, error] (default info)          |
-| `--db-connections-per-process`  | Amount of connections for IO operations for each process (default 4) |
-| `--processes`                   | Amount of processes for multiprocessing operations (default 4)       |
+| Option                         | Description                                                                       |
+|--------------------------------|-----------------------------------------------------------------------------------|
+| `--debug`                      | Enable debug mode (default false)                                                 |
+| `--verbose`                    | Configure verbose mode: [info, debug, error] (default info)                       |
+| `--db-connections-per-process` | Amount of connections for IO operations for each process (default 4)              |
+| `--processes`                  | Amount of processes for multiprocessing operations (default 4)                    |
+| `--config`                     | Path to the config file, where can be specified `pg_dump` and `pg_restore` utils. |
 
 Database configuration options:
 
@@ -409,7 +414,7 @@ python pg_anon.py --mode=create-dict \
 | `--output-sens-dict-file`      | Output file with sensitive fields will be saved to this value                                                                                                |
 | `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                                 |
 | `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                                  |
-| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000)                                                                                      |
+| `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000). Actual rows count can be smaller after getting unique values                        |
 
 #### Requirements for input --meta-dict-file (metadict):
 
@@ -428,24 +433,24 @@ var = {
     },
     "skip_rules": [  # List of schemas, tables, and fields to skip
         {
-            # possibly some schema or table contains a lot of data that is not worth scanning. Skipped objects will not be automatically included in the resulting dictionary. Masks are not supported in this object.
-            "schema": "schm_mask_ext_exclude_2",  # Schema specification is mandatory
-            "table": "card_numbers",  # Optional. If there is no "table", the entire schema will be skipped.
+            # possibly some schema or table contains a lot of data that is not worth scanning. Skipped objects will not be automatically included in the resulting dictionary
+            "schema": "schm_mask_ext_exclude_2",  # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "card_numbers",  # Optional. Can use "table" for full name matching or "table_mask" for regexp matching. If there is no "table"/"table_mask", the entire schema will be skipped.
             "fields": ["val_skip"]  # Optional. If there are no "fields", the entire table will be skipped.
         }
     ],
     "include_rules": [ # List of schemas, tables, and fields which will be scanning
         {
             # possibly you need specific fields for scanning or you can debug some functions on specific field
-            "schema": "schm_other_2", # Required. Schema specification is mandatory
-            "table": "tbl_test_anon_functions", # Optional. If there is no "table", the entire schema will be included.
-            "fields": ["fld_5_email"] # Optional. If there are no "fields", the entire table will be included.             
+            "schema": "schm_other_2",  # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "tbl_test_anon_functions",  # Optional. Can use "table" for full name matching or "table_mask" for regexp matching. If there is no "table"/"table_mask", the entire schema will be skipped.
+            "fields": ["fld_5_email"]  # Optional. If there are no "fields", the entire table will be skipped.
         }
     ],
     "data_regex": {  # List of regular expressions to search for sensitive data
         "rules": [
-            """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
-            "7?[\d]{10}"  # phone 7XXXXXXXXXX 
+            r"""[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
+            r"^(7?\d{10})$",				# phone 7XXXXXXXXXX
         ]
     },
     "data_const": {
@@ -545,15 +550,15 @@ var = {
 
 Possible options in mode=dump:
 
-| Option                         | Description                                                                                                                                |
-|--------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file`    | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
-| `--dbg-stage-1-validate-dict`  | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
-| `--dbg-stage-2-validate-data`  | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
-| `--dbg-stage-3-validate-full`  | Makes all logic with "limit" in SQL queries (default false)                                                                                |
-| `--clear-output-dir`           | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
-| `--pg-dump`                    | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
-| `--output-dir`                 | Output directory for dump files. (default "")                                                                                              |
+| Option                        | Description                                                                                                                                |
+|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`   | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
+| `--dbg-stage-1-validate-dict` | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
+| `--dbg-stage-2-validate-data` | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
+| `--dbg-stage-3-validate-full` | Makes all logic with "limit" in SQL queries (default false)                                                                                |
+| `--clear-output-dir`          | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
+| `--pg-dump`                   | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
+| `--output-dir`                | Output directory for dump files. (default "")                                                                                              |
 
 ### Run restore mode
 
@@ -720,6 +725,40 @@ from (
 	    }
 	]
 ```
+
+### Configuring of pg_anon
+
+For specifying `pg_dump` and `pg_restore` utils, the parameters `--pg-dump` and `--pg-restore` can be used. 
+Also `--config` can be used for advanced configuring. This parameter accept YAML file in this format:
+```yaml
+pg-utils-versions:
+  <postgres_major_version>:
+    pg_dump: "/path/to/<postgres_major_version>/pg_dump"
+    pg_restore: "/path/to/<postgres_major_version>/pg_restore"
+  <another_postgres_major_version>:
+    pg_dump: "/path/to/<postgres_major_version>/pg_dump"
+    pg_restore: "/path/to/<postgres_major_version>/pg_restore"
+  default:
+      pg_dump: "/path/to/default_postgres_version/pg_dump"
+      pg_restore: "/path/to/default_postgres_version/pg_restore"
+```
+
+For example can be specified config for postgres 15, postgres 17:
+
+```yaml
+pg-utils-versions:
+  15:
+    pg_dump: "/usr/lib/postgresql/14/bin/pg_dump"
+    pg_restore: "/usr/lib/postgresql/14/bin/pg_restore"
+  17:
+    pg_dump: "/usr/lib/postgresql/17/bin/pg_dump"
+    pg_restore: "/usr/lib/postgresql/17/bin/pg_restore"
+  default:
+      pg_dump: "/usr/lib/postgresql/17/bin/pg_dump"
+      pg_restore: "/usr/lib/postgresql/17/bin/pg_restore"
+```
+
+In case of mismatch current postgres version with this config, will be used version of `pg_dump` and `pg_restore` from `default` section. For example `pg_anon` can be run with this config on postgres 16. In this case will be used `pg_dump 17` and `pg_restore 17`, i.e. from `default` section.
 
 ### Debug stages in dump and restore modes
 

@@ -79,14 +79,14 @@
             "schema": "public",
             "table": "inn_info",
             "fields": {
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {
             "schema": "schm_customer",
             "table": "customer_company",
             "fields": {
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {
