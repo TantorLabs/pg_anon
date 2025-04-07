@@ -4,6 +4,9 @@ SERVER_SETTINGS = {
     "application_name": "pg_anon",
     "statement_timeout": "0",
     "lock_timeout": "0",
+}
+
+TRANSACTIONS_SERVER_SETTINGS = {
     "idle_in_transaction_session_timeout": "0",
     "idle_session_timeout": "0",
 }

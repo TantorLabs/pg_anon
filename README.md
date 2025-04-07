@@ -221,7 +221,7 @@ It uses the following tools:
 - PostgreSQL [`pg_dump`](https://www.postgresql.org/docs/current/app-pgdump.html) tool for dumping the database structure.
 - PostgreSQL [`pg_restore`](https://www.postgresql.org/docs/current/app-pgrestore.html) tool for restoring the database structure.
 
-**Warning:** Requires PostgreSQL 14 or higher
+**Warning:** Requires PostgreSQL 9.6 or higher
 
 ## Installation Guide
 
