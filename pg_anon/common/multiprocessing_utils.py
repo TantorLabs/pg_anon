@@ -14,7 +14,7 @@ async def init_process(name: str, ctx, target_func: Callable, tasks: List, *args
 
     p = aioprocessing.AioProcess(
         target=target_func,
-        args=(name, ctx, queue, tasks, *args),
+        args=(name, queue, tasks, *args),
         kwargs=kwargs,
     )
     p.start()

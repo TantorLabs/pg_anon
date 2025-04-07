@@ -5,10 +5,7 @@ from typing import Dict, Optional
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
-from pg_anon.common.utils import (
-    exception_handler,
-    parse_comma_separated_list,
-)
+from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml
 
 
 class Context:
@@ -16,7 +13,10 @@ class Context:
     def __init__(self, args):
         self.current_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
         self.args = args
+        self.config = read_yaml(args.config) if args.config else None
         self.pg_version = None
+        self.pg_dump = args.pg_dump
+        self.pg_restore = args.pg_restore
         self.validate_limit = "LIMIT 100"
         self.meta_dictionary_obj: Dict = {}
         self.prepared_dictionary_obj: Dict = {}
@@ -220,9 +220,11 @@ class Context:
             default=False,
         )
         parser.add_argument(
-            "--db-host",
-            type=str,
+            "--config",
+            help="Path to configuration file of pg_anon in YAML",
+            default=None,
         )
+        parser.add_argument("--db-host", type=str)
         parser.add_argument("--db-port", type=str, default="5432")
         parser.add_argument("--db-name", type=str, default="default")
         parser.add_argument("--db-user", type=str, default="default")
@@ -408,3 +410,26 @@ class Context:
             help="Appends suffix for connection name. Just for comfortable automation",
         )
         return parser
+
+    def set_postgres_version(self, pg_version: str):
+        self.pg_version = pg_version
+        if not self.config:
+            return
+
+        pg_major_version = int(pg_version.split('.')[0])
+
+        utils_versions = self.config.get('pg-utils-versions')
+        pg_utils = utils_versions.get(pg_major_version)
+        if not pg_utils:
+            pg_utils = utils_versions.get('default')
+            if not pg_utils:
+                return
+
+        pg_dump = pg_utils.get('pg_dump')
+        pg_restore = pg_utils.get('pg_restore')
+
+        if not pg_dump or not pg_restore:
+            return ValueError("Config incorrect. Must be specified pg_dump and pg_restore utils paths")
+
+        self.pg_dump = pg_dump
+        self.pg_restore = pg_restore

@@ -15,8 +15,8 @@ from asyncpg import Connection, Pool
 
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
 from pg_anon.common.db_utils import create_connection, create_pool, get_tables_to_dump, get_db_size
-from pg_anon.common.dto import PgAnonResult, Metadata
-from pg_anon.common.enums import ResultCode, VerboseOptions, AnonMode
+from pg_anon.common.dto import Metadata
+from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
     exception_helper, get_dict_rule_for_table, get_dump_query, get_file_name_from_path, chunkify, get_pg_util_version
@@ -63,13 +63,13 @@ class DumpMode:
         self._need_dump_pre_and_post_sections = self.context.args.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
         self._need_dump_data = self.context.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
         self._skip_pre_data_dump = (
-                not self._need_dump_pre_and_post_sections
-                or self.context.args.dbg_stage_2_validate_data
+            not self._need_dump_pre_and_post_sections
+            or self.context.args.dbg_stage_2_validate_data
         )
         self._skip_post_data_dump = (
-                not self._need_dump_pre_and_post_sections
-                or self.context.args.dbg_stage_2_validate_data
-                or self.context.args.dbg_stage_3_validate_full
+            not self._need_dump_pre_and_post_sections
+            or self.context.args.dbg_stage_2_validate_data
+            or self.context.args.dbg_stage_3_validate_full
         )
 
     def _prepare_output_dir(self):
@@ -152,7 +152,7 @@ class DumpMode:
 
         self.metadata.created = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.metadata.pg_version = self.context.pg_version
-        self.metadata.pg_dump_version = get_pg_util_version(self.context.args.pg_dump)
+        self.metadata.pg_dump_version = get_pg_util_version(self.context.pg_dump)
 
         self.metadata.dictionary_content_hash = {}
         for dictionary_file_name, dictionary_content in self.context.prepared_dictionary_contents.items():
@@ -179,8 +179,8 @@ class DumpMode:
                 db_name=self.context.args.db_name
             )
 
-            self.metadata.dbg_stage_2_validate_data = self.context.args.dbg_stage_2_validate_data
-            self.metadata.dbg_stage_3_validate_full = self.context.args.dbg_stage_3_validate_full
+        self.metadata.dbg_stage_2_validate_data = self.context.args.dbg_stage_2_validate_data
+        self.metadata.dbg_stage_3_validate_full = self.context.args.dbg_stage_3_validate_full
 
         self.metadata.save_into_file(file_name=self.metadata_file_path)
 
@@ -199,7 +199,7 @@ class DumpMode:
         exclude_schemas = [item for sublist in tmp_list for item in sublist]
 
         command = [
-            self.context.args.pg_dump,
+            self.context.pg_dump,
             "-h",
             self.context.args.db_host,
             "-p",
@@ -225,15 +225,18 @@ class DumpMode:
             del command[command.index("-h"): command.index("-h") + 2]
 
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        err, out = proc.communicate()
-        if err.decode("utf-8") != "":
-            msg = "ERROR: database schema dump has failed! \n%s" % err.decode("utf-8")
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
+        # pg_dump put logs into stderr
+        _, pg_dump_logs = proc.communicate()
+
+        for log_line in pg_dump_logs.split("\n"):
+            self.context.logger.info(log_line)
+
+        if proc.returncode != 0:
+            msg = "ERROR: database schema dump has failed!"
             self.context.logger.error(msg)
             raise RuntimeError(msg)
-
-        for v in out.decode("utf-8").split("\n"):
-            self.context.logger.info(v)
 
     async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str):
         try:
@@ -356,7 +359,7 @@ class DumpMode:
             self.context.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
             self.context.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
 
-    def _process_dump_data(self, name: str, ctx: Context, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
+    def _process_dump_data(self, name: str, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
         tasks_res = []
 
         status_ratio = 10
@@ -365,7 +368,7 @@ class DumpMode:
         if len(query_tasks) > 50000:
             status_ratio = 1000
 
-        async def run():
+        async def _process_run():
             self.context.logger.debug(f"================> Process [{name}] Connection pool opening")
             pool = await create_pool(
                 connection_params=self.context.connection_params,
@@ -415,13 +418,13 @@ class DumpMode:
                     self.context.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {self.context.args.db_connections_per_process}")
                     await asyncio.wait(tasks)
             finally:
-                self.context.logger.info(f"<================ Process [{name}] Connection pool closing")
+                self.context.logger.debug(f"<================ Process [{name}] Connection pool closing")
 
                 if pool.is_closing():
-                    self.context.logger.info(f"<================ Process [{name}] Connection pool already has been closed!")
+                    self.context.logger.debug(f"<================ Process [{name}] Connection pool already has been closed!")
                 else:
                     await pool.close()
-                    self.context.logger.info(f"<================ Process [{name}] Connection pool closed")
+                    self.context.logger.debug(f"<================ Process [{name}] Connection pool closed")
 
         self.context.logger.info(f"================> Process [{name}] Started process_dump_impl")
         loop = asyncio.new_event_loop()
@@ -431,7 +434,7 @@ class DumpMode:
             asyncio.set_event_loop(loop)
 
             self.context.logger.debug(f"Process [{name}] Run dump tasks")
-            loop.run_until_complete(run())
+            loop.run_until_complete(_process_run())
 
             self.context.logger.debug(f"Process [{name}] Processing results start")
             tasks_res_final = []
@@ -445,11 +448,11 @@ class DumpMode:
             self.context.logger.error(f"<================ Process [{name}]: {exception_helper()}")
             raise ex
         finally:
-            self.context.logger.info(f"<================ Process [{name}] closing")
+            self.context.logger.debug(f"<================ Process [{name}] closing")
             loop.close()
             queue.put(None)  # Shut down the worker
             queue.close()
-            self.context.logger.info(f"<================ Process [{name}] closed")
+            self.context.logger.debug(f"<================ Process [{name}] closed")
 
     async def _dump_data(self):
         if not self._need_dump_data:
@@ -541,10 +544,8 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
-    async def run(self):
+    async def run(self) -> None:
         self.context.logger.info("-------------> Started dump")
-        result = PgAnonResult()
-        result.result_code = ResultCode.DONE
 
         try:
             self.context.read_prepared_dict()
@@ -558,10 +559,8 @@ class DumpMode:
             await self._dump_post_data()
             await self._dump_data()
             await self._prepare_and_save_metadata()
-        except:
+
+            self.context.logger.info("<------------- Finished dump")
+        except Exception as ex:
             self.context.logger.error("<------------- Dump failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-        finally:
-            if result.result_code == ResultCode.DONE:
-                self.context.logger.info("<------------- Finished dump")
-            return result
+            raise ex

@@ -4,8 +4,6 @@ from typing import List, Dict, Optional
 from prettytable import PrettyTable, SINGLE_BORDER
 
 from pg_anon.common.db_utils import get_fields_list, create_connection, get_rows_count
-from pg_anon.common.dto import PgAnonResult
-from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import exception_helper, get_dump_query, get_dict_rule_for_table
 from pg_anon.context import Context
 
@@ -138,9 +136,7 @@ class ViewDataMode:
             )
             self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
-    async def run(self) -> PgAnonResult:
-        result = PgAnonResult()
-        result.result_code = ResultCode.DONE
+    async def run(self) -> None:
         self.context.logger.info("-------------> Started view_data mode")
 
         try:
@@ -148,28 +144,18 @@ class ViewDataMode:
                 raise ValueError("Processing fields limit must be greater than zero!")
             if self._offset < 0:
                 raise ValueError("Processing fields offset must be greater than zero or equals to zero!")
-        except ValueError:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-            return result
 
-        self.context.read_prepared_dict()
+            self.context.read_prepared_dict()
+            self.table_rule = get_dict_rule_for_table(
+                dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
+                schema=self._schema_name,
+                table=self._table_name,
+            )
 
-        self.table_rule = get_dict_rule_for_table(
-            dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
-            schema=self._schema_name,
-            table=self._table_name,
-        )
-
-        try:
             await self._prepare_queries()
             await self._output_fields()
-        except:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
-            result.result_code = ResultCode.FAIL
-            return result
 
-        if result.result_code == ResultCode.DONE:
             self.context.logger.info("<------------- Finished view_fields mode")
-
-        return result
+        except Exception as ex:
+            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
+            raise ex

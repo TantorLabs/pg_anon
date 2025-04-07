@@ -11,7 +11,9 @@ dependencies=[
     "asyncpg==0.29.0",
     "nest-asyncio==1.6.0",
     "async-timeout==4.0.3",
-    "setuptools>=68"
+    "setuptools>=68",
+    "prettytable>=3.10.2",
+    "pyyaml (>=6.0.2,<7.0.0)"
 ]
 
 [build-system]
@@ -39,9 +41,3 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-aioprocessing = "2.0.1"
-asyncpg = "0.29.0"
-nest-asyncio = "1.6.0"
-setuptools = ">=68"
-async-timeout = "4.0.3"
-prettytable = "^3.10.2"

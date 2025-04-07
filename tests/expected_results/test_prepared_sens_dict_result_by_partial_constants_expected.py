@@ -33,7 +33,7 @@
                 "company_name": "anon_funcs.digest(\"company_name\", 'salt_word', 'md5')",
                 "email": "anon_funcs.digest(\"email\", 'salt_word', 'md5')",
                 "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {
@@ -93,7 +93,7 @@
             "schema": "public",
             "table": "inn_info",
             "fields": {
-                "inn": "anon_funcs.random_inn()"
+                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
         },
         {
