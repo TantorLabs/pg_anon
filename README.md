@@ -447,8 +447,8 @@ var = {
     ],
     "data_regex": {  # List of regular expressions to search for sensitive data
         "rules": [
-            """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
-            "7?[\d]{10}"  # phone 7XXXXXXXXXX 
+            r"""[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
+            r"^(7?\d{10})$",				# phone 7XXXXXXXXXX
         ]
     },
     "data_const": {
