@@ -146,18 +146,23 @@ class MainRoutine:
     def _get_mode(self):
         if self.context.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
             return DumpMode(self.context)
-        elif self.context.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
+
+        if self.context.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
             return RestoreMode(self.context)
-        elif self.context.args.mode == AnonMode.INIT:
+
+        if self.context.args.mode == AnonMode.INIT:
             return InitMode(self.context)
-        elif self.context.args.mode == AnonMode.CREATE_DICT:
+
+        if self.context.args.mode == AnonMode.CREATE_DICT:
             return CreateDictMode(self.context)
-        elif self.context.args.mode == AnonMode.VIEW_FIELDS:
+
+        if self.context.args.mode == AnonMode.VIEW_FIELDS:
             return ViewFieldsMode(self.context)
-        elif self.context.args.mode == AnonMode.VIEW_DATA:
+
+        if self.context.args.mode == AnonMode.VIEW_DATA:
             return ViewDataMode(self.context)
-        else:
-            raise RuntimeError("Unknown mode: " + self.context.args.mode)
+
+        raise RuntimeError("Unknown mode: " + self.context.args.mode)
 
     async def run(self) -> PgAnonResult:
         self._bootstrap()
