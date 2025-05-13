@@ -21,7 +21,7 @@ from pg_anon.modes.view_fields import ViewFieldsMode
 from pg_anon.version import __version__
 
 
-async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
+async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> None:
     """
     Run pg_anon
     :param cli_run_params: list of params in command line format
@@ -29,7 +29,9 @@ async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResul
     """
     parser = Context.get_arg_parser()
     args = parser.parse_args(cli_run_params)
-    return await MainRoutine(args).run()
+    result = await MainRoutine(args).run()
+    if result.result_code == ResultCode.FAIL:
+        exit(1)
 
 
 class MainRoutine:
@@ -174,13 +176,11 @@ class MainRoutine:
 
             mode = self._get_mode()
             self.result.result_data = await mode.run()
+            self.result.complete()
         except:
             self.context.logger.error(exception_helper(show_traceback=True))
             self.result.fail()
         finally:
-            if self.result.result_code != ResultCode.FAIL:
-                self.result.complete()
-
             self.context.logger.info(
                 f"<============ Finished MainRoutine.run in mode: {self.context.args.mode.value}, "
                 f"result_code = {self.result.result_code.value}, "
