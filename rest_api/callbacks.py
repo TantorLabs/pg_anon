@@ -1,6 +1,7 @@
+import asyncio
 import logging
 
-import httpx
+import aiohttp
 from pydantic import BaseModel
 
 from pg_anon.common.utils import get_folder_size
@@ -13,14 +14,30 @@ from rest_api.utils import read_dictionary_contents
 logger = logging.getLogger(__name__)
 
 
-def send_webhook(url: str, response_body: BaseModel):
-    logger.info(f'Send webhook on {url} with requst:{response_body.model_dump(by_alias=True)}')
-    response = httpx.post(
-        url=url,
-        json=response_body.model_dump(by_alias=True),
-        verify=False
-    )
-    logger.info(f'Webhook response code: {response.status_code}')
+async def send_webhook(url: str, response_body: BaseModel, max_retries: int = 5, base_delay: float = 1):
+    payload = response_body.model_dump(by_alias=True)
+    logger.info(f'Starting webhook request to {url} with payload: {payload}')
+
+    async with aiohttp.ClientSession() as session:
+        for attempt in range(max_retries):
+            try:
+                async with session.post(url, json=payload, ssl=False) as response:
+                    if response.status < 500:
+                        logger.info(f'Webhook successfully sent. Status code: {response.status}')
+                        return
+                    else:
+                        logger.warning(
+                            f'Webhook attempt {attempt + 1} to {url} failed with server error: {response.status}'
+                        )
+            except aiohttp.ClientError as e:
+                logger.warning(f'Webhook attempt {attempt + 1} to {url} failed. Request failed: {e}')
+
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.info(f'Retrying in {delay:.2f} seconds...')
+                await asyncio.sleep(delay)
+
+    logger.error(f'All {max_retries} webhook attempts to {url} have failed')
 
 
 async def scan_callback(request: ScanRequest):
@@ -33,7 +50,7 @@ async def scan_callback(request: ScanRequest):
         scan_runner = ScanRunner(request)
 
         logger.info("[DEBUG] Send RUN webhook")
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
@@ -57,7 +74,7 @@ async def scan_callback(request: ScanRequest):
         logger.info("[DEBUG] SCAN completed - FAIL")
         logger.error(ex)
         logger.info("[DEBUG] Send ERROR webhook")
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
@@ -68,7 +85,7 @@ async def scan_callback(request: ScanRequest):
         return
 
     logger.info("[DEBUG] Send COMPLETE webhook")
-    send_webhook(
+    await send_webhook(
         url=request.webhook_status_url,
         response_body=ScanStatusResponse(
             operation_id=request.operation_id,
@@ -87,7 +104,7 @@ async def dump_callback(request: DumpRequest):
 
         dump_runner = DumpRunner(request)
 
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
@@ -100,7 +117,7 @@ async def dump_callback(request: DumpRequest):
         dump_size = get_folder_size(dump_runner.full_dump_path)
     except Exception as ex:
         logger.error(ex)
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
@@ -110,7 +127,7 @@ async def dump_callback(request: DumpRequest):
         )
         return
 
-    send_webhook(
+    await send_webhook(
         url=request.webhook_status_url,
         response_body=DumpStatusResponse(
             operation_id=request.operation_id,
@@ -125,7 +142,7 @@ async def restore_callback(request: RestoreRequest):
     try:
         restore_runner = RestoreRunner(request)
 
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
@@ -137,7 +154,7 @@ async def restore_callback(request: RestoreRequest):
         await restore_runner.run()
     except Exception as ex:
         logger.error(ex)
-        send_webhook(
+        await send_webhook(
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
@@ -147,7 +164,7 @@ async def restore_callback(request: RestoreRequest):
         )
         return
 
-    send_webhook(
+    await send_webhook(
         url=request.webhook_status_url,
         response_body=StatelessRunnerResponse(
             operation_id=request.operation_id,

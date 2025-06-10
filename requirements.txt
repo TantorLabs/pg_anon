@@ -4,5 +4,5 @@ asyncpg==0.29.0
 nest-asyncio==1.6.0
 prettytable==3.11.0
 pyyaml==6.0.2
-setuptools>=75
+setuptools>=78.1.1
 wcwidth==0.2.13
