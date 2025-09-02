@@ -1,4 +1,5 @@
 ANON_UTILS_DB_SCHEMA_NAME = 'anon_funcs'
+DEFAULT_HASH_FUNC = f"{ANON_UTILS_DB_SCHEMA_NAME}.digest(\"%s\", 'salt_word', 'md5')"
 
 SERVER_SETTINGS = {
     "application_name": "pg_anon",
