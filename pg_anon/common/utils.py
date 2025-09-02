@@ -345,4 +345,4 @@ def read_yaml(file_path: str) -> Dict:
 
 
 def get_valid_field_type(field_info: FieldInfo) -> str:
-    return str(field_info.type).split('(')[0]
+    return str(field_info.type).split('(')[0].lower()

@@ -132,7 +132,9 @@ class Context:
             self.meta_dictionary_obj["sens_pg_types"].extend(meta_dict["sens_pg_types"])
 
         if meta_dict["funcs"]:
-            self.meta_dictionary_obj["funcs"].update(meta_dict["funcs"])
+            self.meta_dictionary_obj["funcs"].update(
+                {k.lower(): v for k, v in meta_dict["funcs"].items()}
+            )
 
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
