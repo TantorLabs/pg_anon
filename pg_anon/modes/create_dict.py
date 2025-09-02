@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 from aioprocessing import AioQueue
 from asyncpg import Connection
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
 from pg_anon.common.dto import FieldInfo
@@ -19,6 +19,7 @@ from pg_anon.common.utils import (
     exception_helper,
     setof_to_list,
     get_dict_rule_for_table,
+    get_valid_field_type,
 )
 from pg_anon.context import Context
 
@@ -287,7 +288,7 @@ class CreateDictMode:
             f'========> Process[{name}]: checking by functions data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name} (type = {field_info.type})'
         )
 
-        field_type = field_info.type.split('(')[0]
+        field_type = get_valid_field_type(field_info)
         rules_by_type = dictionary_obj["data_func"].get(field_type, [])
         rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
         data_func_rules = [rules_by_type, rules_for_anyelements]
@@ -437,7 +438,8 @@ class CreateDictMode:
         self.context.logger.debug(f"====>>> Process[{name}]: Started scan task for field {field_info.nspname}.{field_info.relname}.{field_info.column_name} ({field_info})")
 
         start_t = time.time()
-        if not self._check_sens_pg_types(dictionary_obj, field_info.type):
+        field_type = get_valid_field_type(field_info)
+        if not self._check_sens_pg_types(dictionary_obj, field_type):
             self.context.logger.debug(
                 f"========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
                 % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
@@ -591,12 +593,8 @@ class CreateDictMode:
         res_hash_func = field_info.rule
 
         if res_hash_func is None:
-            hash_func = f"{ANON_UTILS_DB_SCHEMA_NAME}.digest(\"%s\", 'salt_word', 'md5')"  # by default use md5 with salt
-
-            for fld_type, func in meta_dictionary_obj["funcs"].items():
-                if str(field_info.type).find(fld_type) > -1:
-                    hash_func = func
-
+            field_type = get_valid_field_type(field_info)
+            hash_func = meta_dictionary_obj["funcs"].get(field_type, DEFAULT_HASH_FUNC)
             res_hash_func = hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
 
         if field_info.tbl_id not in prepared_sens_dict_rules:

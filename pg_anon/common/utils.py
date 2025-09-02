@@ -14,6 +14,7 @@ import yaml
 from pkg_resources import parse_version as version
 
 from pg_anon.common.db_utils import get_fields_list
+from pg_anon.common.dto import FieldInfo
 
 
 def get_pg_util_version(util_name):
@@ -341,3 +342,7 @@ def read_yaml(file_path: str) -> Dict:
         data = yaml.safe_load(file)
 
     return data
+
+
+def get_valid_field_type(field_info: FieldInfo) -> str:
+    return field_info.type.split('(')[0].lower()
