@@ -57,7 +57,7 @@
 	"funcs": {
 		"text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
 		"numeric": "anon_funcs.noise(\"%s\", 10)",
-		"timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
+		"timestamp without time zone": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
 		"bigint": "anon_funcs.random_inn()",
 		"integer": "anon_funcs.random_int_between(1, 10)",
 		"mvarchar": "anon_funcs.digest(\"%s\"::text, 'salt_word', 'md5')"
