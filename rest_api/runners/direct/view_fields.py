@@ -4,7 +4,7 @@ from pg_anon import MainRoutine
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
 from pg_anon.context import Context
-from pg_anon.view_fields import ViewFieldsMode
+from pg_anon.modes.view_fields import ViewFieldsMode
 from rest_api.pydantic_models import ViewFieldsRequest, ViewFieldsContent
 from rest_api.utils import write_dictionary_contents
 
