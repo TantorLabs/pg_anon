@@ -652,13 +652,17 @@ class CreateDictMode:
             # Fill results based on processes
             # ============================================================================================
             for v in tasks:
-                for res in v.result():
-                    for field_info in res.values():
-                        prepared_sens_dict_rules = self._prepare_sens_dict_rule(
-                            self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
-                        )
-                        if need_prepare_no_sens_dict:
-                            del fields_info[field_info.obj_id]
+                if v.result() is not None:
+                    for res in v.result():
+                        if isinstance(res, Exception):
+                            raise res
+
+                        for field_info in res.values():
+                            prepared_sens_dict_rules = self._prepare_sens_dict_rule(
+                                self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
+                            )
+                            if need_prepare_no_sens_dict:
+                                del fields_info[field_info.obj_id]
 
         # ============================================================================================
         # Fill results based on check_sensitive_fld_names
