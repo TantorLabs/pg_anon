@@ -31,7 +31,7 @@ async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> None:
     args = parser.parse_args(cli_run_params)
     result = await MainRoutine(args).run()
     if result.result_code == ResultCode.FAIL:
-        exit(1)
+        sys.exit(1)
 
 
 class MainRoutine:

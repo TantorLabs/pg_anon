@@ -17,6 +17,9 @@ from pg_anon.common.db_utils import get_fields_list
 from pg_anon.common.dto import FieldInfo
 
 
+PARENS_PATTERN = re.compile(r'\([^\)]*\)')
+
+
 def get_pg_util_version(util_name):
     command = [util_name, "--version"]
     res = subprocess.run(
@@ -344,5 +347,5 @@ def read_yaml(file_path: str) -> Dict:
     return data
 
 
-def get_valid_field_type(field_info: FieldInfo) -> str:
-    return field_info.type.split('(')[0].lower()
+def normalize_field_type(field_info: FieldInfo) -> str:
+    return PARENS_PATTERN.sub('', field_info.type.lower())
