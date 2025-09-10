@@ -594,7 +594,10 @@ class CreateDictMode:
 
         if hash_func is None:
             field_type = normalize_field_type(field_info)
-            hash_func = meta_dictionary_obj["funcs"].get(field_type, DEFAULT_HASH_FUNC)
+            if field_type in meta_dictionary_obj["funcs"]:
+                hash_func = meta_dictionary_obj["funcs"][field_type]
+            else:
+                hash_func = meta_dictionary_obj["funcs"].get('default', DEFAULT_HASH_FUNC)
 
         if hash_func.find("%s") != -1:
             hash_func = hash_func % field_info.column_name
