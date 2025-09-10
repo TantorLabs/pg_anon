@@ -546,3 +546,103 @@ BEGIN
 END;
 $$
   LANGUAGE plpgsql;
+
+--------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS schm_other_3;
+DROP TABLE IF EXISTS schm_other_3.some_tbl;
+CREATE TABLE schm_other_3.some_tbl
+(
+    field_type_varbit          varbit(5),
+    field_type_bool            bool,
+    field_type_char            char(5),
+    field_type_varchar         varchar(20),
+    field_type_int             int,
+    field_type_int4            int4,
+    field_type_int2            int2,
+    field_type_int8            int8,
+    field_type_float           float,
+    field_type_float8          float8,
+    field_type_float4          float4,
+    field_type_decimal         decimal(10,2),
+    field_type_serial2         serial2,
+    field_type_serial4         serial4,
+    field_type_serial8         serial8,
+
+    -- TIME
+    field_type_time            time,            -- alias = time without time zone
+    field_type_time_p          time(3),         -- alias + precision
+    field_type_timetz          timetz,          -- alias = time with time zone
+    field_type_timetz_p        timetz(3),       -- alias + precision
+
+    -- TIMESTAMP
+    field_type_timestamp       timestamp,       -- alias = timestamp without time zone
+    field_type_timestamp_p     timestamp(3),    -- alias + precision
+    field_type_timestamptz     timestamptz,     -- alias = timestamp with time zone
+    field_type_timestamptz_p   timestamptz(3)   -- alias + precision
+);
+
+-- вставляем тестовые данные
+INSERT INTO schm_other_3.some_tbl
+(
+    field_type_varbit,
+    field_type_bool,
+    field_type_char,
+    field_type_varchar,
+    field_type_int,
+    field_type_int4,
+    field_type_int2,
+    field_type_int8,
+    field_type_float,
+    field_type_float8,
+    field_type_float4,
+    field_type_decimal,
+
+    field_type_time,
+    field_type_time_p,
+    field_type_timetz,
+    field_type_timetz_p,
+    field_type_timestamp,
+    field_type_timestamp_p,
+    field_type_timestamptz,
+    field_type_timestamptz_p
+)
+SELECT
+    -- varbit(5)
+    (lpad((v % 32)::bit(5)::text, 5, '0'))::bit(5),
+
+    -- bool
+    (v % 2 = 0),
+
+    -- char(5)
+    rpad('c' || v::text, 5, 'x'),
+
+    -- varchar
+    'varchar_' || v,
+
+    -- numbers
+    v,               -- int
+    v,               -- int4
+    v % 32767,       -- int2
+    v * 1000000,     -- int8
+    v * 1.1,         -- float
+    v * 1.2345,      -- float8
+    v / 3.0,         -- float4
+    (v * 0.01)::numeric(10,2), -- decimal(10,2)
+
+    -- TIME
+    make_time((v % 24), (v % 60), (v % 60)),                      -- time
+    make_time((v % 24), (v % 60), (v % 60) + 0.123),              -- time(3)
+
+    -- TIMETZ
+    make_time((v % 24), (v % 60), (v % 60))::timetz,              -- timetz
+    make_time((v % 24), (v % 60), (v % 60) + 0.456)::timetz,      -- timetz(3)
+
+    -- TIMESTAMP
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)),               -- timestamp
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.789),       -- timestamp(3)
+
+    -- TIMESTAMPTZ
+    (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow',
+    (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.987) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow'
+FROM generate_series(1, 100) AS v;
