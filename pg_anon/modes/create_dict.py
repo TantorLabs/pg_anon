@@ -590,22 +590,24 @@ class CreateDictMode:
             self.context.logger.debug(f"================> Process [{name}] closed")
 
     def _prepare_sens_dict_rule(self, meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
-        res_hash_func = field_info.rule
+        hash_func = field_info.rule
 
-        if res_hash_func is None:
+        if hash_func is None:
             field_type = normalize_field_type(field_info)
             hash_func = meta_dictionary_obj["funcs"].get(field_type, DEFAULT_HASH_FUNC)
-            res_hash_func = hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
+
+        if hash_func.find("%s") != -1:
+            hash_func = hash_func % field_info.column_name
 
         if field_info.tbl_id not in prepared_sens_dict_rules:
             prepared_sens_dict_rules[field_info.tbl_id] = {
                 "schema": field_info.nspname,
                 "table": field_info.relname,
-                "fields": {field_info.column_name: res_hash_func},
+                "fields": {field_info.column_name: hash_func},
             }
         else:
             prepared_sens_dict_rules[field_info.tbl_id]["fields"].update(
-                {field_info.column_name: res_hash_func}
+                {field_info.column_name: hash_func}
             )
         return prepared_sens_dict_rules
 
