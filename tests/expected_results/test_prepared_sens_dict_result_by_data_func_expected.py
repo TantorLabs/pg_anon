@@ -46,7 +46,7 @@
             "table": "customer_manager",
             "fields": {
                 "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
-                "email": "anon_funcs.partial_email(\"%s\")"
+                "email": "anon_funcs.partial_email(\"email\")"
             }
         },
         {
@@ -71,7 +71,7 @@
             "schema": "schm_customer",
             "table": "customer_company",
             "fields": {
-                "email": "anon_funcs.partial_email(\"%s\")",
+                "email": "anon_funcs.partial_email(\"email\")",
                 "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
                 "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
             }
