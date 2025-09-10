@@ -19,7 +19,7 @@ from pg_anon.common.utils import (
     exception_helper,
     setof_to_list,
     get_dict_rule_for_table,
-    get_valid_field_type,
+    normalize_field_type,
 )
 from pg_anon.context import Context
 
@@ -288,7 +288,7 @@ class CreateDictMode:
             f'========> Process[{name}]: checking by functions data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name} (type = {field_info.type})'
         )
 
-        field_type = get_valid_field_type(field_info)
+        field_type = normalize_field_type(field_info)
         rules_by_type = dictionary_obj["data_func"].get(field_type, [])
         rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
         data_func_rules = [rules_by_type, rules_for_anyelements]
@@ -438,7 +438,7 @@ class CreateDictMode:
         self.context.logger.debug(f"====>>> Process[{name}]: Started scan task for field {field_info.nspname}.{field_info.relname}.{field_info.column_name} ({field_info})")
 
         start_t = time.time()
-        field_type = get_valid_field_type(field_info)
+        field_type = normalize_field_type(field_info)
         if not self._check_sens_pg_types(dictionary_obj, field_type):
             self.context.logger.debug(
                 f"========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
@@ -593,7 +593,7 @@ class CreateDictMode:
         res_hash_func = field_info.rule
 
         if res_hash_func is None:
-            field_type = get_valid_field_type(field_info)
+            field_type = normalize_field_type(field_info)
             hash_func = meta_dictionary_obj["funcs"].get(field_type, DEFAULT_HASH_FUNC)
             res_hash_func = hash_func if hash_func.find("%s") == -1 else hash_func % field_info.column_name
 

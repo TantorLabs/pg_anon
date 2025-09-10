@@ -17,3 +17,31 @@ DEFAULT_EXCLUDED_SCHEMAS = [
     "pg_catalog",
     "information_schema"
 ]
+
+TYPE_ALIASES = {
+    "varbit": "bit varying",
+    "bool": "boolean",
+
+    "char": "character",
+    "varchar": "character varying",
+
+    "int": "integer",
+    "int4": "integer",
+    "int2": "smallint",
+    "int8": "bigint",
+
+    "float": "double precision",
+    "float8": "double precision",
+    "float4": "real",
+    "decimal": "numeric",
+
+    "serial2": "smallserial",
+    "serial4": "serial",
+    "serial8": "bigserial",
+
+    "time": "time without time zone",
+    "timetz": "time with time zone",
+
+    "timestamp": "timestamp without time zone",
+    "timestamptz": "timestamp with time zone",
+}
