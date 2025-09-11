@@ -454,13 +454,14 @@ var = {
         ]
     },
     "data_const": {
-        # List of constants in lowercase, upon detection of which the field will be included in the resulting dictionary. If a text field contains a value consisting of several words, this value will be split into words, converted to lowercase, and matched with the constants from this list. Words shorter than 5 characters are ignored. Search is performed using set.intersection
-        "constants": [  # When reading the meta-dictionary, the values of this list are placed in a set container
+        # List of constants, upon detection of which the field will be included in the resulting dictionary. It can be words or phrases
+        "constants": [
             "simpson",
-            "account"
+            "account",
+            "secret company name"
         ],
         # List of partial constants. If field value has substring from this list, it will considered as sensitive
-        "partial_constants": [ # When reading the meta-dictionary, the values of this list are placed in a set container
+        "partial_constants": [
             "@example.com",
             "login_"
         ]
@@ -496,7 +497,10 @@ var = {
         # If a certain field is found during scanning, a function listed in this list will be used according to its type.
         "text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
         "numeric": "anon_funcs.noise(\"%s\", 10)",
-        "timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')"
+        "timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
+        # A default function can be set if no separate function is specified for the data type.
+        # If default function not set up, will be used this function - "anon_funcs.digest(\"%s\", 'salt_word', 'md5')" 
+        "default": "anon_funcs.digest(\"%s\", 'MySecretSaltWord', 'sha256')"
     }
 }
 ```

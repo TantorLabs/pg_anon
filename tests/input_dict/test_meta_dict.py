@@ -17,7 +17,10 @@
 			"schema": "schm_mask_ext_exclude_2",
 			"table": "card_numbers",    # Optional. If no "table" then whole schema will be skipped
 			"fields": ["val_skip"]		# Optional. If no "fields" then whole table will be skipped
-		}
+		},
+		{
+			"schema": "schm_other_3",
+		},
 	],
 	"data_regex": {
 		"rules": [

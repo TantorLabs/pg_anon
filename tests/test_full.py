@@ -1663,10 +1663,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_11_create_dict_using_data_func")
+        passed_stages.append("test_12_create_dict_with_type_aliases")
 
     async def test_13_create_dict_with_default_anonymization_function(self):
-        # self.assertTrue("init_env" in passed_stages)
+        self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
             self.get_test_dict_path('test_meta_dict_default_func.py'),
@@ -1701,7 +1701,46 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_11_create_dict_using_data_func")
+        passed_stages.append("test_13_create_dict_with_default_anonymization_function")
+
+    async def test_14_create_dict_using_words_and_phrases_constants(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_words_and_phrases_constants.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_words_and_phrases_constants.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_words_and_phrases_constants_expected.py")
+
+        parser = Context.get_arg_parser()
+        self.args_create_dict = parser.parse_args(
+            [
+                f"--db-host={params.test_db_host}",
+                f"--db-name={params.test_source_db}",
+                f"--db-user={params.test_db_user}",
+                f"--db-port={params.test_db_port}",
+                f"--db-user-password={params.test_db_user_password}",
+                f"--config={params.test_config}",
+                "--mode=create-dict",
+                "--scan-mode=full",
+                f"--meta-dict-file={','.join(meta_dicts)}",
+                f"--output-sens-dict-file={prepared_sens_dict}",
+                f"--db-connections-per-process={params.db_connections_per_process}",
+                "--scan-partial-rows=10000",
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
+
+        res = await MainRoutine(self.args_create_dict).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_14_create_dict_using_words_and_phrases_constants")
 
 
 class TmpResults:

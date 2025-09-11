@@ -177,6 +177,19 @@
             "fields": [
                 "company_info"
             ]
+        },
+        {
+            "schema": "public",
+            "table": "tbl_constants",
+            "fields": [
+                "phrases_no_sens_1",
+                "phrases_no_sens_2",
+                "phrases_sens_1",
+                "phrases_sens_2",
+                "words_no_sens_1",
+                "words_no_sens_2",
+                "words_sens"
+            ]
         }
     ]
 }

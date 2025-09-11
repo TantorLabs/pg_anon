@@ -1,11 +1,13 @@
 import argparse
 import os
+import re
 from typing import Dict, Optional
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
-from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml, normalize_data_type
+from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml, normalize_data_type, \
+    split_constants_to_words_and_phrases
 
 
 class Context:
@@ -28,6 +30,7 @@ class Context:
         self.create_dict_no_sens_matches = {}  # for create-dict mode
         self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
         self.logger = None
+        self.data_const_constants_min_length = None
 
         if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
             args.db_user_password = os.environ["PGPASSWORD"]
@@ -58,8 +61,9 @@ class Context:
             isinstance(meta_dict["skip_rules"], list) and
             isinstance(meta_dict["include_rules"], list) and
             isinstance(meta_dict["data_regex"]["rules"], list) and
-            isinstance(meta_dict["data_const"]["constants"], list) and
-            isinstance(meta_dict["data_const"]["partial_constants"], list) and
+            isinstance(meta_dict["data_const"]["constants"]["words"], set) and
+            isinstance(meta_dict["data_const"]["constants"]["phrases"], set) and
+            isinstance(meta_dict["data_const"]["partial_constants"], set) and
             isinstance(meta_dict["data_func"], dict) and
             isinstance(meta_dict["data_sql_condition"], list) and
             isinstance(meta_dict["sens_pg_types"], list) and
@@ -72,25 +76,31 @@ class Context:
         """
         Making meta dict in expected format, from meta dict data
         """
+        constants = (meta_dict_data or {}).get('data_const', {}).get('constants', [])
+        constants_words, constants_phrases = split_constants_to_words_and_phrases(constants)
+
         result_dict = {
           "field": {
-            "rules": meta_dict_data.get('field', {}).get('rules', []) if meta_dict_data else [],
-            "constants": meta_dict_data.get('field', {}).get('constants', []) if meta_dict_data else [],
+            "rules": (meta_dict_data or {}).get('field', {}).get('rules', []),
+            "constants": (meta_dict_data or {}).get('field', {}).get('constants', []),
           },
-          "skip_rules": meta_dict_data.get('skip_rules', []) if meta_dict_data else [],
-          "include_rules": meta_dict_data.get('include_rules', []) if meta_dict_data else [],
+          "skip_rules": (meta_dict_data or {}).get('skip_rules', []),
+          "include_rules": (meta_dict_data or {}).get('include_rules', []),
           "data_regex": {
-            "rules": meta_dict_data.get('data_regex', {}).get('rules', []) if meta_dict_data else [],
+            "rules": (meta_dict_data or {}).get('data_regex', {}).get('rules', []),
           },
           "data_const": {
-            "constants": meta_dict_data.get('data_const', {}).get('constants', []) if meta_dict_data else [],
-            "partial_constants": meta_dict_data.get('data_const', {}).get('partial_constants', []) if meta_dict_data else [],
+            "constants": {
+                "words": constants_words,
+                "phrases": constants_phrases,
+            },
+            "partial_constants": set((meta_dict_data or {}).get('data_const', {}).get('partial_constants', [])),
           },
-          "data_func": meta_dict_data.get('data_func', {}) if meta_dict_data else {},
-          "data_sql_condition": meta_dict_data.get('data_sql_condition', []) if meta_dict_data else [],
-          "sens_pg_types": meta_dict_data.get('sens_pg_types', []) if meta_dict_data else [],
-          "funcs": meta_dict_data.get('funcs', {}) if meta_dict_data else {},
-          "no_sens_dictionary": meta_dict_data.get('no_sens_dictionary', []) if meta_dict_data else [],
+          "data_func": (meta_dict_data or {}).get('data_func', {}),
+          "data_sql_condition": (meta_dict_data or {}).get('data_sql_condition', []),
+          "sens_pg_types": (meta_dict_data or {}).get('sens_pg_types', []),
+          "funcs": (meta_dict_data or {}).get('funcs', {}),
+          "no_sens_dictionary": (meta_dict_data or {}).get('no_sens_dictionary', []),
         }
 
         return result_dict
@@ -102,7 +112,9 @@ class Context:
         self._check_meta_dict_types(meta_dict)
 
         if meta_dict["field"]["rules"]:
-            self.meta_dictionary_obj["field"]["rules"].extend(meta_dict["field"]["rules"])
+            self.meta_dictionary_obj["field"]["rules"].extend(
+                [re.compile(v) for v in meta_dict["field"]["rules"]]
+            )
 
         if meta_dict["field"]["constants"]:
             self.meta_dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
@@ -114,13 +126,28 @@ class Context:
             self.meta_dictionary_obj["include_rules"].extend(meta_dict["include_rules"])
 
         if meta_dict["data_regex"]["rules"]:
-            self.meta_dictionary_obj["data_regex"]["rules"].extend(meta_dict["data_regex"]["rules"])
+            # re.DOTALL using for searching in text with \n
+            self.meta_dictionary_obj["data_regex"]["rules"].extend(
+                [re.compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
+            )
 
-        if meta_dict["data_const"]["constants"]:
-            self.meta_dictionary_obj["data_const"]["constants"].extend(meta_dict["data_const"]["constants"])
+        if meta_dict["data_const"]["constants"]["words"]:
+            self.meta_dictionary_obj["data_const"]["constants"]["words"].update(
+                meta_dict["data_const"]["constants"]["words"]
+            )
+            self.data_const_constants_min_length = min(
+                map(len, self.meta_dictionary_obj["data_const"]["constants"]["words"])
+            )
+
+        if meta_dict["data_const"]["constants"]["phrases"]:
+            self.meta_dictionary_obj["data_const"]["constants"]["phrases"].update(
+                meta_dict["data_const"]["constants"]["phrases"]
+            )
 
         if meta_dict["data_const"]["partial_constants"]:
-            self.meta_dictionary_obj["data_const"]["partial_constants"].extend(meta_dict["data_const"]["partial_constants"])
+            self.meta_dictionary_obj["data_const"]["partial_constants"].update(
+                [v.lower() for v in meta_dict["data_const"]["partial_constants"]]
+            )
 
         if meta_dict["data_func"]:
             self.meta_dictionary_obj["data_func"].update(meta_dict["data_func"])
@@ -130,7 +157,7 @@ class Context:
 
         if meta_dict["sens_pg_types"]:
             self.meta_dictionary_obj["sens_pg_types"].extend(
-                [normalize_data_type(k) for k in meta_dict["sens_pg_types"]]
+                [normalize_data_type(v) for v in meta_dict["sens_pg_types"]]
             )
 
         if meta_dict["funcs"]:
