@@ -60,6 +60,18 @@ class ViewDataMode:
         db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
         table_result = await db_conn.fetch(query)
         await db_conn.close()
+        
+        data = [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
+        return data
+
+    async def get_rows_count(self):
+        self.rows_count = await get_rows_count(
+            connection_params=self.context.connection_params,
+            server_settings=self.context.server_settings,
+            schema_name=self._schema_name,
+            table_name=self._table_name
+        )
+        return self.rows_count
 
         data = [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
         return data
