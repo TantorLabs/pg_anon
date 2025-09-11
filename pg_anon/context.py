@@ -2,11 +2,10 @@ import argparse
 import os
 from typing import Dict, Optional
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS, \
-    TYPE_ALIASES
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
-from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml
+from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml, normalize_data_type
 
 
 class Context:
@@ -130,15 +129,14 @@ class Context:
             self.meta_dictionary_obj["data_sql_condition"].extend(meta_dict["data_sql_condition"])
 
         if meta_dict["sens_pg_types"]:
-            self.meta_dictionary_obj["sens_pg_types"].extend(meta_dict["sens_pg_types"])
+            self.meta_dictionary_obj["sens_pg_types"].extend(
+                [normalize_data_type(k) for k in meta_dict["sens_pg_types"]]
+            )
 
         if meta_dict["funcs"]:
-            normalized_funcs = {}
-            for k, v in meta_dict["funcs"].items():
-                key = k.lower()
-                key = TYPE_ALIASES.get(key, key)
-                normalized_funcs[key] = v
-            self.meta_dictionary_obj["funcs"].update(normalized_funcs)
+            self.meta_dictionary_obj["funcs"].update(
+                {normalize_data_type(k): v for k, v in meta_dict["funcs"].items()}
+            )
 
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])

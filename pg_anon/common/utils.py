@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Union
 import yaml
 from pkg_resources import parse_version as version
 
+from pg_anon.common.constants import TYPE_ALIASES
 from pg_anon.common.db_utils import get_fields_list
 from pg_anon.common.dto import FieldInfo
 
@@ -349,3 +350,8 @@ def read_yaml(file_path: str) -> Dict:
 
 def normalize_field_type(field_info: FieldInfo) -> str:
     return PARENS_PATTERN.sub('', field_info.type.lower())
+
+
+def normalize_data_type(data_type: str) -> str:
+    key = data_type.lower()
+    return TYPE_ALIASES.get(key, key)
