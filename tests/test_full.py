@@ -1472,7 +1472,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_07_create_dict_using_include_rules")
     
     async def test_08_create_dict_using_include_and_skip_rules_with_masks(self):
-        # self.assertTrue("init_env" in passed_stages)
+        self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
             self.get_test_dict_path('test_meta_dict.py'),

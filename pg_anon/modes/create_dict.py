@@ -420,9 +420,7 @@ class CreateDictMode:
 
     def _check_sens_pg_types(self, dictionary_obj, field_type: str):
         """Check if actual field type is sens."""
-        data_types = dictionary_obj.get("sens_pg_types", [])
-        sens_types = data_types if data_types else SENS_PG_TYPES
-
+        sens_types = dictionary_obj.get("sens_pg_types", SENS_PG_TYPES)
         return any(pg_type in field_type for pg_type in sens_types)
 
     async def _scan_obj_func(

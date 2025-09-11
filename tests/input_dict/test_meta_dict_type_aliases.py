@@ -1,29 +1,35 @@
 {
-	"field": {
+	"include_rules": [
+		{
+			"schema": "schm_other_3",
+			"table": "some_tbl",
+		}
+	],
+	"data_regex": {
 		"rules": [
-			"^field_type_",
-		],
+			r".*",
+		]
 	},
 	"sens_pg_types": [
-		"varbit"
-		"bool"
-		"char"
-		"varchar"
-		"int"
-		"int4"
-		"int2"
-		"int8"
-		"float"
-		"float8"
-		"float4"
-		"decimal"
-		"serial2"
-		"serial4"
-		"serial8"
-		"time"
-		"timetz"
-		"timestamp"
-		"timestamptz"
+		"varbit",
+		"bool",
+		"char",
+		"varchar",
+		"int",
+		"int4",
+		"int2",
+		"int8",
+		"float",
+		"float8",
+		"float4",
+		"decimal",
+		"serial2",
+		"serial4",
+		"serial8",
+		"time",
+		"timetz",
+		"timestamp",
+		"timestamptz",
 	],
 	"funcs": {
 		"varbit": "anon_funcs.digest(\"%s\", 'varbit', 'md5')",
