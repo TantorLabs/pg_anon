@@ -1,0 +1,1304 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Stateless web service for pg_anon",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/stateless/check_db_connection": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Check DB connections with credentials",
+        "description": "Check DB connections with credentials",
+        "operationId": "db_connection_check_api_stateless_check_db_connection_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DbConnectionParams"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/scan": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Create new scanning operation",
+        "description": "Create new scanning operation",
+        "operationId": "stateless_scan_start_api_stateless_scan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/view-fields": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Render preview rules by fields",
+        "description": "Rendering of preview rules by fields",
+        "operationId": "stateless_view_fields_api_stateless_view_fields_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewFieldsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewFieldsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/view-data": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Render preview data by rules",
+        "description": "Rendering of preview data by rules",
+        "operationId": "stateless_view_data_api_stateless_view_data_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewDataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewDataResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/dump": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Create new dump operation",
+        "description": "Create new dump operation",
+        "operationId": "stateless_dump_start_api_stateless_dump_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Delete dump",
+        "description": "Delete dump",
+        "operationId": "dump_operation_delete_api_stateless_dump_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/restore": {
+      "post": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "Run restore operation",
+        "description": "Run restore operation",
+        "operationId": "stateless_dump_start_api_stateless_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/task-statuses": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of task statuses",
+        "operationId": "task_statuses_handbook_task_statuses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskStatus"
+                  },
+                  "type": "array",
+                  "title": "Response Task Statuses Handbook Task Statuses Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/dump-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of dump types",
+        "operationId": "dump_types_handbook_dump_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DumpType"
+                  },
+                  "type": "array",
+                  "title": "Response Dump Types Handbook Dump Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/restore-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of restore types",
+        "operationId": "restore_types_handbook_restore_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RestoreType"
+                  },
+                  "type": "array",
+                  "title": "Response Restore Types Handbook Restore Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/handbook/scan-types": {
+      "get": {
+        "tags": [
+          "Handbooks"
+        ],
+        "summary": "List of scan types",
+        "operationId": "dump_types_handbook_scan_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScanType"
+                  },
+                  "type": "array",
+                  "title": "Response Dump Types Handbook Scan Types Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DbConnectionParams": {
+        "properties": {
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "db_name": {
+            "type": "string",
+            "title": "Db Name"
+          },
+          "user_login": {
+            "type": "string",
+            "title": "User Login"
+          },
+          "user_password": {
+            "type": "string",
+            "title": "User Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "host",
+          "port",
+          "db_name",
+          "user_login",
+          "user_password"
+        ],
+        "title": "DbConnectionParams"
+      },
+      "DictionaryContent": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "additional_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Info"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "content"
+        ],
+        "title": "DictionaryContent"
+      },
+      "DictionaryMetadata": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "additional_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DictionaryMetadata"
+      },
+      "DumpDeleteRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "DumpDeleteRequest"
+      },
+      "DumpRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "webhook_status_url": {
+            "type": "string",
+            "title": "Webhook Status Url"
+          },
+          "webhook_metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Metadata"
+          },
+          "type_id": {
+            "type": "integer",
+            "title": "Type Id"
+          },
+          "sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Sens Dict Contents"
+          },
+          "output_path": {
+            "type": "string",
+            "title": "Output Path"
+          },
+          "pg_dump_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pg Dump Path"
+          },
+          "proc_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Count"
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "db_connection_params",
+          "webhook_status_url",
+          "type_id",
+          "sens_dict_contents",
+          "output_path"
+        ],
+        "title": "DumpRequest"
+      },
+      "DumpType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "DumpType"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ErrorResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RestoreRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "webhook_status_url": {
+            "type": "string",
+            "title": "Webhook Status Url"
+          },
+          "webhook_metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Metadata"
+          },
+          "type_id": {
+            "type": "integer",
+            "title": "Type Id"
+          },
+          "input_path": {
+            "type": "string",
+            "title": "Input Path"
+          },
+          "pg_restore_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pg Restore Path"
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count"
+          },
+          "drop_custom_check_constr": {
+            "type": "boolean",
+            "title": "Drop Custom Check Constr",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "db_connection_params",
+          "webhook_status_url",
+          "type_id",
+          "input_path"
+        ],
+        "title": "RestoreRequest"
+      },
+      "RestoreType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "RestoreType"
+      },
+      "ScanRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "title": "Operation Id"
+          },
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "webhook_status_url": {
+            "type": "string",
+            "title": "Webhook Status Url"
+          },
+          "webhook_metadata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Metadata"
+          },
+          "type_id": {
+            "type": "integer",
+            "title": "Type Id"
+          },
+          "meta_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Meta Dict Contents"
+          },
+          "sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Sens Dict Contents"
+          },
+          "no_sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "No Sens Dict Contents"
+          },
+          "need_no_sens_dict": {
+            "type": "boolean",
+            "title": "Need No Sens Dict",
+            "default": false
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth"
+          },
+          "proc_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Count"
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "db_connection_params",
+          "webhook_status_url",
+          "type_id",
+          "meta_dict_contents"
+        ],
+        "title": "ScanRequest"
+      },
+      "ScanType": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "ScanType"
+      },
+      "TaskStatus": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug"
+        ],
+        "title": "TaskStatus"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ViewDataContent": {
+        "properties": {
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "field_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Field Names"
+          },
+          "total_rows_count": {
+            "type": "integer",
+            "title": "Total Rows Count"
+          },
+          "rows_before": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows Before"
+          },
+          "rows_after": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_name",
+          "table_name",
+          "field_names",
+          "total_rows_count",
+          "rows_before",
+          "rows_after"
+        ],
+        "title": "ViewDataContent"
+      },
+      "ViewDataRequest": {
+        "properties": {
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Sens Dict Contents"
+          },
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 10
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_connection_params",
+          "sens_dict_contents",
+          "schema_name",
+          "table_name"
+        ],
+        "title": "ViewDataRequest"
+      },
+      "ViewDataResponse": {
+        "properties": {
+          "status_id": {
+            "type": "integer",
+            "title": "Status Id"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ViewDataContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_id"
+        ],
+        "title": "ViewDataResponse"
+      },
+      "ViewFieldsContent": {
+        "properties": {
+          "schema_name": {
+            "type": "string",
+            "title": "Schema Name"
+          },
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "field_name": {
+            "type": "string",
+            "title": "Field Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "dict_data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DictionaryMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_name",
+          "table_name",
+          "field_name",
+          "type"
+        ],
+        "title": "ViewFieldsContent"
+      },
+      "ViewFieldsRequest": {
+        "properties": {
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Sens Dict Contents"
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name"
+          },
+          "schema_mask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Mask"
+          },
+          "table_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Name"
+          },
+          "table_mask": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Mask"
+          },
+          "view_only_sensitive_fields": {
+            "type": "boolean",
+            "title": "View Only Sensitive Fields",
+            "default": false
+          },
+          "fields_limit_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields Limit Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_connection_params",
+          "sens_dict_contents"
+        ],
+        "title": "ViewFieldsRequest"
+      },
+      "ViewFieldsResponse": {
+        "properties": {
+          "status_id": {
+            "type": "integer",
+            "title": "Status Id"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ViewFieldsContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_id"
+        ],
+        "title": "ViewFieldsResponse"
+      }
+    }
+  }
+}

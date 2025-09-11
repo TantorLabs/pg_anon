@@ -21,7 +21,7 @@ from pg_anon.modes.view_fields import ViewFieldsMode
 from pg_anon.version import __version__
 
 
-async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
+async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> None:
     """
     Run pg_anon
     :param cli_run_params: list of params in command line format
@@ -29,7 +29,9 @@ async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResul
     """
     parser = Context.get_arg_parser()
     args = parser.parse_args(cli_run_params)
-    return await MainRoutine(args).run()
+    result = await MainRoutine(args).run()
+    if result.result_code == ResultCode.FAIL:
+        sys.exit(1)
 
 
 class MainRoutine:
@@ -146,18 +148,23 @@ class MainRoutine:
     def _get_mode(self):
         if self.context.args.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
             return DumpMode(self.context)
-        elif self.context.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
+
+        if self.context.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
             return RestoreMode(self.context)
-        elif self.context.args.mode == AnonMode.INIT:
+
+        if self.context.args.mode == AnonMode.INIT:
             return InitMode(self.context)
-        elif self.context.args.mode == AnonMode.CREATE_DICT:
+
+        if self.context.args.mode == AnonMode.CREATE_DICT:
             return CreateDictMode(self.context)
-        elif self.context.args.mode == AnonMode.VIEW_FIELDS:
+
+        if self.context.args.mode == AnonMode.VIEW_FIELDS:
             return ViewFieldsMode(self.context)
-        elif self.context.args.mode == AnonMode.VIEW_DATA:
+
+        if self.context.args.mode == AnonMode.VIEW_DATA:
             return ViewDataMode(self.context)
-        else:
-            raise RuntimeError("Unknown mode: " + self.context.args.mode)
+
+        raise RuntimeError("Unknown mode: " + self.context.args.mode)
 
     async def run(self) -> PgAnonResult:
         self._bootstrap()
@@ -169,13 +176,11 @@ class MainRoutine:
 
             mode = self._get_mode()
             self.result.result_data = await mode.run()
+            self.result.complete()
         except:
             self.context.logger.error(exception_helper(show_traceback=True))
             self.result.fail()
         finally:
-            if self.result.result_code != ResultCode.FAIL:
-                self.result.complete()
-
             self.context.logger.info(
                 f"<============ Finished MainRoutine.run in mode: {self.context.args.mode.value}, "
                 f"result_code = {self.result.result_code.value}, "

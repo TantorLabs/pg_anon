@@ -1,4 +1,5 @@
 ANON_UTILS_DB_SCHEMA_NAME = 'anon_funcs'
+DEFAULT_HASH_FUNC = f"{ANON_UTILS_DB_SCHEMA_NAME}.digest(\"%s\", 'salt_word', 'md5')"
 
 SERVER_SETTINGS = {
     "application_name": "pg_anon",
@@ -16,3 +17,31 @@ DEFAULT_EXCLUDED_SCHEMAS = [
     "pg_catalog",
     "information_schema"
 ]
+
+TYPE_ALIASES = {
+    "varbit": "bit varying",
+    "bool": "boolean",
+
+    "char": "character",
+    "varchar": "character varying",
+
+    "int": "integer",
+    "int4": "integer",
+    "int2": "smallint",
+    "int8": "bigint",
+
+    "float": "double precision",
+    "float8": "double precision",
+    "float4": "real",
+    "decimal": "numeric",
+
+    "serial2": "smallserial",
+    "serial4": "serial",
+    "serial8": "bigserial",
+
+    "time": "time without time zone",
+    "timetz": "time with time zone",
+
+    "timestamp": "timestamp without time zone",
+    "timestamptz": "timestamp with time zone",
+}
