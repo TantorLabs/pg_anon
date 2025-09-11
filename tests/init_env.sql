@@ -511,7 +511,34 @@ select
     'abc' as "имя_поля",
     'некоторое слово ' || v as "другое_поле"
 from generate_series(1,1512) as v;
+
 --------------------------------------------------------------
+
+CREATE TABLE public.tbl_constants
+(
+    id serial,
+    words_no_sens_1 text,
+    words_no_sens_2 text,
+    words_sens text,
+    phrases_no_sens_1 text,
+    phrases_no_sens_2 text,
+    phrases_sens_1 text,
+    phrases_sens_2 text
+);
+
+INSERT INTO public.tbl_constants (words_no_sens_1, words_no_sens_2, words_sens, phrases_no_sens_1, phrases_no_sens_2, phrases_sens_1, phrases_sens_2)
+select
+    'some words as no sens ' || v as words_no_sens_1,
+    'some words as no sens - CompanyNameWordSens' || v as words_no_sens_2,
+    'some words as sens - CompanyNameWordSens ' || v as words_sens,
+    'some phrases as no sens' || v as phrases_no_sens_1,
+    'some phrases as no sens - CompanyNamePhrase include ' || v as phrases_no_sens_2,
+    'some phrases as sens - include CompanyNamePhrase' || v as phrases_sens_1,
+    'some phrases as sens - include CompanyNamePhrase ' || v as phrases_sens_2
+from generate_series(1,100) as v;
+
+--------------------------------------------------------------
+
 CREATE SCHEMA IF NOT EXISTS columnar_internal;
 
 CREATE TABLE columnar_internal.tbl_200

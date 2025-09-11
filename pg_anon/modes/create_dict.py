@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 from aioprocessing import AioQueue
 from asyncpg import Connection
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, DEFAULT_HASH_FUNC
+from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
 from pg_anon.common.dto import FieldInfo
@@ -97,27 +97,6 @@ class CreateDictMode:
             field['obj_id']: FieldInfo(**field) for field in fields_list
             if self._check_include_fields(field) and self._check_not_skip_fields(field)
         }
-
-    def _prepare_meta_dictionary_obj(self):
-        self.context.meta_dictionary_obj["data_const"]["constants"] = set(
-            self.context.meta_dictionary_obj["data_const"]["constants"]
-        )
-        self.context.meta_dictionary_obj["data_const"]["partial_constants"] = set(
-            self.context.meta_dictionary_obj["data_const"]["partial_constants"]
-        )
-
-        regex_for_compile = []
-        for v in self.context.meta_dictionary_obj["data_regex"]["rules"]:
-            # re.DOTALL using for searching in text with \n
-            regex_for_compile.append(re.compile(v, re.DOTALL))
-
-        self.context.meta_dictionary_obj["data_regex"]["rules"] = regex_for_compile.copy()
-
-        regex_for_compile = []
-        for v in self.context.meta_dictionary_obj["field"]["rules"]:
-            regex_for_compile.append(re.compile(v))
-
-        self.context.meta_dictionary_obj["field"]["rules"] = regex_for_compile.copy()
 
     def _scan_fields_by_names(self, fields_info: Dict[str, FieldInfo]):
         """
@@ -219,7 +198,9 @@ class CreateDictMode:
             field_info: FieldInfo,
             fld_data: List
     ) -> bool:
-        if not dictionary_obj["data_const"]["constants"]:
+        words = dictionary_obj["data_const"]["constants"]["words"]
+        phrases = dictionary_obj["data_const"]["constants"]["phrases"]
+        if not words and not phrases:
             return False
 
         self.context.logger.debug(
@@ -231,9 +212,16 @@ class CreateDictMode:
                 continue
 
             for word in value.split():
-                if len(word) >= 5 and word.lower() in dictionary_obj["data_const"]["constants"]:
+                if len(word) >= self.context.data_const_constants_min_length and word.lower() in words:
                     self.context.logger.debug(
                         f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by constant {word}'
+                    )
+                    return True
+
+            for phrase in phrases:
+                if phrase in value.lower():
+                    self.context.logger.debug(
+                        f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by constant {phrase}'
                     )
                     return True
 
@@ -262,7 +250,7 @@ class CreateDictMode:
 
             lower_value = value.lower()
             for partial_constant in dictionary_obj["data_const"]["partial_constants"]:
-                if partial_constant.lower() in lower_value:
+                if partial_constant in lower_value:
                     self.context.logger.debug(
                         f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by partial constant {partial_constant}'
                     )
@@ -708,7 +696,6 @@ class CreateDictMode:
 
         try:
             self.context.read_meta_dict()
-            self._prepare_meta_dictionary_obj()
             if self.context.args.prepared_sens_dict_files:
                 self.context.read_prepared_dict()
             await self._create_dict()
