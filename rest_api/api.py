@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, BackgroundTasks
@@ -22,7 +23,8 @@ app = FastAPI(
 
 
 def generate_openapi_doc_file():
-    with open("openapi.json", "w") as f:
+    output_path = Path(__file__).parent / "openapi.json"
+    with open(output_path, "w") as f:
         json.dump(app.openapi(), f, indent=2)
 
 

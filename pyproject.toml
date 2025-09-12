@@ -1,6 +1,6 @@
 [project]
 name = "pg_anon"
-version = "1.5.0"
+version = "1.7.0"
 description = "PostgreSQL anonymization tool."
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}
@@ -9,19 +9,18 @@ readme = "README.md"
 dependencies=[
     "aioprocessing==2.0.1",
     "asyncpg==0.29.0",
-    "nest-asyncio==1.6.0",
     "async-timeout==4.0.3",
-    "setuptools>=68",
     "prettytable>=3.10.2",
     "pyyaml (>=6.0.2,<7.0.0)"
 ]
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=78"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
+generate_openapi = "rest_api.api:generate_openapi_doc_file"
 
 [tool.setuptools]
 include-package-data = false
@@ -30,7 +29,7 @@ packages.find.exclude = ["tests", "dict"]
 
 [tool.poetry]
 name = "pg_anon"
-version = "1.5.0"
+version = "1.7.0"
 description = ""
 authors = ["Tantor Labs <tantor@tantorlabs.ru>"]
 readme = "README.md"
