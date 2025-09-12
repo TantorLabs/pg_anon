@@ -98,7 +98,7 @@ async def get_fields_list(connection_params: ConnectionParams, table_schema: str
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
         """
-            SELECT column_name, udt_name FROM information_schema.columns
+            SELECT column_name, udt_name, is_nullable FROM information_schema.columns
             WHERE table_schema = '%s' AND table_name='%s'
             ORDER BY ordinal_position ASC
         """

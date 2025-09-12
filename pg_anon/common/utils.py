@@ -185,22 +185,20 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
     return result
 
 
-async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
-                         files: Dict, excluded_objs: List, included_objs: List):
+async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule, files: Dict,
+                         excluded_objs: List, included_objs: List, nulls_last: bool = False):
 
     table_name_full = f'"{table_schema}"."{table_name}"'
 
-    found_white_list = table_rule is not None
-
     # dictionary_exclude has the highest priority
-    if ctx.prepared_dictionary_obj.get("dictionary_exclude"):
+    if "dictionary_exclude" in ctx.prepared_dictionary_obj:
         exclude_rule = get_dict_rule_for_table(
             dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
             schema=table_schema,
             table=table_name,
         )
-        found = exclude_rule is not None
-        if found and not found_white_list:
+
+        if exclude_rule is not None and table_rule is None:
             excluded_objs.append(
                 [
                     exclude_rule,
@@ -218,7 +216,7 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
 
     files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
 
-    if not found_white_list:
+    if table_rule is None:
         included_objs.append(
             [table_rule, table_schema, table_name, "if not found_white_list"]
         )
@@ -285,6 +283,13 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule,
                     or ctx.args.dbg_stage_2_validate_data
                     or ctx.args.dbg_stage_3_validate_full):
                 query += f" {ctx.validate_limit}"
+
+            if nulls_last:
+                ordering = ", ".join([
+                    field["column_name"] + ' NULLS LAST' for field in fields_list
+                    if field["is_nullable"].lower() == "yes"
+                ])
+                query += f" ORDER BY {ordering}"
 
             return query
 
