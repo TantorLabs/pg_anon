@@ -132,7 +132,8 @@ class ViewDataMode:
             table_rule=self.table_rule,
             files=files,
             included_objs=included_objs,
-            excluded_objs=excluded_objs
+            excluded_objs=excluded_objs,
+            nulls_last=True
         )
         self.query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
@@ -144,7 +145,8 @@ class ViewDataMode:
                 table_rule=None,
                 files=files,
                 included_objs=included_objs,
-                excluded_objs=excluded_objs
+                excluded_objs=excluded_objs,
+                nulls_last=True
             )
             self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
