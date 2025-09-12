@@ -639,9 +639,7 @@
           },
           "webhook_metadata": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -772,9 +770,7 @@
           },
           "webhook_metadata": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
@@ -865,9 +861,7 @@
           },
           "webhook_metadata": {
             "anyOf": [
-              {
-                "type": "string"
-              },
+              {},
               {
                 "type": "null"
               }
