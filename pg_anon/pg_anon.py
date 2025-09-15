@@ -21,7 +21,7 @@ from pg_anon.modes.view_fields import ViewFieldsMode
 from pg_anon.version import __version__
 
 
-async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> None:
+async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
     """
     Run pg_anon
     :param cli_run_params: list of params in command line format
@@ -32,6 +32,8 @@ async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> None:
     result = await MainRoutine(args).run()
     if result.result_code == ResultCode.FAIL:
         sys.exit(1)
+
+    return result
 
 
 class MainRoutine:
