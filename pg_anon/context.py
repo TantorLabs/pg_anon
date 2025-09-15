@@ -1,4 +1,5 @@
 import argparse
+import ast
 import os
 import re
 from typing import Dict, Optional
@@ -179,12 +180,12 @@ class Context:
         for meta_dict_file in dict_files_list:
             dictionary_file_name = os.path.join("dict", meta_dict_file)
             with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
-                data = dictionary_file.read()
+                data = dictionary_file.read().strip()
 
             if not data:
                 continue
 
-            meta_dict_data = eval(data)
+            meta_dict_data = ast.literal_eval(data)
 
             if not meta_dict_data:
                 continue
