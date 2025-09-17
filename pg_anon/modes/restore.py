@@ -101,7 +101,7 @@ class RestoreMode:
     async def _check_db_is_empty(self, connection: Connection):
         db_is_empty = await check_db_is_empty(connection=connection)
         if not db_is_empty and self._db_must_be_empty:
-            raise Exception(f"Target DB {self.context.connection_params['database']} is not empty!")
+            raise Exception(f"Target DB {self.context.connection_params.database} is not empty!")
 
     async def _check_free_disk_space(self, connection: Connection):
         data_directory_location = await connection.fetchval(
