@@ -164,11 +164,15 @@ async def get_tables_to_dump(connection: Connection, excluded_schemas: List[str]
     )
 
     query_db_obj = f"""
-            SELECT table_schema, table_name
-            FROM information_schema.tables
+            SELECT t.table_schema, t.table_name
+            FROM information_schema.tables t
+            JOIN pg_class c ON c.relname = t.table_name
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
+            LEFT JOIN pg_partitioned_table pt ON pt.partrelid = c.oid
             WHERE
-                table_schema not in ({excluded_schemas_str}) and
-                table_type = 'BASE TABLE'
+                t.table_schema NOT IN ({excluded_schemas_str})
+                AND t.table_type = 'BASE TABLE'
+                AND pt.partrelid IS NULL;
         """
 
     db_objs = await connection.fetch(query_db_obj)
