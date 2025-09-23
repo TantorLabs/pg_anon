@@ -1,6 +1,4 @@
-import asyncio
-
-from pg_anon.pg_anon import run_pg_anon
+from pg_anon.cli import main
 
 if __name__ == "__main__":
-    asyncio.run(run_pg_anon())
+    main()

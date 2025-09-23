@@ -21,7 +21,7 @@ class Logger:
 
         cls._instance._formatter = logging.Formatter(
             datefmt="%Y-%m-%d %H:%M:%S",
-            fmt="%(asctime)s,%(msecs)03d - %(levelname)8s %(lineno)3d - %(message)s",
+            fmt="%(asctime)s,%(msecs)03d - %(levelname)8s - %(message)s",
         )
 
         handler = logging.StreamHandler(sys.stdout)

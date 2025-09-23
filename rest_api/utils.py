@@ -6,9 +6,9 @@ from typing import List, Optional, Dict
 
 import aioprocessing
 
+from pg_anon.cli import run_pg_anon
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.utils import validate_exists_mode, simple_slugify
-from pg_anon.pg_anon import run_pg_anon
 from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -96,3 +96,12 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: List[
     await p.coro_join()
 
     return result
+
+
+def normalize_headers(headers: Optional[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    if not headers:
+        return None
+
+    headers = {k.lower(): v for k, v in headers.items()}
+    headers.setdefault('content-type', 'application/json')
+    return headers

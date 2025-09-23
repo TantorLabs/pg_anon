@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Union, Tuple
 import yaml
 from pkg_resources import parse_version as version
 
-from pg_anon.common.constants import TYPE_ALIASES
+from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT
 from pg_anon.common.db_utils import get_fields_list
 from pg_anon.common.dto import FieldInfo
 
@@ -221,9 +221,9 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule, fi
             [table_rule, table_schema, table_name, "if not found_white_list"]
         )
         # there is no table in the dictionary, so it will be transferred "as is"
-        if (ctx.args.dbg_stage_1_validate_dict
-                or ctx.args.dbg_stage_2_validate_data
-                or ctx.args.dbg_stage_3_validate_full):
+        if (ctx.options.dbg_stage_1_validate_dict
+                or ctx.options.dbg_stage_2_validate_data
+                or ctx.options.dbg_stage_3_validate_full):
             query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
             return query
         else:
@@ -236,9 +236,9 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule, fi
         # table found in dictionary
         if "raw_sql" in table_rule:
             # the table is transferred using "raw_sql"
-            if (ctx.args.dbg_stage_1_validate_dict
-                    or ctx.args.dbg_stage_2_validate_data
-                    or ctx.args.dbg_stage_3_validate_full):
+            if (ctx.options.dbg_stage_1_validate_dict
+                    or ctx.options.dbg_stage_2_validate_data
+                    or ctx.options.dbg_stage_3_validate_full):
                 query = table_rule["raw_sql"] + " " + ctx.validate_limit
                 ctx.logger.info(str(query))
                 return query
@@ -279,9 +279,9 @@ async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule, fi
                     sql_expr += ",\n"
 
             query = f"SELECT {sql_expr} FROM {table_name_full}"
-            if (ctx.args.dbg_stage_1_validate_dict
-                    or ctx.args.dbg_stage_2_validate_data
-                    or ctx.args.dbg_stage_3_validate_full):
+            if (ctx.options.dbg_stage_1_validate_dict
+                    or ctx.options.dbg_stage_2_validate_data
+                    or ctx.options.dbg_stage_3_validate_full):
                 query += f" {ctx.validate_limit}"
 
             if nulls_last:
@@ -376,3 +376,9 @@ def split_constants_to_words_and_phrases(constants: List[str]) -> Tuple[set, set
             single_words.add(normalized)
 
     return single_words, multi_words
+
+
+def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
+    tb_exc = traceback.TracebackException.from_exception(exc)
+    lines = list(tb_exc.format())
+    return "".join(lines[-limit:])

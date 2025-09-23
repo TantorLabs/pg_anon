@@ -45,3 +45,9 @@ TYPE_ALIASES = {
     "timestamp": "timestamp without time zone",
     "timestamptz": "timestamp with time zone",
 }
+
+SECRET_RUN_OPTIONS = [
+    "db_user_password"
+]
+
+TRACEBACK_LINES_COUNT = 100

@@ -7,7 +7,8 @@ import unittest
 from decimal import Decimal
 from typing import Dict, Set
 
-from pg_anon import MainRoutine
+from pg_anon import PgAnonApp
+from pg_anon.cli import build_run_options
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.enums import ResultCode
@@ -21,7 +22,6 @@ from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
 from pg_anon.modes.view_fields import ViewFieldsMode
 
-input_args = None
 passed_stages = []
 rows_in_init_env = 1512
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -140,21 +140,18 @@ class BasicUnitTest:
             res.result_code = ResultCode.DONE
             return res
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name=postgres",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=init",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name=postgres",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=init",
+            "--debug",
+        ])
 
-        ctx = Context(args)
+        ctx = Context(options)
 
         db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db(db_conn, params.test_source_db)
@@ -177,21 +174,18 @@ class BasicUnitTest:
         await db_conn.close()
         print("<============ Finished init_env")
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=init",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=init",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         if res.result_code != ResultCode.DONE:
             raise ValueError("Init env failed")
         passed_stages.append("init_env")
@@ -204,21 +198,18 @@ class BasicUnitTest:
             res.result_code = ResultCode.DONE
             return res
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                "--db-name=postgres",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=init",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            "--db-name=postgres",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=init",
+            "--debug",
+        ])
 
-        ctx = Context(args)
+        ctx = Context(options)
 
         db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db_once(db_conn, params.test_source_db + "_stress")
@@ -226,21 +217,18 @@ class BasicUnitTest:
         source_db_params = copy.copy(ctx.connection_params)
         source_db_params.database = params.test_source_db + "_stress"
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}_stress",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=init",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}_stress",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=init",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
 
         schema_exists = await db_conn.fetch(
             """select nspname from pg_namespace where nspname = 'stress'"""
@@ -263,8 +251,8 @@ class BasicUnitTest:
         passed_stages.append("init_stress_env")
         return res
 
-    async def check_rows(self, args, schema, table, fields, rows):
-        ctx = Context(args)
+    async def check_rows(self, options, schema, table, fields, rows):
+        ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
         if fields is None:
             db_rows = await db_conn.fetch(
@@ -312,7 +300,7 @@ class BasicUnitTest:
         await db_conn.close()
         return result
 
-    async def check_list_tables_and_fields(self, source_args, target_args):
+    async def check_list_tables_and_fields(self, source_options, target_options):
         query = """
         SELECT 
             n.nspname,
@@ -331,12 +319,12 @@ class BasicUnitTest:
         ORDER BY 1, 2, a.attnum
         """
 
-        ctx = Context(source_args)
+        ctx = Context(source_options)
         db_conn = await create_connection(ctx.connection_params)
         db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
 
-        ctx = Context(target_args)
+        ctx = Context(target_options)
         db_conn = await create_connection(ctx.connection_params)
         db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
@@ -346,9 +334,9 @@ class BasicUnitTest:
 
         return not_found_in_target
 
-    async def check_rows_count(self, args, objs) -> bool:
+    async def check_rows_count(self, options, objs) -> bool:
         failed_objs = []
-        ctx = Context(args)
+        ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
 
         for obj in objs:
@@ -370,7 +358,7 @@ class BasicUnitTest:
         await db_conn.close()
         return len(failed_objs) == 0
 
-    async def check_list_tables(self, args, expected_tables_list) -> bool:
+    async def check_list_tables(self, options, expected_tables_list) -> bool:
         query = """
             SELECT 
                 n.nspname,
@@ -383,7 +371,7 @@ class BasicUnitTest:
             ORDER BY 1, 2
         """
 
-        ctx = Context(args)
+        ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
         db_rows = recordset_to_list_flat(await db_conn.fetch(query))
         await db_conn.close()
@@ -396,7 +384,7 @@ class BasicUnitTest:
 
         return len(not_found_tables) == 0 and len(db_rows) == len(expected_tables_list)
 
-    async def get_list_tables_with_diff_data(self, source_args, target_args):
+    async def get_list_tables_with_diff_data(self, source_options, target_options):
         query = """
         SELECT 
             n.nspname,
@@ -415,7 +403,7 @@ class BasicUnitTest:
         ORDER BY 1, 2, a.attnum
         """
 
-        ctx = Context(source_args)
+        ctx = Context(source_options)
         db_conn = await create_connection(ctx.connection_params)
         db_source_rows = recordset_to_list_flat(await db_conn.fetch(query))
         for row in db_source_rows:
@@ -428,7 +416,7 @@ class BasicUnitTest:
             row.append(vals)
         await db_conn.close()
 
-        ctx = Context(target_args)
+        ctx = Context(target_options)
         db_conn = await create_connection(ctx.connection_params)
         db_target_rows = recordset_to_list_flat(await db_conn.fetch(query))
         for row in db_target_rows:
@@ -502,44 +490,38 @@ class BasicUnitTest:
 class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
     def test_all_list_arguments_are_empty(self):
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--mode=create-dict",
-            ]
-        )
-        self.assertIsNone(args.meta_dict_files)
-        self.assertIsNone(args.prepared_sens_dict_files)
-        self.assertIsNone(args.prepared_no_sens_dict_files)
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--mode=create-dict",
+        ])
+        self.assertIsNone(options.meta_dict_files)
+        self.assertIsNone(options.prepared_sens_dict_files)
+        self.assertIsNone(options.prepared_no_sens_dict_files)
 
     def test_all_list_arguments_filled_with_simple_value(self):
         meta_dict_file_name = self.get_test_dict_path('test.py')
         prepared_sens_dict_file_name = self.get_test_dict_path('prepared_sens_dict_file.py')
         prepared_no_sens_dict_file_name = self.get_test_dict_path('prepared_no_sens_dict_file.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--meta-dict-file={meta_dict_file_name}",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--prepared-no-sens-dict-file={prepared_no_sens_dict_file_name}",
-            ]
-        )
-        self.assertEqual([meta_dict_file_name], args.meta_dict_files)
-        self.assertEqual([prepared_sens_dict_file_name], args.prepared_sens_dict_files)
-        self.assertEqual([prepared_no_sens_dict_file_name], args.prepared_no_sens_dict_files)
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--meta-dict-file={meta_dict_file_name}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--prepared-no-sens-dict-file={prepared_no_sens_dict_file_name}",
+        ])
+        self.assertEqual([meta_dict_file_name], options.meta_dict_files)
+        self.assertEqual([prepared_sens_dict_file_name], options.prepared_sens_dict_files)
+        self.assertEqual([prepared_no_sens_dict_file_name], options.prepared_no_sens_dict_files)
 
     def test_all_list_arguments_filled_with_list_values(self):
         meta_dict_file_names = [
@@ -555,23 +537,20 @@ class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicU
             self.get_test_dict_path('another_prepared_no_sens_dict_file.py'),
         ]
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--meta-dict-file={','.join(meta_dict_file_names)}",
-                f"--prepared-sens-dict-file={','.join(prepared_sens_dict_file_names)}",
-                f"--prepared-no-sens-dict-file={','.join(prepared_no_sens_dict_file_names)}",
-            ]
-        )
-        self.assertEqual(meta_dict_file_names, args.meta_dict_files)
-        self.assertEqual(prepared_sens_dict_file_names, args.prepared_sens_dict_files)
-        self.assertEqual(prepared_no_sens_dict_file_names, args.prepared_no_sens_dict_files)
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--meta-dict-file={','.join(meta_dict_file_names)}",
+            f"--prepared-sens-dict-file={','.join(prepared_sens_dict_file_names)}",
+            f"--prepared-no-sens-dict-file={','.join(prepared_no_sens_dict_file_names)}",
+        ])
+        self.assertEqual(meta_dict_file_names, options.meta_dict_files)
+        self.assertEqual(prepared_sens_dict_file_names, options.prepared_sens_dict_files)
+        self.assertEqual(prepared_no_sens_dict_file_names, options.prepared_no_sens_dict_files)
 
 
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -586,27 +565,23 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--output-dir={output_dir}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_dump")
 
@@ -615,25 +590,21 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         input_dir = self.get_test_output_path("test")
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={input_dir}",
-                "--drop-custom-check-constr",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_04_dump(self):
@@ -643,27 +614,23 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--output-dir={output_dir}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_04_dump")
 
@@ -672,43 +639,36 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file = self.get_test_dict_path("test_exclude.py")
         
         input_dir = self.get_test_output_path("test_exclude")
-        
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_2",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={input_dir}",
-                "--drop-custom-check-constr",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
 
-        res = await MainRoutine(args).run()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_2",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_2",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-        res = await MainRoutine(args).validate_target_tables()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_2",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            "--debug",
+        ])
+        res = await PgAnonApp(options).validate_target_tables()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_05_restore")
 
@@ -719,51 +679,44 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-struct-dump",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--output-dir={output_dir}",
-                "--verbose=debug",
-                "--clear-output-dir",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-struct-dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            "--clear-output-dir",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_3",  # here will be created 3 empty tables
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-struct-restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={output_dir}",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_3",  # here will be created 3 empty tables
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-struct-restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         self.assertTrue(
             await self.check_list_tables(
-                args,
+                options,
                 [  # TODO: get list tables from specific dict
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
@@ -777,7 +730,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ["schm_other_2", "some_tbl", 0],
             ["schm_mask_include_1", "tbl_123", 0],
         ]
-        self.assertTrue(await self.check_rows_count(args, objs))
+        self.assertTrue(await self.check_rows_count(options, objs))
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_06_sync_struct")
@@ -790,9 +743,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
+        options = build_run_options([
                 f"--db-host={params.test_db_host}",
                 f"--db-name={params.test_source_db}",
                 f"--db-user={params.test_db_user}",
@@ -804,37 +755,33 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--output-dir={output_dir}",
-                "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
             ]
         )
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_3",  # here target DB have 3 empty tables
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-data-restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={output_dir}",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_3",  # here target DB have 3 empty tables
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-data-restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--debug",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         self.assertTrue(
             await self.check_list_tables(
-                args,
+                options,
                 [  # TODO: get list tables from specific dict
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
@@ -852,11 +799,11 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 rows_in_init_env * int(params.test_scale),
             ],
         ]
-        self.assertTrue(await self.check_rows_count(args, objs))
+        self.assertTrue(await self.check_rows_count(options, objs))
 
         rows = [[3, "t***l_3"], [4, "t***l_4"]]
         self.assertTrue(
-            await self.check_rows(args, "schm_mask_include_1", "tbl_123", None, rows)
+            await self.check_rows(options, "schm_mask_include_1", "tbl_123", None, rows)
         )
 
         self.assertEqual(res.result_code, ResultCode.DONE)
@@ -870,9 +817,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
+        options = build_run_options([
                 f"--db-host={params.test_db_host}",
                 f"--db-name={params.test_source_db}",
                 f"--db-user={params.test_db_user}",
@@ -884,46 +829,42 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
                 f"--output-dir={output_dir}",
-                "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
             ]
         )
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}",  # here target DB is NOT empty
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-data-restore",  # just sync data of specific tables from test_sync_data_2.py
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={output_dir}",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",  # here target DB is NOT empty
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-data-restore",  # just sync data of specific tables from test_sync_data_2.py
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--debug",
+        ])
 
-        ctx = Context(args)
+        ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
         # pg_anon does not clear tables on its own
         await db_conn.execute("TRUNCATE TABLE schm_other_1.some_tbl")  # manual clean
         await db_conn.execute("TRUNCATE TABLE schm_other_2.some_tbl")
         await db_conn.close()
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         objs = [
             ["schm_other_1", "some_tbl", rows_in_init_env * int(params.test_scale)],
             ["schm_other_2", "some_tbl", rows_in_init_env * int(params.test_scale)],
         ]
-        self.assertTrue(await self.check_rows_count(args, objs))
+        self.assertTrue(await self.check_rows_count(options, objs))
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_08_sync_data")
@@ -940,9 +881,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
         output_dir = self.get_test_output_path("test_02_sync_struct_for_validate")
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
+        options = build_run_options([
                 f"--db-host={params.test_db_host}",
                 f"--db-name={params.test_source_db}",
                 f"--db-user={params.test_db_user}",
@@ -953,7 +892,6 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                "--verbose=debug",
                 "--clear-output-dir",
                 "--debug",
                 f"--output-dir={output_dir}",
@@ -961,26 +899,23 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ]
         )
 
-        res_dump = await MainRoutine(args).run()
+        res_dump = await PgAnonApp(options).run()
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_7",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-struct-restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={output_dir}",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_7",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-struct-restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--debug",
+        ])
 
-        res_restore = await MainRoutine(args).run()
+        res_restore = await PgAnonApp(options).run()
         self.assertEqual(res_restore.result_code, ResultCode.DONE)
         passed_stages.append("test_02_sync_struct_for_validate")
 
@@ -990,28 +925,24 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
         output_dir = self.get_test_output_path("test_03_validate_dict")
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-                "--dbg-stage-1-validate-dict",
-                f"--output-dir={output_dir}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+            "--dbg-stage-1-validate-dict",
+            f"--output-dir={output_dir}",
+        ])
 
-        res = await MainRoutine(args).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_validate_dict")
 
@@ -1021,47 +952,40 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
         output_dir = self.get_test_output_path("test_04_validate_data")
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-                "--dbg-stage-2-validate-data",
-                f"--output-dir={output_dir}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+            "--dbg-stage-2-validate-data",
+            f"--output-dir={output_dir}",
+        ])
 
-        res_dump = await MainRoutine(args).run()
+        res_dump = await PgAnonApp(options).run()
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_7",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-data-restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--verbose=debug",
-                "--debug",
-                f"--input-dir={output_dir}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_7",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-data-restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--debug",
+            f"--input-dir={output_dir}",
+        ])
 
-        res_restore = await MainRoutine(args).run()
+        res_restore = await PgAnonApp(options).run()
         self.assertEqual(res_restore.result_code, ResultCode.DONE)
 
         passed_stages.append("test_04_validate_data")
@@ -1071,48 +995,41 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
         output_dir = self.get_test_output_path("test_05_validate_full")
-        
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-                "--dbg-stage-3-validate-full",
-                f"--output-dir={output_dir}",
-            ]
-        )
 
-        res_dump = await MainRoutine(args).run()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+            "--dbg-stage-3-validate-full",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_8",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--verbose=debug",
-                "--debug",
-                f"--input-dir={output_dir}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_8",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--debug",
+            f"--input-dir={output_dir}",
+        ])
 
-        res_restore = await MainRoutine(args).run()
+        res_restore = await PgAnonApp(options).run()
         self.assertEqual(res_restore.result_code, ResultCode.DONE)
 
         passed_stages.append("test_05_validate_full")
@@ -1204,7 +1121,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
 
-    args = {}
+    options = {}
 
     async def test_01_init(self):
         res = await self.init_env()
@@ -1215,28 +1132,24 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={meta_dict}",
-                f"--output-sens-dict-file={self.target_sens_dict}",
-                f"--output-no-sens-dict-file={self.target_no_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict}",
+            f"--output-sens-dict-file={self.target_sens_dict}",
+            f"--output-no-sens-dict-file={self.target_no_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(self.target_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1252,29 +1165,24 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(self.target_sens_dict)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = copy.deepcopy(
-            parser.parse_args(
-                [
-                    f"--db-host={params.test_db_host}",
-                    f"--db-name={params.test_source_db}",
-                    f"--db-user={params.test_db_user}",
-                    f"--db-port={params.test_db_port}",
-                    f"--db-user-password={params.test_db_user_password}",
-                    f"--config={params.test_config}",
-                    "--mode=dump",
-                    f"--prepared-sens-dict-file={self.target_sens_dict}",
-                    f"--output-dir={output_dir}",
-                    f"--processes={params.test_processes}",
-                    f"--db-connections-per-process={params.db_connections_per_process}",
-                    "--clear-output-dir",
-                    "--verbose=debug",
-                    "--debug",
-                ]
-            )
-        )
-        self.args["dump"] = copy.deepcopy(args)
-        res = await MainRoutine(args).run()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={self.target_sens_dict}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
+
+        self.options["dump"] = options
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_dump")
 
@@ -1284,25 +1192,21 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(self.target_sens_dict)
         input_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_4",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--mode=restore",
-                f"--input-dir={input_dir}",
-                "--drop-custom-check-constr",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-        self.args["restore"] = copy.deepcopy(args)
-        res = await MainRoutine(args).run()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_4",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--mode=restore",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--debug",
+        ])
+        self.options["restore"] = options
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         rows = [
@@ -1327,7 +1231,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         ]
         self.assertTrue(
             await self.check_rows(
-                args, "schm_mask_ext_exclude_2", "card_numbers", None, rows
+                options, "schm_mask_ext_exclude_2", "card_numbers", None, rows
             )
         )
 
@@ -1338,10 +1242,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 rows_in_init_env * int(params.test_scale) * 3,
             ]  # see init_env.sql
         ]
-        self.assertTrue(await self.check_rows_count(args, objs))
+        self.assertTrue(await self.check_rows_count(options, objs))
 
         not_found_in_target = await self.check_list_tables_and_fields(
-            self.args["dump"], self.args["restore"]
+            self.options["dump"], self.options["restore"]
         )
         self.assertEqual(len(not_found_in_target), 3)
         self.assertEqual(not_found_in_target, [
@@ -1360,29 +1264,25 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
         target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={meta_dict_file}",
-                f"--output-sens-dict-file={self.target_sens_dict}",
-                f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
-                f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict_file}",
+            f"--output-sens-dict-file={self.target_sens_dict}",
+            f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
+            f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(self.target_sens_dict))
         self.assertTrue(os.path.exists(target_no_sens_dict_repeat))
 
@@ -1399,30 +1299,26 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={meta_dict_file}",
-                f"--output-sens-dict-file={self.target_sens_dict}",
-                f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
-                f"--prepared-sens-dict-file={self.target_sens_dict}",
-                f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict_file}",
+            f"--output-sens-dict-file={self.target_sens_dict}",
+            f"--output-no-sens-dict-file={target_no_sens_dict_repeat}",
+            f"--prepared-sens-dict-file={self.target_sens_dict}",
+            f"--prepared-no-sens-dict-file={self.target_no_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(self.target_sens_dict))
         self.assertTrue(os.path.exists(target_no_sens_dict_repeat))
 
@@ -1442,27 +1338,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_include_rule.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_rule_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1481,27 +1373,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1520,27 +1408,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_partial_constants.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_partial_constants_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1559,27 +1443,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_sql_condition.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_sql_condition_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1598,27 +1478,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_func.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_func_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1636,27 +1512,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_type_aliases.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_type_aliases_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1674,27 +1546,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_default_func.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_default_func_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1713,27 +1581,23 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_words_and_phrases_constants.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_words_and_phrases_constants_expected.py")
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={','.join(meta_dicts)}",
-                f"--output-sens-dict-file={prepared_sens_dict}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--scan-partial-rows=10000",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertTrue(os.path.exists(prepared_sens_dict))
         self.assertTrue(os.path.exists(self.target_no_sens_dict))
 
@@ -1753,7 +1617,7 @@ tmp_results = TmpResults()
 
 class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     target_dict = "test_create_dict_result.py"
-    args = {}
+    options = {}
 
     async def test_01_stress_init(self):
         res = await self.init_stress_env()
@@ -1764,26 +1628,23 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
 
         meta_dict_file = self.get_test_dict_path('test_meta_dict.py')
         output_sens_dict_file = self.get_test_dict_path(f'stress_{self.target_dict}', output=True)
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}_stress",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=partial",
-                f"--meta-dict-file={meta_dict_file}",
-                f"--output-sens-dict-file={output_sens_dict_file}",
-                "--db-connections-per-process=4",
-                "--processes=2",
-                "--scan-partial-rows=100",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}_stress",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=partial",
+            f"--meta-dict-file={meta_dict_file}",
+            f"--output-sens-dict-file={output_sens_dict_file}",
+            "--db-connections-per-process=4",
+            "--processes=2",
+            "--scan-partial-rows=100",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         tmp_results.res_test_02 = res.elapsed
         passed_stages.append("test_02_create_dict")
@@ -1794,25 +1655,22 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
         output_sens_dict_file = self.get_test_dict_path(f'stress_{self.target_dict}', output=True)
 
-        parser = Context.get_arg_parser()
-        self.args_create_dict = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}_stress",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=create-dict",
-                "--scan-mode=full",
-                f"--meta-dict-file={meta_dict_file}",
-                f"--output-sens-dict-file={output_sens_dict_file}",
-                "--db-connections-per-process=4",
-                "--processes=2",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}_stress",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict_file}",
+            f"--output-sens-dict-file={output_sens_dict_file}",
+            "--db-connections-per-process=4",
+            "--processes=2",
+        ])
 
-        res = await MainRoutine(self.args_create_dict).run()
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         tmp_results.res_test_03 = res.elapsed
         passed_stages.append("test_03_create_dict")
@@ -1832,7 +1690,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
 
 
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    args = {}
+    options = {}
 
     async def test_01_init(self):
         res = await self.init_env()
@@ -1845,28 +1703,24 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
         output_dir = self.get_test_output_path(dict_file_name)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=dump",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                f"--output-dir={output_dir}",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                "--clear-output-dir",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
 
-        self.args["dump"] = copy.deepcopy(args)
-        res = await MainRoutine(args).run()
+        self.options["dump"] = options
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_mask_dump")
 
@@ -1874,40 +1728,36 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_02_mask_dump" in passed_stages)
         input_dir = self.get_test_output_path("mask_test")
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_target_db}_5",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=restore",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--input-dir={input_dir}",
-                "--drop-custom-check-constr",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_5",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--debug",
+        ])
 
-        self.args["restore"] = copy.deepcopy(args)
-        res = await MainRoutine(args).run()
+        self.options["restore"] = options
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         rows = [[1, round(Decimal(101010), 2)], [2, round(Decimal(101010), 2)]]
         self.assertTrue(
-            await self.check_rows(args, "public", "contracts", ["id", "amount"], rows)
+            await self.check_rows(options, "public", "contracts", ["id", "amount"], rows)
         )
 
         rows = [[1, round(Decimal(202020), 2)], [2, round(Decimal(202020), 2)]]
         self.assertTrue(
-            await self.check_rows(args, "public", "tbl_100", ["id", "amount"], rows)
+            await self.check_rows(options, "public", "tbl_100", ["id", "amount"], rows)
         )
 
         source_tables, target_tables = await self.get_list_tables_with_diff_data(
-            self.args["dump"], self.args["restore"]
+            self.options["dump"], self.options["restore"]
         )
         self.assertTrue(
             self.save_and_compare_result(
@@ -1931,26 +1781,22 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-data",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--schema-name=public",
-                "--table-name=contracts",
-                "--limit=10",
-                "--offset=0",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-        res = await MainRoutine(args).run()
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-data",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--schema-name=public",
+            "--table-name=contracts",
+            "--limit=10",
+            "--offset=0",
+            "--debug",
+        ])
+        res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         passed_stages.append("test_02_view_data_print")
@@ -1960,27 +1806,23 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--json",
-                "--mode=view-data",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--schema-name=public",
-                "--table-name=contracts",
-                "--limit=10",
-                "--offset=0",
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-        context = MainRoutine(args).context  # Setup for context reusing only
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--json",
+            "--mode=view-data",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--schema-name=public",
+            "--table-name=contracts",
+            "--limit=10",
+            "--offset=0",
+            "--debug",
+        ])
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
         await executor.run()
@@ -1995,30 +1837,28 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
-        parser = Context.get_arg_parser()
-        args = [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-data",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--schema-name=schm_mask_ext_exclude_2",
-                "--table-name=card_numbers",
-                "--limit=10",
-                "--offset=30235",
-                "--verbose=debug",
-                "--debug",
-            ]
-        args_print = parser.parse_args(args)
-        res_print = await MainRoutine(args_print).run()
+        options = [
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-data",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--schema-name=schm_mask_ext_exclude_2",
+            "--table-name=card_numbers",
+            "--limit=10",
+            "--offset=30235",
+            "--debug",
+        ]
+        options_print = build_run_options(options)
+        res_print = await PgAnonApp(options_print).run()
         self.assertEqual(res_print.result_code, ResultCode.DONE)
 
-        args.append("--json")
-        args_json = parser.parse_args(args)
-        res_json = await MainRoutine(args_json).run()
+        options.append("--json")
+        options_json = build_run_options(options)
+        res_json = await PgAnonApp(options_json).run()
         self.assertEqual(res_json.result_code, ResultCode.DONE)
 
         passed_stages.append("test_04_view_data_null")
@@ -2030,24 +1870,22 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         schema_name: str = 'schm_mask_ext_exclude_2'
         table_name: str = 'card_numbers'
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args([
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-data",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--schema-name={schema_name}",
-                f"--table-name={table_name}",
-                "--limit=10",
-                "--offset=0",
-                "--verbose=debug",
-                "--debug",
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-data",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--schema-name={schema_name}",
+            f"--table-name={table_name}",
+            "--limit=10",
+            "--offset=0",
+            "--debug",
         ])
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewDataMode(context)
         await executor.run()
@@ -2092,21 +1930,18 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2125,22 +1960,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         schema_name: str = 'public'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--schema-name={schema_name}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--schema-name={schema_name}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2156,22 +1988,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         schema_mask: str = '^pub.*'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--schema-mask={schema_mask}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--schema-mask={schema_mask}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2188,22 +2017,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         table_name: str = 'inn_info'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--table-name={table_name}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--table-name={table_name}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2219,22 +2045,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         table_mask: str = '.*\\d$'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--table-mask={table_mask}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--table-mask={table_mask}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2251,22 +2074,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
         fields_scan_length = 5
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--fields-count={fields_scan_length}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--fields-count={fields_scan_length}",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2284,40 +2104,34 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
-        parser = Context.get_arg_parser()
-
         # Only sensitive executor run
-        args_only_sensitive = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--view-only-sensitive-fields",
-            ]
-        )
-        context_only_sensitive = MainRoutine(args_only_sensitive).context  # Setup for context reusing only
+        options_only_sensitive = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--view-only-sensitive-fields",
+        ])
+        context_only_sensitive = PgAnonApp(options_only_sensitive).context  # Setup for context reusing only
         executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
         await executor_only_sensitive.run()
 
         # Full executor run
-        args_full = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-            ]
-        )
-        context_full = MainRoutine(args_full).context  # Setup for context reusing only
+        options_full = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+        ])
+        context_full = PgAnonApp(options_full).context  # Setup for context reusing only
         executor_full = ViewFieldsMode(context_full)
         await executor_full.run()
 
@@ -2343,22 +2157,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--json",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--json",
+        ])
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         await executor.run()
@@ -2378,23 +2189,20 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--fields-count=0",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--fields-count=0",
+        ])
         executor_failed = False
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         try:
@@ -2414,23 +2222,20 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         schema_name: str = 'not_exists_schema_name'
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                f"--schema-name={schema_name}",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            f"--schema-name={schema_name}",
+        ])
         executor_failed = False
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         try:
@@ -2450,22 +2255,19 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         prepared_sens_dict_file_name = self.get_test_dict_path('test_empty_dictionary.py')
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-                "--mode=view-fields",
-            ]
-        )
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
+            "--mode=view-fields",
+        ])
         executor_failed = False
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         try:
@@ -2480,21 +2282,36 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_13_view_fields_exception_on_no_prepared_dictionary(self):
         self.assertTrue("init_env" in passed_stages)
 
-        parser = Context.get_arg_parser()
-        args = parser.parse_args(
-            [
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=view-fields",
-            ]
-        )
+        """
+
+        run_options = RunOptions([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+        ])
         executor_failed = False
 
-        context = MainRoutine(args).context  # Setup for context reusing only
+        context = Context(run_options)  # Setup for context reusing only
+
+        
+        """
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=view-fields",
+        ])
+        executor_failed = False
+
+        context = PgAnonApp(options).context  # Setup for context reusing only
 
         executor = ViewFieldsMode(context)
         try:

@@ -38,12 +38,12 @@ class RestoreMode:
         self.context = context
 
         if (
-            self.context.args.input_dir.find("""/""") == -1
-            and self.context.args.input_dir.find("""\\""") == -1
+            self.context.options.input_dir.find("""/""") == -1
+            and self.context.options.input_dir.find("""\\""") == -1
         ):
-            self.context.args.input_dir = os.path.join(self.context.current_dir, "output", self.context.args.input_dir)
+            self.context.options.input_dir = os.path.join(self.context.current_dir, "output", self.context.options.input_dir)
 
-        self.input_dir = str(self.context.args.input_dir)
+        self.input_dir = str(self.context.options.input_dir)
 
         if not os.path.exists(self.input_dir):
             msg = f"ERROR: input directory {self.input_dir} does not exists"
@@ -52,15 +52,15 @@ class RestoreMode:
 
         self._load_metadata()
 
-        self._db_must_be_empty = self.context.args.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
+        self._db_must_be_empty = self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
         self._skip_pre_data_restore = (
-            self.context.args.mode == AnonMode.SYNC_DATA_RESTORE
-            or self.metadata.dbg_stage_2_validate_data
+                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
+                or self.metadata.dbg_stage_2_validate_data
         )
         self._skip_post_data_restore = (
-            self.context.args.mode == AnonMode.SYNC_DATA_RESTORE
-            or self.metadata.dbg_stage_2_validate_data
-            or self.metadata.dbg_stage_3_validate_full
+                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
+                or self.metadata.dbg_stage_2_validate_data
+                or self.metadata.dbg_stage_3_validate_full
         )
 
     def _load_metadata(self):
@@ -79,7 +79,7 @@ class RestoreMode:
         return analyze_queries
 
     def _check_utils_version_for_dump(self):
-        if self.context.args.disable_checks:
+        if self.context.options.disable_checks:
             return
 
         target_postgres_version = get_major_version(self.context.pg_version)
@@ -124,27 +124,27 @@ class RestoreMode:
             )
 
     async def _run_pg_restore(self, section):
-        os.environ["PGPASSWORD"] = self.context.args.db_user_password
+        os.environ["PGPASSWORD"] = self.context.options.db_user_password
         command = [
             self.context.pg_restore,
             "-h",
-            self.context.args.db_host,
+            self.context.options.db_host,
             "-p",
-            str(self.context.args.db_port),
+            str(self.context.options.db_port),
             "-v",
             "-w",
             "-U",
-            self.context.args.db_user,
+            self.context.options.db_user,
             "-d",
-            self.context.args.db_name,
+            self.context.options.db_name,
             "-j",
-            str(self.context.args.db_connections_per_process),
+            str(self.context.options.db_connections_per_process),
             os.path.join(self.input_dir, section.replace("-", "_") + ".backup"),
         ]
-        if not self.context.args.db_host:
+        if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
 
-        if not self.context.args.db_user:
+        if not self.context.options.db_user:
             del command[command.index("-U"): command.index("-U") + 2]
 
         self.context.logger.debug(str(command))
@@ -162,10 +162,10 @@ class RestoreMode:
             raise RuntimeError(msg)
 
     async def _sequences_init(self, connection: Connection):
-        if self.context.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
-        if self.context.args.seq_init_by_max_value:
+        if self.context.options.seq_init_by_max_value:
             query = get_sequences_max_value_init_query()
             self.context.logger.debug(query)
             await connection.execute(query)
@@ -182,7 +182,7 @@ class RestoreMode:
                 await connection.execute(query)
 
     async def _create_schemas_in_struct_restore_mode(self, connection: Connection):
-        if self.context.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             for schema in self.metadata.schemas:
                 query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
                 self.context.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
@@ -194,7 +194,7 @@ class RestoreMode:
         performance degradation at the data loading stage
         :param connection: Active database connection
         """
-        if not self.context.args.drop_custom_check_constr:
+        if not self.context.options.drop_custom_check_constr:
             return
 
         check_constraints = await connection.fetch(
@@ -260,8 +260,8 @@ class RestoreMode:
         pool = await create_pool(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
-            min_size=self.context.args.db_connections_per_process,
-            max_size=self.context.args.db_connections_per_process
+            min_size=self.context.options.db_connections_per_process,
+            max_size=self.context.options.db_connections_per_process
         )
 
         try:
@@ -269,7 +269,7 @@ class RestoreMode:
             tasks = set()
             for file_name, target in self.metadata.files.items():
                 full_path = os.path.join(self.input_dir, file_name)
-                if len(tasks) >= self.context.args.db_connections_per_process:
+                if len(tasks) >= self.context.options.db_connections_per_process:
                     # Wait for some restore to finish before adding a new one
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                     exception = done.pop().exception()
@@ -294,7 +294,7 @@ class RestoreMode:
             await pool.close()
 
     async def _restore_data(self, connection: Connection):
-        if self.context.args.mode == AnonMode.SYNC_STRUCT_RESTORE:
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
         async with connection.transaction(isolation='repeatable_read'):
@@ -328,7 +328,7 @@ class RestoreMode:
         self.context.logger.info("<------------- Finished restore post-data (pg_restore)")
 
     async def run_analyze(self):
-        if (self.context.args.mode == AnonMode.SYNC_STRUCT_RESTORE
+        if (self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
                 or self.metadata.dbg_stage_2_validate_data
                 or self.metadata.dbg_stage_3_validate_full):
 
@@ -339,15 +339,15 @@ class RestoreMode:
         pool = await create_pool(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
-            min_size=self.context.args.db_connections_per_process,
-            max_size=self.context.args.db_connections_per_process
+            min_size=self.context.options.db_connections_per_process,
+            max_size=self.context.options.db_connections_per_process
         )
 
         queries = self._generate_analyze_queries()
         loop = asyncio.get_event_loop()
         tasks = set()
         for query in queries:
-            if len(tasks) >= self.context.args.db_connections_per_process:
+            if len(tasks) >= self.context.options.db_connections_per_process:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 exception = done.pop().exception()
                 if exception is not None:

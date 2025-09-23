@@ -21,8 +21,8 @@ class ViewFieldsMode:
 
     def __init__(self, context: Context):
         self.context = context
-        if context.args.fields_count is not None:
-            self._processing_fields_limit = context.args.fields_count
+        if context.options.fields_count is not None:
+            self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
 
     def _init_filter_dict_rule(self):
@@ -30,20 +30,20 @@ class ViewFieldsMode:
         has_schema: bool = False
         has_table: bool = False
 
-        if self.context.args.schema_name:
-            self._filter_dict_rule["schema"] = self.context.args.schema_name
+        if self.context.options.schema_name:
+            self._filter_dict_rule["schema"] = self.context.options.schema_name
             has_schema = True
 
-        if self.context.args.schema_mask:
-            self._filter_dict_rule["schema_mask"] = self.context.args.schema_mask
+        if self.context.options.schema_mask:
+            self._filter_dict_rule["schema_mask"] = self.context.options.schema_mask
             has_schema = True
 
-        if self.context.args.table_name:
-            self._filter_dict_rule["table"] = self.context.args.table_name
+        if self.context.options.table_name:
+            self._filter_dict_rule["table"] = self.context.options.table_name
             has_table = True
 
-        if self.context.args.table_mask:
-            self._filter_dict_rule["table_mask"] = self.context.args.table_mask
+        if self.context.options.table_mask:
+            self._filter_dict_rule["table_mask"] = self.context.options.table_mask
             has_table = True
 
         if has_schema and not has_table:
@@ -84,7 +84,7 @@ class ViewFieldsMode:
             server_settings=self.context.server_settings
         )
 
-        if fields_count > self._processing_fields_limit and not self.context.args.json:
+        if fields_count > self._processing_fields_limit and not self.context.options.json:
             print(f'You try to get too many fields ({fields_count} fields).'
                   f' Will processed for output only first {self._processing_fields_limit} fields.'
                   f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce fields amount.'
@@ -113,7 +113,7 @@ class ViewFieldsMode:
                     fields_with_find_rules.append(field)
                     continue
 
-            if not self.context.args.view_only_sensitive_fields:
+            if not self.context.options.view_only_sensitive_fields:
                 field.rule = self.empty_data_filler
                 field.dict_file_name = self.empty_data_filler
                 fields_with_find_rules.append(field)
@@ -163,7 +163,7 @@ class ViewFieldsMode:
         if not self.fields:
             raise ValueError("Haven't fields for view!")
 
-        if self.context.args.json:
+        if self.context.options.json:
             self._prepare_json()
             print(self.json)
         else:

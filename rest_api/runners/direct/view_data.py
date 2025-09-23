@@ -1,8 +1,7 @@
 from typing import List, Type
 
-from pg_anon import MainRoutine
+from pg_anon.cli import build_run_options
 from pg_anon.common.dto import PgAnonResult
-from pg_anon.common.enums import ResultCode
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
 from rest_api.pydantic_models import ViewDataRequest, ViewDataContent
@@ -77,15 +76,11 @@ class ViewDataRunner:
         self._prepare_verbosity_cli_params()
 
     def _init_context(self):
-        parser = Context.get_arg_parser()
-        run_args = parser.parse_args(self.cli_params)
-        self.context = MainRoutine(run_args).ctx
+        options = build_run_options(self.cli_params)
+        self.context = Context(options)
 
     def _init_executor(self):
-        self._executor = ViewDataMode(
-            self.context,
-            need_raw_data=True
-        )
+        self._executor = ViewDataMode(self.context, need_raw_data=True)
 
     def _format_output(self) -> ViewDataContent:
         def _format_data_to_str(records: List[List[str]]):
@@ -104,10 +99,6 @@ class ViewDataRunner:
         )
 
     async def run(self):
-        self.result = await self._executor.run()
+        await self._executor.run()
         await self._executor.get_rows_count()
-
-        if not self.result or self.result.result_code == ResultCode.FAIL:
-            raise RuntimeError('Operation not completed successfully')
-
         return self._format_output()

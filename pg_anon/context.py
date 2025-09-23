@@ -1,25 +1,27 @@
-import argparse
 import ast
+import logging
 import os
 import re
+from datetime import datetime
 from typing import Dict, Optional
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
-from pg_anon.common.dto import ConnectionParams
-from pg_anon.common.enums import VerboseOptions, AnonMode, ScanMode
-from pg_anon.common.utils import exception_handler, parse_comma_separated_list, read_yaml, normalize_data_type, \
-    split_constants_to_words_and_phrases
+from pg_anon.common.dto import ConnectionParams, RunOptions
+from pg_anon.common.enums import VerboseOptions, AnonMode
+from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
+    split_constants_to_words_and_phrases, simple_slugify
+from pg_anon.logger import logger_add_file_handler, logger_set_log_level, get_logger
 
 
 class Context:
     @exception_handler
-    def __init__(self, args):
+    def __init__(self, options: RunOptions):
         self.current_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        self.args = args
-        self.config = read_yaml(args.config) if args.config else None
+        self.options = options
+        self.config = read_yaml(options.config) if options.config else None
         self.pg_version = None
-        self.pg_dump = args.pg_dump
-        self.pg_restore = args.pg_restore
+        self.pg_dump = options.pg_dump
+        self.pg_restore = options.pg_restore
         self.validate_limit = "LIMIT 100"
         self.meta_dictionary_obj: Dict = {}
         self.prepared_dictionary_obj: Dict = {}
@@ -32,24 +34,26 @@ class Context:
         self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
         self.logger = None
         self.data_const_constants_min_length = None
+        self.start_time = datetime.now().strftime('%Y_%m_%d__%H_%M')
+        self.setup_logger()
 
-        if args.db_user_password == "" and os.environ.get("PGPASSWORD") is not None:
-            args.db_user_password = os.environ["PGPASSWORD"]
+        if not options.db_user_password:
+            options.db_user_password = os.environ.get("PGPASSWORD")
 
         self.server_settings = SERVER_SETTINGS.copy()
-        if self.args.application_name_suffix:
-            self.server_settings['application_name'] += '_' + self.args.application_name_suffix
+        if self.options.application_name_suffix:
+            self.server_settings['application_name'] += '_' + self.options.application_name_suffix
 
         self.connection_params = ConnectionParams(
-            host=args.db_host,
-            database=args.db_name,
-            port=args.db_port,
-            user=args.db_user,
-            passfile=args.db_passfile,
-            password=args.db_user_password,
-            ssl_cert_file=args.db_ssl_cert_file,
-            ssl_key_file=args.db_ssl_key_file,
-            ssl_ca_file=args.db_ssl_ca_file,
+            host=options.db_host,
+            database=options.db_name,
+            port=options.db_port,
+            user=options.db_user,
+            passfile=options.db_passfile,
+            password=options.db_user_password,
+            ssl_cert_file=options.db_ssl_cert_file,
+            ssl_key_file=options.db_ssl_key_file,
+            ssl_ca_file=options.db_ssl_ca_file,
         )
 
     def _check_meta_dict_types(self, meta_dict: Dict):
@@ -172,10 +176,10 @@ class Context:
     def read_meta_dict(self):
         self.meta_dictionary_obj = self._make_meta_dict()
 
-        dict_files_list = self.args.meta_dict_files
+        dict_files_list = self.options.meta_dict_files
 
-        if self.args.prepared_no_sens_dict_files:
-            dict_files_list += self.args.prepared_no_sens_dict_files
+        if self.options.prepared_no_sens_dict_files:
+            dict_files_list += self.options.prepared_no_sens_dict_files
 
         for meta_dict_file in dict_files_list:
             dictionary_file_name = os.path.join("dict", meta_dict_file)
@@ -197,7 +201,7 @@ class Context:
             self._append_meta_dict(prepared_meta_dict)
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
-        if not self.args.prepared_sens_dict_files:
+        if not self.options.prepared_sens_dict_files:
             raise ValueError("No prepared sens dict files specified")
 
         self.prepared_dictionary_obj = {
@@ -206,7 +210,7 @@ class Context:
             "validate_tables": [],
         }
 
-        for dict_file in self.args.prepared_sens_dict_files:
+        for dict_file in self.options.prepared_sens_dict_files:
             dictionary_file_name = os.path.join("dict", dict_file)
             with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
                 data = dictionary_file.read()
@@ -236,213 +240,6 @@ class Context:
             if validate_tables := dict_data.get("validate_tables", []):
                 self.prepared_dictionary_obj["validate_tables"].extend(validate_tables)
 
-    @staticmethod
-    def get_arg_parser():
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--version",
-            help="Show the version number and exit",
-            action="store_true",
-            default=False,
-        )
-        parser.add_argument(
-            "--debug",
-            help="Enable debug mode, (default: %(default)s)",
-            action="store_true",
-            default=False,
-        )
-        parser.add_argument(
-            "--config",
-            help="Path to configuration file of pg_anon in YAML",
-            default=None,
-        )
-        parser.add_argument("--db-host", type=str)
-        parser.add_argument("--db-port", type=str, default="5432")
-        parser.add_argument("--db-name", type=str, default="default")
-        parser.add_argument("--db-user", type=str, default="default")
-        parser.add_argument("--db-user-password", type=str, default="")
-        parser.add_argument("--db-passfile", type=str, default="")
-        parser.add_argument("--db-ssl-key-file", type=str, default="")
-        parser.add_argument("--db-ssl-cert-file", type=str, default="")
-        parser.add_argument("--db-ssl-ca-file", type=str, default="")
-        parser.add_argument(
-            "--mode", type=AnonMode, choices=list(AnonMode), default=AnonMode.INIT
-        )
-        parser.add_argument(
-            "--verbose",
-            dest="verbose",
-            type=VerboseOptions,
-            choices=list(VerboseOptions),
-            default=VerboseOptions.INFO,
-            help="Enable verbose output",
-        )
-        parser.add_argument(
-            "--meta-dict-file",
-            dest='meta_dict_files',
-            type=parse_comma_separated_list,
-            default=None,
-            help="In 'create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
-        )
-        parser.add_argument(
-            "--db-connections-per-process",
-            type=int,
-            default=4,
-            help="Amount of db connections for each process for IO operations.",
-        )
-        parser.add_argument(
-            "--processes",
-            type=int,
-            default=4,
-            help="Amount of processes for multiprocessing operations.",
-        )
-        parser.add_argument(
-            "--pg-dump",
-            type=str,
-            default="/usr/bin/pg_dump",
-            help="Path to the `pg_dump` Postgres tool",
-        )
-        parser.add_argument(
-            "--pg-restore",
-            type=str,
-            default="/usr/bin/pg_restore",
-            help="Path to the `pg_dump` Postgres tool.",
-        )
-        parser.add_argument("--output-dir", type=str, default="")
-        parser.add_argument("--input-dir", type=str, default="")
-        parser.add_argument(
-            "--dbg-stage-1-validate-dict",
-            action="store_true",
-            default=False,
-            help="""Validate dictionary, show the tables and run SQL queries without data export""",
-        )
-        parser.add_argument(
-            "--dbg-stage-2-validate-data",
-            action="store_true",
-            default=False,
-            help="""Validate data, show the tables and run SQL queries with data export in prepared database""",
-        )
-        parser.add_argument(
-            "--dbg-stage-3-validate-full",
-            action="store_true",
-            default=False,
-            help="""Makes all logic with "limit" in SQL queries""",
-        )
-        parser.add_argument("--clear-output-dir", action="store_true", default=False)
-        parser.add_argument(
-            "--drop-custom-check-constr",
-            action="store_true",
-            default=False,
-            help="Drop all CHECK constrains containing user-defined procedures to avoid performance "
-            "degradation at the data loading stage.",
-        )
-        parser.add_argument(
-            "--seq-init-by-max-value",
-            action="store_true",
-            default=False,
-            help="Initialize sequences based on maximum values. Otherwise, the sequences "
-            "will be initialized based on the values of the source database.",
-        )
-        parser.add_argument(
-            "--disable-checks",
-            action="store_true",
-            default=False,
-            help="Disable checks of disk space and PostgreSQL version.",
-        )
-        parser.add_argument(
-            "--scan-mode",
-            type=ScanMode,
-            choices=list(ScanMode),
-            default=ScanMode.PARTIAL.value,
-            help="In 'create-dict' mode defines whether to scan all data or only part of it",
-        )
-        parser.add_argument(
-            "--output-sens-dict-file",
-            type=str,
-            default="output-sens-dict-file.py",
-            help="In 'create-dict' mode output file with sensitive fields will be saved to this value",
-        )
-        parser.add_argument(
-            "--output-no-sens-dict-file",
-            type=str,
-            help="In 'create-dict' mode output file with not sensitive fields will be saved to this value",
-        )
-        parser.add_argument(
-            "--prepared-sens-dict-file",
-            dest='prepared_sens_dict_files',
-            type=parse_comma_separated_list,
-            help="In 'create-dict' mode input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually",
-        )
-        parser.add_argument(
-            "--prepared-no-sens-dict-file",
-            dest="prepared_no_sens_dict_files",
-            type=parse_comma_separated_list,
-            help="In 'create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
-        )
-        parser.add_argument(
-            "--scan-partial-rows",
-            type=int,
-            default=10000,
-            help="In '--scan-mode=partial' sets how much rows to scan",
-        )
-        parser.add_argument(
-            "--view-only-sensitive-fields",
-            action="store_true",
-            default=False,
-            help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
-        )
-        parser.add_argument(
-            "--schema-name",
-            type=str,
-            help="In 'view-fields' and 'view-data' modes filter fields by schema name.",
-        )
-        parser.add_argument(
-            "--schema-mask",
-            type=str,
-            help="In 'view-fields' mode filter fields by schema mask. By default output all db fields",
-        )
-        parser.add_argument(
-            "--table-name",
-            type=str,
-            help="In 'view-fields' and 'view-data' modes filter fields by table name.",
-        )
-        parser.add_argument(
-            "--table-mask",
-            type=str,
-            help="In 'view-fields' mode filter fields by table mask. By default output all db fields",
-        )
-        parser.add_argument(
-            "--json",
-            action="store_true",
-            default=False,
-            help="In 'view-fields' mode output in JSON format. By default using table output",
-        )
-        parser.add_argument(
-            "--fields-count",
-            type=int,
-            default=5000,
-            help="In 'view-fields' mode specify how many fields will be processed for output. By default = 5000",
-        )
-        parser.add_argument(
-            "--limit",
-            type=int,
-            default=100,
-            help="In 'view-data' mode how much rows to display. By default = 100",
-        )
-        parser.add_argument(
-            "--offset",
-            type=int,
-            default=0,
-            help="In 'view-data' mode which part of --limit rows will be displayed. By default = 0",
-        )
-        parser.add_argument(
-            "--application-name-suffix",
-            type=str,
-            default=None,
-            required=False,
-            help="Appends suffix for connection name. Just for comfortable automation",
-        )
-        return parser
-
     def set_postgres_version(self, pg_version: str):
         self.pg_version = pg_version
         pg_major_version = int(pg_version.split('.')[0])
@@ -468,3 +265,36 @@ class Context:
 
         self.pg_dump = pg_dump
         self.pg_restore = pg_restore
+
+    def setup_logger(self):
+        log_level = logging.NOTSET
+
+        if self.options.mode not in (AnonMode.VIEW_FIELDS, AnonMode.VIEW_DATA):
+            if self.options.verbose == VerboseOptions.DEBUG:
+                log_level = logging.DEBUG
+            elif self.options.verbose == VerboseOptions.ERROR:
+                log_level = logging.ERROR
+            elif self.options.verbose == VerboseOptions.INFO:
+                log_level = logging.INFO
+
+        additional_file_name = None
+        if self.options.mode == AnonMode.CREATE_DICT and self.options.meta_dict_files:
+            additional_file_name = os.path.splitext(os.path.basename(self.options.meta_dict_files[0]))[0]
+        elif self.options.prepared_sens_dict_files:
+            additional_file_name = os.path.splitext(os.path.basename(self.options.prepared_sens_dict_files[0]))[0]
+        elif self.options.input_dir:
+            additional_file_name = os.path.basename(self.options.input_dir)
+
+        log_file_name_parts = [self.start_time, self.options.mode.value]
+        if additional_file_name:
+            log_file_name_parts.append(simple_slugify(additional_file_name))
+
+        log_file_name = "__".join(log_file_name_parts) + ".log"
+        log_dir = os.path.join(self.current_dir, "log")
+
+        logger_add_file_handler(
+            log_dir=log_dir,
+            log_file_name=log_file_name
+        )
+        logger_set_log_level(log_level=log_level)
+        self.logger = get_logger()

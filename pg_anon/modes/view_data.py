@@ -27,10 +27,10 @@ class ViewDataMode:
 
     def __init__(self, context: Context, need_raw_data: bool = False):
         self.context = context
-        self._limit = context.args.limit
-        self._offset = context.args.offset
-        self._schema_name = context.args.schema_name
-        self._table_name = context.args.table_name
+        self._limit = context.options.limit
+        self._offset = context.options.offset
+        self._schema_name = context.options.schema_name
+        self._table_name = context.options.table_name
         self.field_names = []
         self.raw_field_names = []
         self.data = []
@@ -73,18 +73,6 @@ class ViewDataMode:
         )
         return self.rows_count
 
-        data = [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
-        return data
-
-    async def get_rows_count(self):
-        self.rows_count = await get_rows_count(
-            connection_params=self.context.connection_params,
-            server_settings=self.context.server_settings,
-            schema_name=self._schema_name,
-            table_name=self._table_name
-        )
-        return self.rows_count
-
     def _prepare_table(self) -> None:
         self.table = PrettyTable(self.field_names)
         self.table.set_style(SINGLE_BORDER)
@@ -113,7 +101,7 @@ class ViewDataMode:
         if self._need_raw_data:
             self.raw_data = await self._get_data_for_view(self.raw_query)
 
-        if self.context.args.json:
+        if self.context.options.json:
             self._prepare_json()
             print(self.json)
         else:
