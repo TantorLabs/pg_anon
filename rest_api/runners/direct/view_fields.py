@@ -1,8 +1,7 @@
 from typing import List, Type
 
-from pg_anon import MainRoutine
+from pg_anon.cli import build_run_options
 from pg_anon.common.dto import PgAnonResult
-from pg_anon.common.enums import ResultCode
 from pg_anon.context import Context
 from pg_anon.modes.view_fields import ViewFieldsMode
 from rest_api.pydantic_models import ViewFieldsRequest, ViewFieldsContent
@@ -89,9 +88,8 @@ class ViewFieldsRunner:
         self._prepare_verbosity_cli_params()
 
     def _init_context(self):
-        parser = Context.get_arg_parser()
-        run_args = parser.parse_args(self.cli_params)
-        self.context = MainRoutine(run_args).ctx
+        options = build_run_options(self.cli_params)
+        self.context = Context(options)
 
     def _init_executor(self):
         self._executor = ViewFieldsMode(self.context)
@@ -121,9 +119,5 @@ class ViewFieldsRunner:
         return result
 
     async def run(self):
-        self.result = await self._executor.run()
-
-        if not self.result or self.result.result_code == ResultCode.FAIL:
-            raise RuntimeError('Operation not completed successfully')
-
+        await self._executor.run()
         return self._format_output()

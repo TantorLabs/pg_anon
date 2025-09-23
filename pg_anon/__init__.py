@@ -1,3 +1,3 @@
-from .pg_anon import MainRoutine
+from .app import PgAnonApp
 
-__all__ = ["MainRoutine"]
+__all__ = ["PgAnonApp"]

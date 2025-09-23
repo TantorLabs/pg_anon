@@ -2,7 +2,6 @@ import os.path
 from typing import List
 
 from pg_anon.common.dto import PgAnonResult
-from pg_anon.common.enums import ResultCode
 from rest_api.pydantic_models import StatelessRunnerRequest
 from rest_api.utils import run_pg_anon_worker
 
@@ -56,7 +55,7 @@ class BaseRunner:
             cli_run_params=self.cli_params
         )
 
-        if not self.result or self.result.result_code == ResultCode.FAIL:
+        if not self.result:
             raise RuntimeError('Operation not completed successfully')
 
         return self.result

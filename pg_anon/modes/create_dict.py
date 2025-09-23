@@ -511,8 +511,8 @@ class CreateDictMode:
             pool = await create_pool(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
-                min_size=self.context.args.db_connections_per_process,
-                max_size=self.context.args.db_connections_per_process
+                min_size=self.context.options.db_connections_per_process,
+                max_size=self.context.options.db_connections_per_process
             )
             tasks = set()
 
@@ -524,7 +524,7 @@ class CreateDictMode:
             )
 
             for idx, field_info in enumerate(fields_info_chunk):
-                if len(tasks) >= self.context.args.db_connections_per_process:
+                if len(tasks) >= self.context.options.db_connections_per_process:
                     done, tasks = await asyncio.wait(
                         tasks, return_when=asyncio.FIRST_COMPLETED
                     )
@@ -537,9 +537,9 @@ class CreateDictMode:
                         name,
                         pool,
                         field_info,
-                        self.context.args.scan_mode,
+                        self.context.options.scan_mode,
                         self.context.meta_dictionary_obj,
-                        self.context.args.scan_partial_rows,
+                        self.context.options.scan_partial_rows,
                     )
                 )
                 tasks_res.append(task_res)
@@ -620,10 +620,10 @@ class CreateDictMode:
 
         # create output dict
         prepared_sens_dict_rules = {}
-        need_prepare_no_sens_dict: bool = bool(self.context.args.output_no_sens_dict_file)
+        need_prepare_no_sens_dict: bool = bool(self.context.options.output_no_sens_dict_file)
 
         if fields_info:
-            fields_info_chunks = list(chunkify(list(fields_info.values()), self.context.args.processes))
+            fields_info_chunks = list(chunkify(list(fields_info.values()), self.context.options.processes))
 
             tasks = []
             for idx, fields_info_chunk in enumerate(fields_info_chunks):
@@ -666,7 +666,7 @@ class CreateDictMode:
 
         output_sens_dict = {"dictionary": list(prepared_sens_dict_rules.values())}
 
-        output_sens_dict_filename = os.path.join(self.context.current_dir, "dict", self.context.args.output_sens_dict_file)
+        output_sens_dict_filename = os.path.join(self.context.current_dir, "dict", self.context.options.output_sens_dict_file)
         output_dir = os.path.dirname(output_sens_dict_filename)
         os.makedirs(output_dir, exist_ok=True)
 
@@ -687,7 +687,7 @@ class CreateDictMode:
                 )
 
             output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
-            output_no_sens_dict_file_name = os.path.join(self.context.current_dir, "dict", self.context.args.output_no_sens_dict_file)
+            output_no_sens_dict_file_name = os.path.join(self.context.current_dir, "dict", self.context.options.output_no_sens_dict_file)
             with open(output_no_sens_dict_file_name, "w", encoding='utf-8') as file:
                 file.write(json.dumps(output_no_sens_dict, indent=4, ensure_ascii=False))
 
@@ -696,10 +696,9 @@ class CreateDictMode:
 
         try:
             self.context.read_meta_dict()
-            if self.context.args.prepared_sens_dict_files:
+            if self.context.options.prepared_sens_dict_files:
                 self.context.read_prepared_dict()
             await self._create_dict()
-
             self.context.logger.info("<------------- Finished create_dict mode")
         except Exception as ex:
             self.context.logger.error("<------------- create_dict failed\n" + exception_helper())

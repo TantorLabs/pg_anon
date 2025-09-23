@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Union, List, Any
+from typing import List, Any, Optional, Dict
 
 from pydantic import BaseModel, Field
 
@@ -63,8 +63,8 @@ class DbConnection(BaseModel):
     port: int
     database: str
 
-    user: Union[str, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    user: Optional[str] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class DbConnectionCreate(BaseModel):
@@ -75,24 +75,24 @@ class DbConnectionCreate(BaseModel):
     port: int
     database: str
 
-    user: Union[str, None] = None
-    password: Union[str, None] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
 
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class DbConnectionUpdate(BaseModel):
-    title: Union[str, None] = None
+    title: Optional[str] = None
     slug: str
 
-    host: Union[str, None] = None
-    port: Union[int, None] = None
-    database: Union[str, None] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    database: Optional[str] = None
 
-    user: Union[str, None] = None
-    password: Union[str, None] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
 
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class DbCheckConnectionStatus(BaseModel):
@@ -125,25 +125,25 @@ class Project(BaseModel):
     created: datetime
     updated: datetime
 
-    custom_pg_dump_path: Union[str, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    custom_pg_dump_path: Optional[str] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
-    last_scan_run: Union[datetime, None] = None  # Computed values. Not for manual edit
-    last_scan_task_status_id: Union[int, None] = None  # Computed values. Not for manual edit
-    last_dump_run: Union[datetime, None] = None  # Computed values. Not for manual edit
-    last_dump_task_status_id: Union[int, None] = None  # Computed values. Not for manual edit
+    last_scan_run: Optional[datetime] = None  # Computed values. Not for manual edit
+    last_scan_task_status_id: Optional[int] = None  # Computed values. Not for manual edit
+    last_dump_run: Optional[datetime] = None  # Computed values. Not for manual edit
+    last_dump_task_status_id: Optional[int] = None  # Computed values. Not for manual edit
 
 
 class ProjectCreate(BaseModel):
     title: str
-    custom_pg_dump_path: Union[str, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    custom_pg_dump_path: Optional[str] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class ProjectUpdate(BaseModel):
-    title: Union[str, None] = None
-    custom_pg_dump_path: Union[str, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    title: Optional[str] = None
+    custom_pg_dump_path: Optional[str] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 #############################################
@@ -158,12 +158,12 @@ class DictionaryShort(BaseModel):
 
     type_id: int
     is_predefined: bool = False
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
     created: datetime
     updated: datetime
 
-    scan_title: Union[str, None] = None  # Computed values. Not for manual edit
+    scan_title: Optional[str] = None  # Computed values. Not for manual edit
 
 
 class DictionaryDetailed(BaseModel):
@@ -175,12 +175,12 @@ class DictionaryDetailed(BaseModel):
     type_id: int
     is_predefined: bool = False
     content: str
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
     created: datetime
     updated: datetime
 
-    scan_title: Union[str, None] = None  # Computed values. Not for manual edit
+    scan_title: Optional[str] = None  # Computed values. Not for manual edit
 
 
 class DictionaryCreate(BaseModel):
@@ -190,19 +190,19 @@ class DictionaryCreate(BaseModel):
     type_id: int
     content: str
 
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class DictionaryUpdate(BaseModel):
     title: str
     content: str
 
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class DictionaryDuplicate(BaseModel):
     title: str
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 #############################################
@@ -216,13 +216,13 @@ class Scan(BaseModel):
     project_id: int
 
     type_id: int
-    depth: Union[int, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    depth: Optional[int] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
     source_db: DbConnection
 
     input_meta_dict_titles: List[int]  # Computed values. Not for manual edit
-    input_sens_dict_titles: Union[List[int], None] = None  # Computed values. Not for manual edit
-    input_no_sens_dict_titles: Union[List[int], None] = None  # Computed values. Not for manual edit
+    input_sens_dict_titles: Optional[List[int]] = None  # Computed values. Not for manual edit
+    input_no_sens_dict_titles: Optional[List[int]] = None  # Computed values. Not for manual edit
 
     status_id: int  # Computed values. Not for manual edit
     created: datetime  # Computed values. Not for manual edit
@@ -236,17 +236,17 @@ class ScanCreate(BaseModel):
     slug: int
 
     type_id: int
-    depth: Union[int, None] = None
+    depth: Optional[int] = None
     source_db_id: int
 
     input_meta_dict_ids: List[int]
-    input_sens_dict_ids: Union[List[int], None] = None
-    input_no_sens_dict_ids: Union[List[int], None] = None
+    input_sens_dict_ids: Optional[List[int]] = None
+    input_no_sens_dict_ids: Optional[List[int]] = None
 
     output_sens_dict_name: str
-    output_no_sens_dict_name: Union[str, None] = None
+    output_no_sens_dict_name: Optional[str] = None
 
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 #############################################
@@ -263,15 +263,15 @@ class Dump(BaseModel):
     type_id: int
     source_db: DbConnection
 
-    custom_path: Union[str, None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    custom_path: Optional[str] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
-    input_sens_dict_titles: Union[List[int], None] = None  # Computed values. Not for manual edit
+    input_sens_dict_titles: Optional[List[int]] = None  # Computed values. Not for manual edit
 
     status: str  # Computed values. Not for manual edit
     created: datetime  # Computed values. Not for manual edit
     updated: datetime  # Computed values. Not for manual edit
-    size: Union[str, None] = None  # Computed values. Not for manual edit
+    size: Optional[str] = None  # Computed values. Not for manual edit
 
 
 class DumpCreate(BaseModel):
@@ -280,10 +280,10 @@ class DumpCreate(BaseModel):
     title: str
 
     type_id: int
-    custom_path: Union[str, None] = None
+    custom_path: Optional[str] = None
 
     input_sens_dict_ids: List[int]
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 #############################################
@@ -298,8 +298,8 @@ class Preview(BaseModel):
     project_id: int
     source_db: DbConnection
 
-    input_sens_dict_titles: Union[List[int], None] = None  # Computed values. Not for manual edit
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    input_sens_dict_titles: Optional[List[int]] = None  # Computed values. Not for manual edit
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
     created: datetime  # Computed values. Not for manual edit
     updated: datetime  # Computed values. Not for manual edit
@@ -311,15 +311,15 @@ class PreviewCreate(BaseModel):
     source_db_id: int
 
     input_sens_dict_ids: List[int]
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 class PreviewUpdate(BaseModel):
-    title: Union[str, None] = None
-    source_db_id: Union[int, None] = None
+    title: Optional[str] = None
+    source_db_id: Optional[int] = None
 
-    input_sens_dict_ids: Union[List[int], None] = None
-    attributes: Union[str, None] = None  # some custom attributes for integrations
+    input_sens_dict_ids: Optional[List[int]] = None
+    attributes: Optional[str] = None  # some custom attributes for integrations
 
 
 #############################################
@@ -338,18 +338,26 @@ class StatelessRunnerRequest(BaseModel):
     operation_id: str
     db_connection_params: DbConnectionParams
     webhook_status_url: str
-    webhook_metadata: Union[Any, None] = None  # data what will be sent on webhook "as is"
+    webhook_metadata: Optional[Any] = None  # data what will be sent on webhook "as is"
+    webhook_extra_headers: Optional[Dict[str, str]] = None
+    webhook_verify_ssl: Optional[bool] = True
 
 
 class StatelessRunnerResponse(BaseModel):
     operation_id: str
+    internal_operation_id: Optional[str] = None
     status_id: int
-    webhook_metadata: Union[Any, None] = None  # data what will be sent on webhook "as is"
+    status: str
+    webhook_metadata: Optional[Any] = None  # data what will be sent on webhook "as is"
+    started: Optional[str] = None
+    ended: Optional[str] = None
+    error: Optional[str] = None
+    run_options: Optional[str] = None
 
 
 class DictionaryMetadata(BaseModel):
     name: str
-    additional_info: Union[str, None] = None  # specific data for integrations purposes
+    additional_info: Optional[str] = None  # specific data for integrations purposes
 
 
 class DictionaryContent(DictionaryMetadata):
@@ -368,14 +376,14 @@ class ScanRequest(StatelessRunnerRequest):
 
     need_no_sens_dict: bool = False
 
-    depth: Union[int, None] = None
-    proc_count: Union[int, None] = None
-    proc_conn_count: Union[int, None] = None
+    depth: Optional[int] = None
+    proc_count: Optional[int] = None
+    proc_conn_count: Optional[int] = None
 
 
 class ScanStatusResponse(StatelessRunnerResponse):
-    sens_dict_content: Union[str, None] = None
-    no_sens_dict_content: Union[str, None] = None
+    sens_dict_content: Optional[str] = None
+    no_sens_dict_content: Optional[str] = None
 
 
 #############################################
@@ -385,14 +393,14 @@ class DumpRequest(StatelessRunnerRequest):
     type_id: int
     sens_dict_contents: List[DictionaryContent]
     output_path: str
-    pg_dump_path: Union[str, None] = None
+    pg_dump_path: Optional[str] = None
 
-    proc_count: Union[int, None] = None
-    proc_conn_count: Union[int, None] = None
+    proc_count: Optional[int] = None
+    proc_conn_count: Optional[int] = None
 
 
 class DumpStatusResponse(StatelessRunnerResponse):
-    size: Union[int, None] = None
+    size: Optional[int] = None
 
 
 class DumpDeleteRequest(BaseModel):
@@ -405,8 +413,8 @@ class DumpDeleteRequest(BaseModel):
 class RestoreRequest(StatelessRunnerRequest):
     type_id: int
     input_path: str
-    pg_restore_path: Union[str, None] = None
-    proc_conn_count: Union[int, None] = None
+    pg_restore_path: Optional[str] = None
+    proc_conn_count: Optional[int] = None
     drop_custom_check_constr: bool = False
 
 
@@ -417,13 +425,13 @@ class ViewFieldsRequest(BaseModel):
     db_connection_params: DbConnectionParams
     sens_dict_contents: List[DictionaryContent]
 
-    schema_name: Union[str, None] = None
-    schema_mask: Union[str, None] = None
-    table_name: Union[str, None] = None
-    table_mask: Union[str, None] = None
+    schema_name: Optional[str] = None
+    schema_mask: Optional[str] = None
+    table_name: Optional[str] = None
+    table_mask: Optional[str] = None
 
     view_only_sensitive_fields: bool = False
-    fields_limit_count: Union[int, None] = None
+    fields_limit_count: Optional[int] = None
 
 
 class ViewFieldsContent(BaseModel):
@@ -431,13 +439,13 @@ class ViewFieldsContent(BaseModel):
     table_name: str
     field_name: str
     type: str
-    dict_data: Union[DictionaryMetadata, None] = None
-    rule: Union[str, None] = None
+    dict_data: Optional[DictionaryMetadata] = None
+    rule: Optional[str] = None
 
 
 class ViewFieldsResponse(BaseModel):
     status_id: int
-    content: Union[List[ViewFieldsContent], None] = None
+    content: Optional[List[ViewFieldsContent]] = None
 
 
 #############################################
@@ -465,4 +473,4 @@ class ViewDataContent(BaseModel):
 
 class ViewDataResponse(BaseModel):
     status_id: int
-    content: Union[ViewDataContent, None] = None
+    content: Optional[ViewDataContent] = None

@@ -48,28 +48,28 @@ class DumpMode:
     def __init__(self, context: Context):
         self.context = context
         self.metadata = Metadata()
-        os.environ["PGPASSWORD"] = self.context.args.db_user_password
+        os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
-        if not self.context.args.output_dir:
-            prepared_dict_name = get_file_name_from_path(self.context.args.prepared_sens_dict_files[0])
+        if not self.context.options.output_dir:
+            prepared_dict_name = get_file_name_from_path(self.context.options.prepared_sens_dict_files[0])
             self.output_dir = os.path.join(self.context.current_dir, "output", prepared_dict_name)
-        elif self.context.args.output_dir.find("""/""") == -1 and self.context.args.output_dir.find("""\\""") == -1:
-            self.output_dir = os.path.join(self.context.current_dir, "output", str(self.context.args.output_dir))
+        elif self.context.options.output_dir.find("""/""") == -1 and self.context.options.output_dir.find("""\\""") == -1:
+            self.output_dir = os.path.join(self.context.current_dir, "output", str(self.context.options.output_dir))
         else:
-            self.output_dir = self.context.args.output_dir
+            self.output_dir = self.context.options.output_dir
 
         self.metadata_file_path = os.path.join(self.output_dir, self.metadata_file_name)
 
-        self._need_dump_pre_and_post_sections = self.context.args.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
-        self._need_dump_data = self.context.args.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
+        self._need_dump_pre_and_post_sections = self.context.options.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
+        self._need_dump_data = self.context.options.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
         self._skip_pre_data_dump = (
             not self._need_dump_pre_and_post_sections
-            or self.context.args.dbg_stage_2_validate_data
+            or self.context.options.dbg_stage_2_validate_data
         )
         self._skip_post_data_dump = (
             not self._need_dump_pre_and_post_sections
-            or self.context.args.dbg_stage_2_validate_data
-            or self.context.args.dbg_stage_3_validate_full
+            or self.context.options.dbg_stage_2_validate_data
+            or self.context.options.dbg_stage_3_validate_full
         )
 
     def _prepare_output_dir(self):
@@ -77,7 +77,7 @@ class DumpMode:
 
         if self.output_dir_is_empty:
             return
-        elif not self.context.args.clear_output_dir:
+        elif not self.context.options.clear_output_dir:
             msg = f"Output directory {self.output_dir} is not empty!"
             self.context.logger.error(msg)
             raise Exception(msg)
@@ -134,7 +134,7 @@ class DumpMode:
             sequence_last_value = await connection.fetchval(
                 f'select last_value from "{sequence_data[3]}"."{sequence_data[4]}"'
             )
-            if ((self.context.args.dbg_stage_2_validate_data or self.context.args.dbg_stage_3_validate_full)
+            if ((self.context.options.dbg_stage_2_validate_data or self.context.options.dbg_stage_3_validate_full)
                     and sequence_last_value > int(self.context.validate_limit.split()[1])):
                 sequence_last_value = 100
 
@@ -147,7 +147,7 @@ class DumpMode:
                     }
 
     async def _prepare_and_save_metadata(self):
-        if self.context.args.dbg_stage_1_validate_dict:
+        if self.context.options.dbg_stage_1_validate_dict:
             return
 
         self.metadata.created = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -160,9 +160,9 @@ class DumpMode:
                 dictionary_content.encode("utf-8")
             ).hexdigest()
 
-        self.metadata.prepared_sens_dict_files = ','.join(self.context.args.prepared_sens_dict_files)
+        self.metadata.prepared_sens_dict_files = ','.join(self.context.options.prepared_sens_dict_files)
 
-        if self.context.args.mode == AnonMode.SYNC_STRUCT_DUMP:
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_DUMP:
             self.metadata.schemas = list(
                 dict_obj["schema"] for dict_obj in self.context.prepared_dictionary_obj["dictionary"]
             )
@@ -176,17 +176,17 @@ class DumpMode:
             self.metadata.db_size = await get_db_size(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
-                db_name=self.context.args.db_name
+                db_name=self.context.options.db_name
             )
 
-        self.metadata.dbg_stage_2_validate_data = self.context.args.dbg_stage_2_validate_data
-        self.metadata.dbg_stage_3_validate_full = self.context.args.dbg_stage_3_validate_full
+        self.metadata.dbg_stage_2_validate_data = self.context.options.dbg_stage_2_validate_data
+        self.metadata.dbg_stage_3_validate_full = self.context.options.dbg_stage_3_validate_full
 
         self.metadata.save_into_file(file_name=self.metadata_file_path)
 
     async def _run_pg_dump(self, section):
         specific_tables = []
-        if self.context.args.mode == AnonMode.SYNC_STRUCT_DUMP:
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_DUMP:
             tmp_list = []
             for v in self.context.prepared_dictionary_obj["dictionary"]:
                 tmp_list.append(["-t", f'"{v["schema"]}"."{v["table"]}"'])
@@ -201,13 +201,13 @@ class DumpMode:
         command = [
             self.context.pg_dump,
             "-h",
-            self.context.args.db_host,
+            self.context.options.db_host,
             "-p",
-            str(self.context.args.db_port),
+            str(self.context.options.db_port),
             "-v",
             "-w",
             "-U",
-            self.context.args.db_user,
+            self.context.options.db_user,
             *exclude_schemas,
             *specific_tables,
             "--section",
@@ -219,9 +219,9 @@ class DumpMode:
             "-s",
             "-f",
             os.path.join(self.output_dir, section.replace("-", "_") + ".backup"),
-            self.context.args.db_name,
+            self.context.options.db_name,
         ]
-        if not self.context.args.db_host:
+        if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
 
         self.context.logger.debug(str(command))
@@ -240,7 +240,7 @@ class DumpMode:
 
     async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str):
         try:
-            if self.context.args.dbg_stage_1_validate_dict:
+            if self.context.options.dbg_stage_1_validate_dict:
                 return await db_conn.execute(query)
 
             return await db_conn.copy_from_query(
@@ -292,7 +292,7 @@ class DumpMode:
             count_rows = re.findall(r"(\d+)", result)[0]
             self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] COPY {count_rows} [rows] Task: {query}")
 
-            if not self.context.args.dbg_stage_1_validate_dict:
+            if not self.context.options.dbg_stage_1_validate_dict:
                 # Processing files no need to keep connection, after receiving data into binary file
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file start - {binary_output_file_path}")
 
@@ -355,7 +355,7 @@ class DumpMode:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
-        if self.context.args.verbose == VerboseOptions.DEBUG:
+        if self.context.options.verbose == VerboseOptions.DEBUG:
             self.context.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
             self.context.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
 
@@ -373,15 +373,15 @@ class DumpMode:
             pool = await create_pool(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
-                min_size=self.context.args.db_connections_per_process,
-                max_size=self.context.args.db_connections_per_process
+                min_size=self.context.options.db_connections_per_process,
+                max_size=self.context.options.db_connections_per_process
             )
             tasks = set()
 
             try:
                 query_tasks_count = len(query_tasks)
                 for idx, (file_name, query) in enumerate(query_tasks):
-                    if len(tasks) >= self.context.args.db_connections_per_process:
+                    if len(tasks) >= self.context.options.db_connections_per_process:
                         self.context.logger.debug(f"================> Process [{name}] Tasks pool is full. Waiting results by already started tasks")
                         # Wait for some dump to finish before adding a new one
                         done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -406,7 +406,7 @@ class DumpMode:
                     tasks.add(task_res)
                     tasks_res.append(task_res)
 
-                    self.context.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {self.context.args.db_connections_per_process}")
+                    self.context.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
 
                     if idx % status_ratio:
                         progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
@@ -415,7 +415,7 @@ class DumpMode:
                 self.context.logger.debug(f"Process [{name}] All tasks was started")
 
                 if len(tasks) > 0:
-                    self.context.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {self.context.args.db_connections_per_process}")
+                    self.context.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
                     await asyncio.wait(tasks)
             finally:
                 self.context.logger.debug(f"<================ Process [{name}] Connection pool closing")
@@ -477,7 +477,7 @@ class DumpMode:
 
                 queries_chunks = chunkify(
                     list(zip(self._data_dump_files.keys(), self._data_dump_queries)),
-                    self.context.args.processes
+                    self.context.options.processes
                 )
 
                 process_tasks = []
@@ -550,7 +550,7 @@ class DumpMode:
         try:
             self.context.read_prepared_dict()
 
-            if self.context.args.dbg_stage_1_validate_dict:
+            if self.context.options.dbg_stage_1_validate_dict:
                 return
 
             self._prepare_output_dir()
