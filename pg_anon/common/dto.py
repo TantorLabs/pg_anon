@@ -58,13 +58,15 @@ class RunOptions:
     version: bool
     json: bool
 
-    def to_json(self, indent: int = 2) -> str:
-        data = {
+    def to_dict(self):
+        return {
             k: v.value if isinstance(v, Enum) else v
             for k, v in asdict(self).items()
             if k not in SECRET_RUN_OPTIONS
         }
-        return json.dumps(data, indent=indent, ensure_ascii=False)
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
 
 class PgAnonResult:

@@ -352,7 +352,7 @@ class StatelessRunnerResponse(BaseModel):
     started: Optional[str] = None
     ended: Optional[str] = None
     error: Optional[str] = None
-    run_options: Optional[str] = None
+    run_options: Optional[Dict[str, Any]] = None
 
 
 class DictionaryMetadata(BaseModel):
