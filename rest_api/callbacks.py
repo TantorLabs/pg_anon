@@ -92,7 +92,7 @@ async def scan_callback(request: ScanRequest):
                 "internal_operation_id": scan_runner.result.internal_operation_id,
                 "started": scan_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": scan_runner.result.end_date.isoformat(timespec="seconds"),
-                "run_options": scan_runner.result.run_options.to_json(),
+                "run_options": scan_runner.result.run_options.to_dict(),
                 "error": scan_runner.result.error_message,
             })
         await send_webhook(
@@ -119,7 +119,7 @@ async def scan_callback(request: ScanRequest):
             status=ResponseStatusesHandbook.SUCCESS.name.lower(),
             started=scan_runner.result.start_date.isoformat(timespec="seconds"),
             ended=scan_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=scan_runner.result.run_options.to_json(),
+            run_options=scan_runner.result.run_options.to_dict(),
             webhook_metadata=request.webhook_metadata,
             sens_dict_content=sens_dict_contents,
             no_sens_dict_content=no_sens_dict_contents,
@@ -171,7 +171,7 @@ async def dump_callback(request: DumpRequest):
                 "internal_operation_id": dump_runner.result.internal_operation_id,
                 "started": dump_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": dump_runner.result.end_date.isoformat(timespec="seconds"),
-                "run_options": dump_runner.result.run_options.to_json(),
+                "run_options": dump_runner.result.run_options.to_dict(),
                 "error": dump_runner.result.error_message,
             })
         await send_webhook(
@@ -198,7 +198,7 @@ async def dump_callback(request: DumpRequest):
             status=ResponseStatusesHandbook.SUCCESS.name.lower(),
             started=dump_runner.result.start_date.isoformat(timespec="seconds"),
             ended=dump_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=dump_runner.result.run_options.to_json(),
+            run_options=dump_runner.result.run_options.to_dict(),
             webhook_metadata=request.webhook_metadata,
             size=dump_size,
         ),
@@ -244,7 +244,7 @@ async def restore_callback(request: RestoreRequest):
                 "internal_operation_id": restore_runner.result.internal_operation_id,
                 "started": restore_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": restore_runner.result.end_date.isoformat(timespec="seconds"),
-                "run_options": restore_runner.result.run_options.to_json(),
+                "run_options": restore_runner.result.run_options.to_dict(),
                 "error": restore_runner.result.error_message,
             })
         await send_webhook(
@@ -271,7 +271,7 @@ async def restore_callback(request: RestoreRequest):
             status=ResponseStatusesHandbook.SUCCESS.name.lower(),
             started=restore_runner.result.start_date.isoformat(timespec="seconds"),
             ended=restore_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=restore_runner.result.run_options.to_json(),
+            run_options=restore_runner.result.run_options.to_dict(),
             webhook_metadata=request.webhook_metadata,
         ),
         verify_ssl=request.webhook_verify_ssl,
