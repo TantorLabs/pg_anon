@@ -646,6 +646,32 @@
             ],
             "title": "Webhook Metadata"
           },
+          "webhook_extra_headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Extra Headers"
+          },
+          "webhook_verify_ssl": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Verify Ssl",
+            "default": true
+          },
           "type_id": {
             "type": "integer",
             "title": "Type Id"
@@ -777,6 +803,32 @@
             ],
             "title": "Webhook Metadata"
           },
+          "webhook_extra_headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Extra Headers"
+          },
+          "webhook_verify_ssl": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Verify Ssl",
+            "default": true
+          },
           "type_id": {
             "type": "integer",
             "title": "Type Id"
@@ -867,6 +919,32 @@
               }
             ],
             "title": "Webhook Metadata"
+          },
+          "webhook_extra_headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Extra Headers"
+          },
+          "webhook_verify_ssl": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Verify Ssl",
+            "default": true
           },
           "type_id": {
             "type": "integer",
