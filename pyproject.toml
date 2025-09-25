@@ -20,7 +20,6 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
-generate_openapi = "rest_api.api:generate_openapi_doc_file"
 
 [tool.setuptools]
 include-package-data = false

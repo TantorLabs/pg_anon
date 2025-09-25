@@ -620,6 +620,8 @@ Possible options in `--mode restore`:
 | `--seq-init-by-max-value`    | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database. |
 | `--drop-custom-check-constr` | Drop all CHECK constrains containing user-defined procedures to avoid performance degradation at the data loading stage.               |
 | `--pg-restore`               | Path to the `pg_dump` Postgres tool.                                                                                                   |
+| `--clean-db`                 | Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.                                      |
+| `--drop-db`                  | Drop target database before restore. Mutually exclusive with --clean-db.                                                               |
 
 ### Run view-fields mode
 

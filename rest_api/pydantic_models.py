@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Any, Optional, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 #############################################
@@ -416,6 +416,14 @@ class RestoreRequest(StatelessRunnerRequest):
     pg_restore_path: Optional[str] = None
     proc_conn_count: Optional[int] = None
     drop_custom_check_constr: bool = False
+    clean_db: bool = False
+    drop_db: bool = False
+
+    @model_validator(mode="after")
+    def check_mutually_exclusive(self):
+        if self.clean_db and self.drop_db:
+            raise ValueError("Only one of `clean_db` or `drop_db` can be set.")
+        return self
 
 
 #############################################

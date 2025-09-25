@@ -863,6 +863,16 @@
             "type": "boolean",
             "title": "Drop Custom Check Constr",
             "default": false
+          },
+          "clean_db": {
+            "type": "boolean",
+            "title": "Clean Db",
+            "default": false
+          },
+          "drop_db": {
+            "type": "boolean",
+            "title": "Drop Db",
+            "default": false
           }
         },
         "type": "object",

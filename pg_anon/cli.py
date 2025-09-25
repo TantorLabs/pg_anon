@@ -13,6 +13,8 @@ from pg_anon.version import __version__
 
 def get_arg_parser():
     parser = argparse.ArgumentParser()
+    clean_db_args_group = parser.add_mutually_exclusive_group()
+
     parser.add_argument(
         "--version",
         help="Show the version number and exit",
@@ -115,6 +117,18 @@ def get_arg_parser():
         default=False,
         help="Initialize sequences based on maximum values. Otherwise, the sequences "
         "will be initialized based on the values of the source database.",
+    )
+    clean_db_args_group.add_argument(
+        "--clean-db",
+        help="Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.",
+        action="store_true",
+        default=False,
+    )
+    clean_db_args_group.add_argument(
+        "--drop-db",
+        help="Drop target database before restore. Mutually exclusive with --clean-db.",
+        action="store_true",
+        default=False,
     )
     parser.add_argument(
         "--disable-checks",
