@@ -200,3 +200,16 @@ def get_sequences_max_value_init_query():
         END LOOP;
         SET search_path = 'public';
     END$$;"""
+
+
+def get_db_params(db_name: str):
+    return f"""
+        SELECT d.datname,
+               r.rolname AS owner,
+               pg_encoding_to_char(d.encoding) AS encoding,
+               d.datcollate,
+               d.datctype
+        FROM pg_database d
+        JOIN pg_roles r ON r.oid = d.datdba
+        WHERE d.datname = '{db_name}';
+    """

@@ -10,7 +10,7 @@ from typing import Dict, Set
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
-from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.dto import PgAnonResult, ConnectionParams
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import (
     exception_helper,
@@ -123,7 +123,7 @@ class DBOperations:
     @staticmethod
     async def init_env(db_conn, env_sql_file, scale=1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        with open(os.path.join(current_dir, env_sql_file), "r", encoding="utf-8") as f:
+        with open(os.path.join(current_dir, "sql", env_sql_file), "r", encoding="utf-8") as f:
             data = f.read()
         if int(scale) != 1:
             data = data.replace(
@@ -155,6 +155,7 @@ class BasicUnitTest:
 
         db_conn = await create_connection(ctx.connection_params)
         await DBOperations.init_db(db_conn, params.test_source_db)
+        await DBOperations.init_db(db_conn, params.test_source_db + "_2")
         await DBOperations.init_db(db_conn, params.test_target_db)
         await DBOperations.init_db(db_conn, params.test_target_db + "_2")
         await DBOperations.init_db(db_conn, params.test_target_db + "_3")
@@ -163,6 +164,7 @@ class BasicUnitTest:
         await DBOperations.init_db(db_conn, params.test_target_db + "_6")
         await DBOperations.init_db(db_conn, params.test_target_db + "_7")  # for PGAnonValidateUnitTest 04
         await DBOperations.init_db(db_conn, params.test_target_db + "_8")  # for PGAnonValidateUnitTest 05
+        await DBOperations.init_db(db_conn, params.test_target_db + "_9")  # for PGAnonUnitTest 11
         await db_conn.close()
 
         source_db_params = copy.copy(ctx.connection_params)
@@ -237,9 +239,7 @@ class BasicUnitTest:
         if len(schema_exists) == 0:
             print("============> Started init_stress_env")
             db_conn = await create_connection(source_db_params)
-            await DBOperations.init_env(
-                db_conn, "init_stress_env.sql", params.test_scale
-            )
+            await DBOperations.init_env(db_conn, "init_stress_env.sql", params.test_scale)
             await db_conn.close()
             print("<============ Finished init_stress_env")
         else:
@@ -606,6 +606,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_03_restore")
 
     async def test_04_dump(self):
         self.assertTrue("init_env" in passed_stages)
@@ -868,6 +869,221 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_08_sync_data")
+
+    async def test_09_repeat_restore_in_existing_db(self):
+        self.assertTrue("test_03_restore" in passed_stages)
+
+        input_dir = self.get_test_output_path("test")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+        passed_stages.append("test_09_repeat_restore_in_existing_db")
+
+    async def test_10_repeat_restore_with_drop_db(self):
+        self.assertTrue("test_03_restore" in passed_stages)
+
+        input_dir = self.get_test_output_path("test")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            "--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_10_repeat_restore_with_drop_db")
+
+
+class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    test_source_db = f"{params.test_source_db}_2"
+    test_target_db = f"{params.test_target_db}_9"
+
+    async def init_db(self, db_name: str, scale: int = 1):
+        connection_params = ConnectionParams(
+            host=params.test_db_host,
+            port=int(params.test_db_port),
+            database=db_name,
+            user=params.test_db_user,
+            password=params.test_db_user_password,
+        )
+        db_conn = await create_connection(connection_params)
+        await DBOperations.init_env(db_conn, "init_simple_env.sql", scale)
+        await db_conn.close()
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={db_name}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=init",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def add_data_to_db(self, db_name: str, scale: int = 1):
+        connection_params = ConnectionParams(
+            host=params.test_db_host,
+            port=int(params.test_db_port),
+            database=db_name,
+            user=params.test_db_user,
+            password=params.test_db_user_password,
+        )
+        db_conn = await create_connection(connection_params)
+        await DBOperations.init_env(db_conn, "init_additional_simple_env.sql", scale)
+        await db_conn.close()
+
+    async def make_dump(self, db_name: str):
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
+        output_dir = self.get_test_output_path(dict_file_name)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={db_name}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_dump_and_restore_with_clean_db(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        restore_options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={self.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={self.get_test_output_path("test_empty_dictionary")}",
+            "--drop-custom-check-constr",
+            "--clean-db",
+            "--debug",
+        ])
+
+        await self.init_db(self.test_source_db)
+        await self.make_dump(self.test_source_db)
+
+        res = await PgAnonApp(restore_options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        objs = [
+            ["test_simple", "customer_company", rows_in_init_env],
+            ["test_simple", "contracts", rows_in_init_env],
+        ]
+        self.assertTrue(await self.check_rows_count(restore_options, objs))
+
+        rows_multiplier = 5
+        await self.init_db(self.test_target_db, rows_multiplier)
+
+        objs = [
+            ["test_simple", "customer_company", rows_in_init_env * rows_multiplier],
+            ["test_simple", "contracts", rows_in_init_env * rows_multiplier],
+        ]
+        self.assertTrue(await self.check_rows_count(restore_options, objs))
+
+        res = await PgAnonApp(restore_options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        objs = [
+            ["test_simple", "customer_company", rows_in_init_env],
+            ["test_simple", "contracts", rows_in_init_env],
+        ]
+        self.assertTrue(await self.check_rows_count(restore_options, objs))
+
+        passed_stages.append("test_02_dump_and_restore_with_clean_db")
+
+    async def test_03_dump_and_wrong_restore_with_clean_db(self):
+        """
+        Second restore must be failed, because in target DB will be added tables, what not include in dump
+        """
+        self.assertTrue("init_env" in passed_stages)
+
+        restore_options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={self.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={self.get_test_output_path("test_empty_dictionary")}",
+            "--drop-custom-check-constr",
+            "--clean-db",
+            "--debug",
+        ])
+
+        await self.init_db(self.test_source_db)
+        await self.make_dump(self.test_source_db)
+
+        res = await PgAnonApp(restore_options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        objs = [
+            ["test_simple", "customer_company", rows_in_init_env],
+            ["test_simple", "contracts", rows_in_init_env],
+        ]
+        self.assertTrue(await self.check_rows_count(restore_options, objs))
+
+        rows_multiplier = 5
+        await self.init_db(self.test_target_db, rows_multiplier)
+        await self.add_data_to_db(self.test_target_db)
+
+        objs = [
+            ["test_simple", "customer_company", rows_in_init_env * rows_multiplier],
+            ["test_simple", "contracts", rows_in_init_env * rows_multiplier],
+            ["test_simple", "clients", rows_in_init_env],
+            ["test_simple", "orders", rows_in_init_env],
+        ]
+        self.assertTrue(await self.check_rows_count(restore_options, objs))
+
+        res = await PgAnonApp(restore_options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+        passed_stages.append("test_03_dump_and_wrong_restore_with_clean_db")
 
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):

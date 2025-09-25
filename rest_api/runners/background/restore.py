@@ -51,6 +51,14 @@ class RestoreRunner(BaseRunner):
             self.cli_params.append(
                 f'--drop-custom-check-constr'
             )
+        if self.request.clean_db:
+            self.cli_params.append(
+                f'--clean-db'
+            )
+        if self.request.drop_db:
+            self.cli_params.append(
+                f'--drop-db'
+            )
 
     def _prepare_cli_params(self):
         super()._prepare_cli_params()

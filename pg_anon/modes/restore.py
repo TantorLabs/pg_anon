@@ -5,11 +5,12 @@ import os
 import re
 import shutil
 import subprocess
+from copy import copy
 
 import asyncpg
 from asyncpg import Connection
 
-from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query
+from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
@@ -52,7 +53,10 @@ class RestoreMode:
 
         self._load_metadata()
 
-        self._db_must_be_empty = self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
+        self._db_must_be_empty = (
+                self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
+                and not (self.context.options.clean_db or self.context.options.drop_db)
+        )
         self._skip_pre_data_restore = (
                 self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
                 or self.metadata.dbg_stage_2_validate_data
@@ -99,8 +103,10 @@ class RestoreMode:
             )
 
     async def _check_db_is_empty(self, connection: Connection):
-        db_is_empty = await check_db_is_empty(connection=connection)
-        if not db_is_empty and self._db_must_be_empty:
+        if not self._db_must_be_empty:
+            return
+
+        if not await check_db_is_empty(connection=connection):
             raise Exception(f"Target DB {self.context.connection_params.database} is not empty!")
 
     async def _check_free_disk_space(self, connection: Connection):
@@ -146,6 +152,12 @@ class RestoreMode:
 
         if not self.context.options.db_user:
             del command[command.index("-U"): command.index("-U") + 2]
+
+        if self.context.options.clean_db:
+            command.extend([
+                "--clean",
+                "--if-exists",
+            ])
 
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -327,6 +339,34 @@ class RestoreMode:
         await self._run_pg_restore("post-data")
         self.context.logger.info("<------------- Finished restore post-data (pg_restore)")
 
+    async def _drop_database(self):
+        if not self.context.options.drop_db:
+            return
+
+        connection_params = copy(self.context.connection_params)
+        connection_params.database = "template1"
+        connection = await create_connection(connection_params, server_settings=self.context.server_settings)
+        db_params = await connection.fetchrow(get_db_params(self.context.options.db_name))
+
+        await connection.execute(
+            f"""
+            DROP DATABASE {self.context.options.db_name};
+            """
+        )
+
+        await connection.execute(
+            f"""
+            CREATE DATABASE {self.context.options.db_name}
+            WITH TEMPLATE template0
+                 OWNER {db_params[1]}
+                 ENCODING '{db_params[2]}'
+                 LC_COLLATE '{db_params[3]}'
+                 LC_CTYPE '{db_params[4]}';
+            """
+        )
+
+        await connection.close()
+
     async def run_analyze(self):
         if (self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
                 or self.metadata.dbg_stage_2_validate_data
@@ -425,9 +465,15 @@ class RestoreMode:
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started restore")
-        connection = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
+        connection = None
 
         try:
+            await self._drop_database()
+            connection = await create_connection(
+                self.context.connection_params,
+                server_settings=self.context.server_settings
+            )
+
             await self._check_db_is_empty(connection=connection)
             self._check_utils_version_for_dump()
 
@@ -448,4 +494,5 @@ class RestoreMode:
             self.context.logger.error("<------------- Restore failed\n" + exception_helper())
             raise ex
         finally:
-            await connection.close()
+            if connection:
+                await connection.close()
