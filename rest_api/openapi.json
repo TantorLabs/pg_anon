@@ -422,6 +422,189 @@
         }
       }
     },
+    "/operation": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "List of operations",
+        "operationId": "stateless_operations_list_operation_get",
+        "parameters": [
+          {
+            "name": "date_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter: operations before this date",
+              "title": "Date Before"
+            },
+            "description": "Filter: operations before this date"
+          },
+          {
+            "name": "date_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter: operations after this date",
+              "title": "Date After"
+            },
+            "description": "Filter: operations after this date"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Stateless Operations List Operation Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operation/{internal_operation_id}": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "List of operations",
+        "operationId": "stateless_operation_data_operation__internal_operation_id__get",
+        "parameters": [
+          {
+            "name": "internal_operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Internal Operation Id"
+            }
+          },
+          {
+            "name": "mock_operation_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MockOperationType",
+              "description": "Operation type"
+            },
+            "description": "Operation type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationDataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operation/{internal_operation_id}/logs": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Logs of operation",
+        "operationId": "stateless_operation_logs_operation__internal_operation_id__logs_get",
+        "parameters": [
+          {
+            "name": "internal_operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Internal Operation Id"
+            }
+          },
+          {
+            "name": "tail_lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1000,
+              "title": "Tail Lines"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Stateless Operation Logs Operation  Internal Operation Id  Logs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/handbook/task-statuses": {
       "get": {
         "tags": [
@@ -683,6 +866,34 @@
             "type": "array",
             "title": "Sens Dict Contents"
           },
+          "partial_tables_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Dict Contents"
+          },
+          "partial_tables_exclude_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Exclude Dict Contents"
+          },
           "output_path": {
             "type": "string",
             "title": "Output Path"
@@ -781,6 +992,38 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "MockOperationType": {
+        "type": "string",
+        "enum": [
+          "scan",
+          "dump",
+          "restore"
+        ],
+        "title": "MockOperationType"
+      },
+      "OperationDataResponse": {
+        "properties": {
+          "run_status": {
+            "type": "object",
+            "title": "Run Status"
+          },
+          "run_options": {
+            "type": "object",
+            "title": "Run Options"
+          },
+          "dictionaries": {
+            "type": "object",
+            "title": "Dictionaries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_status",
+          "run_options",
+          "dictionaries"
+        ],
+        "title": "OperationDataResponse"
+      },
       "RestoreRequest": {
         "properties": {
           "operation_id": {
@@ -836,6 +1079,34 @@
           "input_path": {
             "type": "string",
             "title": "Input Path"
+          },
+          "partial_tables_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Dict Contents"
+          },
+          "partial_tables_exclude_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Exclude Dict Contents"
           },
           "pg_restore_path": {
             "anyOf": [
