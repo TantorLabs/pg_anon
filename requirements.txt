@@ -3,3 +3,4 @@ async-timeout==4.0.3
 asyncpg==0.29.0
 prettytable==3.11.0
 pyyaml==6.0.2
+setuptools>=80.9.0
