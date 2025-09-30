@@ -48,7 +48,7 @@ class RunOptions:
     prepared_sens_dict_files: Optional[List[str]]
     prepared_no_sens_dict_files: Optional[List[str]]
     partial_tables_dict_files: Optional[List[str]]
-    partial_tables_exclude_dict_contents: Optional[List[str]]
+    partial_tables_exclude_dict_files: Optional[List[str]]
     scan_partial_rows: int
     view_only_sensitive_fields: bool
     schema_name: Optional[str]

@@ -207,7 +207,7 @@ class MockOperationType(str, Enum):
 )
 async def stateless_operation_data(
         internal_operation_id: str,
-        mock_operation_type: MockOperationType = Query(..., description="Operation type")
+        mock_operation_type: MockOperationType = Query(MockOperationType.scan, description="Operation type")
 ):
     data = {
         "scan": {
@@ -256,7 +256,7 @@ async def stateless_operation_data(
                 "prepared_sens_dict_files": None,
                 "prepared_no_sens_dict_files": None,
                 "partial_tables_dict_files": None,
-                "partial_tables_exclude_dict_contents": None,
+                "partial_tables_exclude_dict_files": None,
                 "scan_partial_rows": 10000,
                 "view_only_sensitive_fields": False,
                 "schema_name": None,
@@ -324,7 +324,7 @@ async def stateless_operation_data(
                 "partial_tables_dict_files": [
                   "/tmp/users_include-caa45a3e-ad1b-463b-9025-380073c46127.py"
                 ],
-                "partial_tables_exclude_dict_contents": [
+                "partial_tables_exclude_dict_files": [
                   "/tmp/companies_exclude-299e9de5-f307-4995-897e-c45c1010d2a7.py"
                 ],
                 "scan_partial_rows": 10000,
@@ -392,7 +392,7 @@ async def stateless_operation_data(
                 "partial_tables_dict_files": [
                     "/tmp/users_include-060877e4-f471-4a55-93c9-718141af49fc.py"
                 ],
-                "partial_tables_exclude_dict_contents": [
+                "partial_tables_exclude_dict_files": [
                     "/tmp/companies_exclude-95280950-09ba-4e11-acd5-b3850e793921.py"
                 ],
                 "scan_partial_rows": 10000,
@@ -469,7 +469,7 @@ async def stateless_operation_logs(internal_operation_id: str, tail_lines: int =
         """  "partial_tables_dict_files": [""",
         """    "/tmp/partial-dict-707871bf-5990-4faa-a0b1-f23d5c832a38" """,
         """  ],""",
-        """  "partial_tables_exclude_dict_contents": [""",
+        """  "partial_tables_exclude_dict_files": [""",
         """    "/tmp/partial-exclude-dict-29d90112-4b67-49ab-97bf-dacd433267ed.py" """,
         """  ],""",
         """  "scan_partial_rows": 10000,""",

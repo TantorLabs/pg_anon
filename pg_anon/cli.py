@@ -174,7 +174,7 @@ def get_arg_parser():
     )
     parser.add_argument(
         "--partial-tables-exclude-dict-contents",
-        dest="partial_tables_exclude_dict_contents",
+        dest="partial_tables_exclude_dict_files",
         type=parse_comma_separated_list,
         help="In 'dump' or 'restore' mode input file or file list with tables. Only the tables specified in this dictionary will be excluded.",
     )
