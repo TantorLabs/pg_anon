@@ -271,9 +271,28 @@ async def stateless_operation_data(
                 "json": False
             },
             "dictionaries": {
-                "/tmp/my-meta-dict-0b45d13a-da16-4e34-88a5-2e16c7db5b36.py": "{\n   \"data_regex\": {\n      \"rules\": [\n         \".*@.*\" \n      ]\n   },\n   \"funcs\": {\n      \"text\": \"md5(%s)\"\n   }\n}\n",
-                "/tmp/output_sens_dict_scan-0001.py": "{\n    \"dictionary\": []\n}",
-                "/tmp/output_no_sens_dict_scan-0001.py": "{\n    \"no_sens_dictionary\": [\n        {\n            \"schema\": \"public\",\n            \"table\": \"users\",\n            \"fields\": [\n                \"email\",\n                \"login\"\n            ]\n        },\n        {\n            \"schema\": \"public\",\n            \"table\": \"users_anonymized\",\n            \"fields\": [\n                \"email\",\n                \"login\"\n            ]\n        }\n    ]\n}",
+                "meta_dict_files": [
+                    {
+                        "name": "my-meta-dict",
+                        "content": "{\n   \"data_regex\": {\n      \"rules\": [\n         \".*@.*\" \n      ]\n   },\n   \"funcs\": {\n      \"text\": \"md5(%s)\"\n   }\n}\n",
+                    }
+                ],
+                "output_sens_dict_file": [
+                    {
+                        "name": "output_sens_dict_scan",
+                        "content": "{\n    \"dictionary\": []\n}",
+                    }
+                ],
+                "output_no_sens_dict_file": [
+                    {
+                        "name": "output_no_sens_dict_scan",
+                        "content": "{\n    \"no_sens_dictionary\": [\n        {\n            \"schema\": \"public\",\n            \"table\": \"users\",\n            \"fields\": [\n                \"email\",\n                \"login\"\n            ]\n        },\n        {\n            \"schema\": \"public\",\n            \"table\": \"users_anonymized\",\n            \"fields\": [\n                \"email\",\n                \"login\"\n            ]\n        }\n    ]\n}",
+                    }
+                ],
+                "prepared_sens_dict_files": None,
+                "prepared_no_sens_dict_files": None,
+                "partial_tables_dict_files": None,
+                "partial_tables_exclude_dict_files": None,
             }
         },
         "dump": {
@@ -341,9 +360,28 @@ async def stateless_operation_data(
                 "json": False
             },
             "dictionaries": {
-                "/tmp/emails-sens-dict-8140bbf2-a3af-416b-8712-73e6075c736f.py": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"users_anonymized\", \"fields\": {\"email\": \"md5(email)\"}}]",
-                "/tmp/users_include-caa45a3e-ad1b-463b-9025-380073c46127.py": "{\"tables\": [{\"schema\": \"public\",\"table\": \"users\"}]}",
-                "/tmp/companies_exclude-299e9de5-f307-4995-897e-c45c1010d2a7.py": "{\"tables\": [{\"schema\": \"public\",\"table\": \"companies\"}]}",
+                "meta_dict_files": None,
+                "output_sens_dict_file": None,
+                "output_no_sens_dict_file": None,
+                "prepared_sens_dict_files": [
+                    {
+                        "name": "emails-sens",
+                        "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"users_anonymized\", \"fields\": {\"email\": \"md5(email)\"}}]"
+                    }
+                ],
+                "prepared_no_sens_dict_files": None,
+                "partial_tables_dict_files": [
+                    {
+                        "name": "users_include",
+                        "content": "{\"tables\": [{\"schema\": \"public\",\"table\": \"users\"}]}"
+                    }
+                ],
+                "partial_tables_exclude_dict_files": [
+                    {
+                        "name": "companies_exclude",
+                        "content": "{\"tables\": [{\"schema\": \"public\",\"table\": \"companies\"}]}"
+                    }
+                ],
             }
         },
         "restore": {
@@ -409,8 +447,23 @@ async def stateless_operation_data(
                 "json": False
             },
             "dictionaries": {
-                "/tmp/users_include-060877e4-f471-4a55-93c9-718141af49fc.py": "{\"tables\": [{\"schema\": \"public\",\"table\": \"users\"}]}",
-                "/tmp/companies_exclude-95280950-09ba-4e11-acd5-b3850e793921.py": "{\"tables\": [{\"schema\": \"public\",\"table\": \"companies\"}]}",
+                "meta_dict_files": None,
+                "output_sens_dict_file": None,
+                "output_no_sens_dict_file": None,
+                "prepared_sens_dict_files": None,
+                "prepared_no_sens_dict_files": None,
+                "partial_tables_dict_files": [
+                    {
+                        "name": "users_include",
+                        "content": "{\"tables\": [{\"schema\": \"public\",\"table\": \"users\"}]}"
+                    }
+                ],
+                "partial_tables_exclude_dict_files": [
+                    {
+                        "name": "companies_exclude",
+                        "content": "{\"tables\": [{\"schema\": \"public\",\"table\": \"companies\"}]}"
+                    }
+                ],
             }
         }
     }

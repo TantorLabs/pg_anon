@@ -517,10 +517,11 @@
           {
             "name": "mock_operation_type",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "$ref": "#/components/schemas/MockOperationType",
-              "description": "Operation type"
+              "description": "Operation type",
+              "default": "scan"
             },
             "description": "Operation type"
           }

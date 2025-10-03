@@ -11,7 +11,6 @@ import traceback
 from typing import List, Optional, Dict, Union, Tuple
 
 import yaml
-from pkg_resources import parse_version as version
 
 from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT
 from pg_anon.common.db_utils import get_fields_list
@@ -68,7 +67,7 @@ def exception_handler(func):
 
 
 def get_major_version(str_version):
-    return version(re.findall(r"(\d+)", str_version)[0])
+    return re.findall(r"(\d+)", str_version)[0]
 
 
 def pretty_size(bytes_v):
