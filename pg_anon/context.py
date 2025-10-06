@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List, Set, Tuple
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
 from pg_anon.common.dto import ConnectionParams, RunOptions
@@ -32,6 +32,10 @@ class Context:
         self.create_dict_sens_matches = {}  # for create-dict mode
         self.create_dict_no_sens_matches = {}  # for create-dict mode
         self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
+        self.included_tables_rules: List[Dict] = []
+        self.excluded_tables_rules: List[Dict] = []
+        self.black_listed_tables: Set[Tuple[str, str]] = set()
+        self.white_listed_tables: Set[Tuple[str, str]] = set()
         self.logger = None
         self.data_const_constants_min_length = None
         self.start_time = datetime.now().strftime('%Y_%m_%d__%H_%M')
@@ -173,32 +177,37 @@ class Context:
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
 
+    def _read_dict_data_from_file(self, dictionary_file_name: str) -> Optional[Dict[str, Any]]:
+        with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
+            data = dictionary_file.read().strip()
+
+        if not data:
+            return
+
+        try:
+            dict_data = ast.literal_eval(data)
+        except Exception as exc:
+            raise ValueError(f"Can't read data from file: {dictionary_file_name}")
+
+        if not dict_data:
+            return
+
+        if not isinstance(dict_data, dict):
+            raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
+
+        return dict_data
+
     def read_meta_dict(self):
         self.meta_dictionary_obj = self._make_meta_dict()
-
         dict_files_list = self.options.meta_dict_files
 
         if self.options.prepared_no_sens_dict_files:
             dict_files_list += self.options.prepared_no_sens_dict_files
 
-        for meta_dict_file in dict_files_list:
-            dictionary_file_name = os.path.join("dict", meta_dict_file)
-            with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
-                data = dictionary_file.read().strip()
-
-            if not data:
-                continue
-
-            meta_dict_data = ast.literal_eval(data)
-
-            if not meta_dict_data:
-                continue
-
-            if not isinstance(meta_dict_data, dict):
-                raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
-
-            prepared_meta_dict = self._make_meta_dict(meta_dict_data)
-            self._append_meta_dict(prepared_meta_dict)
+        for dict_file in dict_files_list:
+            dict_data = self._read_dict_data_from_file(os.path.join("dict", dict_file))
+            if dict_data:
+                self._append_meta_dict(self._make_meta_dict(dict_data))
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
         if not self.options.prepared_sens_dict_files:
@@ -212,21 +221,11 @@ class Context:
 
         for dict_file in self.options.prepared_sens_dict_files:
             dictionary_file_name = os.path.join("dict", dict_file)
-            with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
-                data = dictionary_file.read()
-
-            self.prepared_dictionary_contents = {dictionary_file_name: data}
-
-            if not data:
-                continue
-
-            dict_data = eval(data)
+            dict_data = self._read_dict_data_from_file(dictionary_file_name)
+            self.prepared_dictionary_contents = {dictionary_file_name: str(dict_data)}
 
             if not dict_data:
                 continue
-
-            if not isinstance(dict_data, dict):
-                raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
 
             if dictionary_rules := dict_data.get("dictionary", []):
                 if save_dict_file_name_for_each_rule:
@@ -234,11 +233,19 @@ class Context:
                         dictionary_rule['dict_file_name'] = dict_file
                 self.prepared_dictionary_obj["dictionary"].extend(dictionary_rules)
 
-            if dictionary_exclude_rules := dict_data.get("dictionary_exclude", []):
-                self.prepared_dictionary_obj["dictionary_exclude"].extend(dictionary_exclude_rules)
+            self.prepared_dictionary_obj["dictionary_exclude"].extend(dict_data.get("dictionary_exclude", []))
+            self.prepared_dictionary_obj["validate_tables"].extend(dict_data.get("validate_tables", []))
 
-            if validate_tables := dict_data.get("validate_tables", []):
-                self.prepared_dictionary_obj["validate_tables"].extend(validate_tables)
+    def read_partial_tables_dicts(self):
+        if self.options.partial_tables_dict_files:
+            for dict_file in self.options.partial_tables_dict_files:
+                if dict_data := self._read_dict_data_from_file(os.path.join("dict", dict_file)):
+                    self.included_tables_rules.extend(dict_data.get("tables", []))
+
+        if self.options.partial_tables_exclude_dict_files:
+            for dict_file in self.options.partial_tables_exclude_dict_files:
+                if dict_data := self._read_dict_data_from_file(os.path.join("dict", dict_file)):
+                    self.excluded_tables_rules.extend(dict_data.get("tables", []))
 
     def set_postgres_version(self, pg_version: str):
         self.pg_version = pg_version

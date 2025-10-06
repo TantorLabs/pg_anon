@@ -683,6 +683,34 @@
             "type": "array",
             "title": "Sens Dict Contents"
           },
+          "partial_tables_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Dict Contents"
+          },
+          "partial_tables_exclude_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Exclude Dict Contents"
+          },
           "output_path": {
             "type": "string",
             "title": "Output Path"
@@ -836,6 +864,34 @@
           "input_path": {
             "type": "string",
             "title": "Input Path"
+          },
+          "partial_tables_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Dict Contents"
+          },
+          "partial_tables_exclude_dict_contents": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DictionaryContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Tables Exclude Dict Contents"
           },
           "pg_restore_path": {
             "anyOf": [

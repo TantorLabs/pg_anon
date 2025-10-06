@@ -4,7 +4,7 @@ from pg_anon.common.enums import AnonMode
 from rest_api.enums import RestoreModeHandbook
 from rest_api.pydantic_models import RestoreRequest
 from rest_api.runners.background import BaseRunner
-from rest_api.utils import get_full_dump_path
+from rest_api.utils import get_full_dump_path, write_dictionary_contents
 
 
 class RestoreRunner(BaseRunner):
@@ -12,8 +12,6 @@ class RestoreRunner(BaseRunner):
     request: RestoreRequest
     short_dump_path: str
     full_input_path: str
-
-    _input_sens_dict_file_names: List[str]
 
     def __init__(self, request: RestoreRequest):
         super().__init__(request)
@@ -26,6 +24,23 @@ class RestoreRunner(BaseRunner):
             self.mode = AnonMode.SYNC_STRUCT_RESTORE.value
         elif self.request.type_id == RestoreModeHandbook.DATA:
             self.mode = AnonMode.SYNC_DATA_RESTORE.value
+
+    def _prepare_dictionaries_cli_params(self):
+        if self.request.partial_tables_dict_contents:
+            input_partial_tables_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_dict_contents).keys()
+            )
+            self.cli_params.append(
+                f"--partial-tables-dict-files={','.join(input_partial_tables_dict_file_names)}"
+            )
+
+        if self.request.partial_tables_exclude_dict_contents:
+            input_partial_tables_exclude_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_exclude_dict_contents).keys()
+            )
+            self.cli_params.append(
+                f"--partial-tables-exclude-dict-contents={','.join(input_partial_tables_exclude_dict_file_names)}"
+            )
 
     def _prepare_input_dump_path_cli_params(self):
         self.short_input_path = self.request.input_path.lstrip("/")
@@ -62,6 +77,7 @@ class RestoreRunner(BaseRunner):
 
     def _prepare_cli_params(self):
         super()._prepare_cli_params()
+        self._prepare_dictionaries_cli_params()
         self._prepare_input_dump_path_cli_params()
         self._prepare_parallelization_cli_params()
         self._prepare_pg_restore_cli_params()

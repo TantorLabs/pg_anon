@@ -673,3 +673,47 @@ SELECT
     (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow',
     (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.987) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow'
 FROM generate_series(1, 100) AS v;
+
+----------
+CREATE SCHEMA IF NOT EXISTS schm_other_4;
+DROP TABLE IF EXISTS schm_other_4.partitioned_table;
+CREATE TABLE schm_other_4.partitioned_table (
+    id BIGSERIAL,
+    sale_date DATE NOT NULL,
+    product_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    amount NUMERIC (10,2) NOT NULL,
+    region_code VARCHAR (10),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+) PARTITION BY RANGE (sale_date);
+
+ALTER TABLE schm_other_4.partitioned_table
+ADD CONSTRAINT partitioned_data_pkey
+PRIMARY KEY (id, sale_date);
+
+-- Create partition for January 2025
+CREATE TABLE schm_other_4.partitioned_table_2025_01
+PARTITION OF schm_other_4.partitioned_table
+FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
+
+-- Create partition for February 2025
+CREATE TABLE schm_other_4.partitioned_table_2025_02
+PARTITION OF schm_other_4.partitioned_table
+FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
+
+-- Create partition for March 2025
+CREATE TABLE schm_other_4.partitioned_table_2025_03
+PARTITION OF schm_other_4.partitioned_table
+FOR VALUES FROM ('2025-03-01') TO ('2025-04-01');
+
+-- Create default partition for future dates
+CREATE TABLE schm_other_4.partitioned_table_default
+PARTITION OF schm_other_4.partitioned_table
+DEFAULT;
+
+INSERT INTO schm_other_4.partitioned_table(sale_date, product_id, quantity, amount, region_code) VALUES
+('2025-01-15', 1, 2, 99.98, 'US'),
+('2025-01-20', 2, 1, 25.50, 'EU' ),
+('2025-02-10', 1, 3, 149.97, 'US'),
+('2025-03-03', 3, 1, 15.70, 'US'),
+('2025-05-05', 1, 4, 76.23, 'EU');

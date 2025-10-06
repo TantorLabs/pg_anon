@@ -3,8 +3,8 @@ from typing import List, Dict, Optional
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db_utils import get_fields_list, create_connection, get_rows_count
-from pg_anon.common.utils import exception_helper, get_dump_query, get_dict_rule_for_table
+from pg_anon.common.db_utils import get_fields_list, create_connection, get_rows_count, get_dump_query
+from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
 from pg_anon.context import Context
 
 
@@ -109,18 +109,12 @@ class ViewDataMode:
             print(self.table)
 
     async def _prepare_queries(self):
-        files = {}
-        included_objs = []
-        excluded_objs = []
 
         query_without_limit = await get_dump_query(
             ctx=self.context,
             table_schema=self._schema_name,
             table_name=self._table_name,
             table_rule=self.table_rule,
-            files=files,
-            included_objs=included_objs,
-            excluded_objs=excluded_objs,
             nulls_last=True
         )
         self.query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
@@ -131,9 +125,6 @@ class ViewDataMode:
                 table_schema=self._schema_name,
                 table_name=self._table_name,
                 table_rule=None,
-                files=files,
-                included_objs=included_objs,
-                excluded_objs=excluded_objs,
                 nulls_last=True
             )
             self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"

@@ -190,6 +190,56 @@
                 "words_no_sens_2",
                 "words_sens"
             ]
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table",
+            "fields": [
+                "created_at",
+                "product_id",
+                "quantity",
+                "region_code"
+            ]
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_01",
+            "fields": [
+                "created_at",
+                "product_id",
+                "quantity",
+                "region_code"
+            ]
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_02",
+            "fields": [
+                "created_at",
+                "product_id",
+                "quantity",
+                "region_code"
+            ]
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_03",
+            "fields": [
+                "created_at",
+                "product_id",
+                "quantity",
+                "region_code"
+            ]
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_default",
+            "fields": [
+                "created_at",
+                "product_id",
+                "quantity",
+                "region_code"
+            ]
         }
     ]
 }

@@ -193,13 +193,6 @@ class RestoreMode:
                 self.context.logger.info(query)
                 await connection.execute(query)
 
-    async def _create_schemas_in_struct_restore_mode(self, connection: Connection):
-        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
-            for schema in self.metadata.schemas:
-                query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
-                self.context.logger.info("AnonMode.SYNC_STRUCT_RESTORE: " + query)
-                await connection.execute(query)
-
     async def _drop_constraints(self, connection: Connection):
         """
         Drop all CHECK constrains containing user-defined procedures to avoid
@@ -476,8 +469,6 @@ class RestoreMode:
 
             await self._check_db_is_empty(connection=connection)
             self._check_utils_version_for_dump()
-
-            await self._create_schemas_in_struct_restore_mode(connection=connection)
 
             await self._restore_pre_data()
             await self._drop_constraints(connection=connection)
