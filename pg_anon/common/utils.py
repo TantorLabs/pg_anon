@@ -280,6 +280,9 @@ def filter_db_tables(
     filtered_tables = []
     black_listed_tables = set()
     white_listed_tables = set()
+    if not (white_list_rules or black_list_rules):
+        return tables, white_listed_tables, black_listed_tables
+
     for table_data in tables:
         # black list has the highest priority for pg_dump / pg_restore
         if black_list_rules:
@@ -294,10 +297,7 @@ def filter_db_tables(
                 # if white list is using and table in white list, this table must not be filtered
                 white_listed_tables.add(table_data)
                 filtered_tables.append(table_data)
-            else:
-                # if white list is using and table not in white list, this table must be filtered out
-                black_listed_tables.add(table_data)
-            continue
+                continue
 
         # if table not in black list and white list not using, this table must not be filtered
         filtered_tables.append(table_data)

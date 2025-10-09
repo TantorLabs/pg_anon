@@ -9,7 +9,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS,
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
-    split_constants_to_words_and_phrases, simple_slugify
+    split_constants_to_words_and_phrases, simple_slugify, filter_db_tables
 from pg_anon.logger import logger_add_file_handler, logger_set_log_level, get_logger
 
 
@@ -34,6 +34,7 @@ class Context:
         self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
         self.included_tables_rules: List[Dict] = []
         self.excluded_tables_rules: List[Dict] = []
+        self.tables: List[Tuple[str, str]] = []
         self.black_listed_tables: Set[Tuple[str, str]] = set()
         self.white_listed_tables: Set[Tuple[str, str]] = set()
         self.logger = None
@@ -305,3 +306,10 @@ class Context:
         )
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()
+
+    def set_tables_lists(self, tables: List[Tuple[str, str]]):
+        self.tables, self.black_listed_tables, self.white_listed_tables = filter_db_tables(
+            tables=tables,
+            white_list_rules=self.included_tables_rules,
+            black_list_rules=self.excluded_tables_rules,
+        )

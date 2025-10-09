@@ -213,6 +213,10 @@ class Metadata:
     total_rows: Optional[int] = None
     db_size: Optional[int] = None
 
+    # only in black and white lists cases
+    partial_dump_schemas: Optional[List[str]] = None
+    partial_dump_functions: Optional[List[str]] = None
+
     def _serialize_data(self) -> Dict:
         data = {
             'created': self.created,
@@ -228,6 +232,9 @@ class Metadata:
             'total_tables_size': self.total_tables_size,
             'total_rows': self.total_rows,
             'db_size': self.db_size,
+
+            'partial_dump_schemas': self.partial_dump_schemas,
+            'partial_dump_functions': self.partial_dump_functions,
         }
 
         if self.sequences_last_values is None:
@@ -240,6 +247,12 @@ class Metadata:
             del data['total_rows']
         if self.db_size is None:
             del data['db_size']
+
+        if self.partial_dump_schemas is None:
+            del data['partial_dump_schemas']
+            
+        if self.partial_dump_functions is None:
+            del data['partial_dump_functions']
 
         return data
 
@@ -261,6 +274,9 @@ class Metadata:
         self.files = data.get('files')
         self.total_tables_size = data.get('total_tables_size')
         self.total_rows = data.get('total_rows')
+
+        self.partial_dump_schemas = data.get('partial_dump_schemas')
+        self.partial_dump_functions = data.get('partial_dump_functions')
 
     def save_into_file(self, file_name: str):
         data = self._serialize_data()

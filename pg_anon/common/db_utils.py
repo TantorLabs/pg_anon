@@ -162,9 +162,8 @@ async def exec_data_scan_func_query(connection: Connection, scan_func: str, valu
 
 
 async def get_db_tables(
-        connection_params: ConnectionParams,
+        connection: Connection,
         excluded_schemas: Optional[List[str]] = None,
-        server_settings: Dict = SERVER_SETTINGS
 ) -> List[Tuple[str, str]]:
     if not excluded_schemas:
         excluded_schemas = []
@@ -185,10 +184,30 @@ async def get_db_tables(
                 AND pt.partrelid IS NULL;
         """
 
-    connection = await create_connection(connection_params, server_settings=server_settings)
     tables = await connection.fetch(query)
-    await connection.close()
     return list(map(tuple, tables))
+
+
+async def get_functions_using_for_constraints(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
+    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+    args = [item for table_data in tables for item in table_data]
+    query = f"""
+          WITH tables_to_check AS (
+              VALUES {values_placeholders}
+          )
+          SELECT DISTINCT
+              pg_get_functiondef(p.oid) || E'\n' AS function_sql
+          FROM tables_to_check t
+          JOIN pg_class c ON c.relname = t.column2
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_constraint con ON con.conrelid = c.oid
+          JOIN pg_proc p ON pg_get_constraintdef(con.oid) LIKE '%' || p.proname || '%'
+          WHERE con.contype = 'c'
+            AND n.nspname = t.column1;
+          """
+
+    result = await connection.fetch(query, *args)
+    return [row[0] for row in result]
 
 
 async def check_db_is_empty(connection: Connection) -> bool:
@@ -241,12 +260,12 @@ async def get_dump_query(
 
     # black list has the highest priority for pg_dump / pg_restore
     if ctx.black_listed_tables and (table_schema, table_name) in ctx.black_listed_tables:
-        ctx.logger.info("Skipping: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
         return None
 
     # white list has the second priority for pg_dump / pg_restore
     if ctx.white_listed_tables and (table_schema, table_name) not in ctx.white_listed_tables:
-        ctx.logger.info("Skipping: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
         return None
 
     # dictionary_exclude has third priority

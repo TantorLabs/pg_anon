@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from copy import copy
+from typing import Optional
 
 import asyncpg
 from asyncpg import Connection
@@ -30,6 +31,11 @@ class RestoreMode:
     metadata: Metadata
     metadata_file_name: str = 'metadata.json'
     metadata_file_path: str
+
+    _toc_list_pre_data_file_name: str = 'toc_pre_data_filtered.list'
+    _toc_list_pre_data_file_path: Optional[str] = None
+    _toc_list_post_data_file_name: str = 'toc_post_data_filtered.list'
+    _toc_list_post_data_file_path: Optional[str] = None
 
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
@@ -77,6 +83,12 @@ class RestoreMode:
         for file_name, target in self.metadata.files.items():
             schema = target["schema"]
             table = target["table"]
+            if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
+                continue
+
+            if self.context.white_listed_tables and (schema, table) not in self.context.white_listed_tables:
+                continue
+
             analyze_queries.append(
                 f'analyze "{schema}"."{table}"'
             )
@@ -129,8 +141,71 @@ class RestoreMode:
                 f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}"
             )
 
-    async def _run_pg_restore(self, section):
+    def _make_filtered_toc_list(self):
+        if not (self.context.black_listed_tables or self.context.white_listed_tables):
+            return
+
+        # Make blacklist for tables
+        blacklist = [
+            re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
+            for schema, table in self.context.black_listed_tables
+        ]
+        # Update blacklist for sequences
+        blacklist.extend([
+            re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+            for seq in self.metadata.sequences_last_values.values()
+            if (seq['schema'], seq['table']) in self.context.black_listed_tables
+        ])
+
+        # Make whitelist for tables
+        whitelist = [
+            re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
+            for schema, table in self.context.white_listed_tables
+        ]
+        # Update whitelist for sequences
+        whitelist.extend([
+            re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+            for seq in self.metadata.sequences_last_values.values()
+            if (seq['schema'], seq['table']) in self.context.white_listed_tables
+        ])
+
+        for section in ["pre_data", "post_data"]:
+            command = ["pg_restore", "-l", os.path.join(self.input_dir, f"{section}.backup")]
+            if section == "pre_data":
+                self._toc_list_pre_data_file_path = os.path.join(self.input_dir, self._toc_list_pre_data_file_name)
+                toc_file_path = self._toc_list_pre_data_file_path
+            else:
+                self._toc_list_post_data_file_path = os.path.join(self.input_dir, self._toc_list_post_data_file_name)
+                toc_file_path = self._toc_list_post_data_file_path
+
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
+            toc_lines, _ = proc.communicate()
+            with open(toc_file_path, "w", encoding="utf-8") as f:
+                for toc_line in toc_lines.split("\n"):
+                    if toc_line.startswith(';'):
+                        continue
+
+                    if blacklist and any(p.search(toc_line) for p in blacklist):
+                        continue
+
+                    if whitelist and not any(p.search(toc_line) for p in whitelist):
+                        continue
+
+                    f.write(f'{toc_line}\n')
+
+    def _remove_toc_lists(self):
+        if self.context.options.debug:
+            return
+
+        if os.path.exists(self._toc_list_pre_data_file_path):
+            os.remove(self._toc_list_pre_data_file_path)
+
+        if os.path.exists(self._toc_list_post_data_file_path):
+            os.remove(self._toc_list_post_data_file_path)
+
+    async def _run_pg_restore(self, section: str):
         os.environ["PGPASSWORD"] = self.context.options.db_user_password
+
         command = [
             self.context.pg_restore,
             "-h",
@@ -159,6 +234,12 @@ class RestoreMode:
                 "--if-exists",
             ])
 
+        if self._toc_list_pre_data_file_path:
+            command.extend([
+                '-L',
+                self._toc_list_pre_data_file_path if section == 'pre-data' else self._toc_list_post_data_file_path
+            ])
+
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
@@ -183,6 +264,14 @@ class RestoreMode:
             await connection.execute(query)
         else:
             for sequence_data in self.metadata.sequences_last_values.values():
+                sequence_relation = (sequence_data['schema'], sequence_data['table'])
+
+                if self.context.black_listed_tables and sequence_relation in self.context.black_listed_tables:
+                    continue
+
+                if self.context.white_listed_tables and sequence_relation not in self.context.white_listed_tables:
+                    continue
+
                 schema = sequence_data["schema"].replace("'", "''")
                 sequence_name = sequence_data["seq_name"].replace("'", "''")
                 value = sequence_data["value"]
@@ -192,6 +281,30 @@ class RestoreMode:
                 """
                 self.context.logger.info(query)
                 await connection.execute(query)
+
+    async def _create_schemas_for_partial_mode(self, connection: Connection):
+        schemas = None
+        if self.context.black_listed_tables or self.context.white_listed_tables:
+            schemas = list({schema for schema, _ in self.context.tables})
+
+        if self.metadata.partial_dump_schemas:
+            schemas = copy(self.metadata.partial_dump_schemas)
+
+        if not schemas:
+            return
+
+        for schema in schemas:
+            query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
+            self.context.logger.info("PARTIAL RESTORE MODE: " + query)
+            await connection.execute(query)
+
+    async def _create_functions_for_partial_mode(self, connection: Connection):
+        if not self.metadata.partial_dump_functions:
+            return
+
+        for create_function_query in self.metadata.partial_dump_functions:
+            self.context.logger.info("PARTIAL RESTORE MODE: " + create_function_query)
+            await connection.execute(create_function_query)
 
     async def _drop_constraints(self, connection: Connection):
         """
@@ -273,6 +386,18 @@ class RestoreMode:
             loop = asyncio.get_event_loop()
             tasks = set()
             for file_name, target in self.metadata.files.items():
+                table_name_full = f'"{target["schema"]}"."{target["table"]}"'
+
+                # black list has the highest priority for pg_dump / pg_restore
+                if self.context.black_listed_tables and (target["schema"], target["table"]) in self.context.black_listed_tables:
+                    self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
+                    continue
+
+                # white list has the second priority for pg_dump / pg_restore
+                if self.context.white_listed_tables and (target["schema"], target["table"]) not in self.context.white_listed_tables:
+                    self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
+                    continue
+
                 full_path = os.path.join(self.input_dir, file_name)
                 if len(tasks) >= self.context.options.db_connections_per_process:
                     # Wait for some restore to finish before adding a new one
@@ -307,8 +432,17 @@ class RestoreMode:
             transaction_snapshot_id = await connection.fetchval("select pg_export_snapshot()")
             await self._process_restore_data(transaction_snapshot_id)
 
+    def compare_rows_count(self):
+        if self.context.black_listed_tables or self.context.white_listed_tables:
+            dumped_rows = 0
+
+            for table_data in self.context.metadata.files.values():
+                if (table_data['schema'], table_data['name']) in self.context.black_listed_tables:
+                    dumped_rows += int(table_data['rows'])
+        else:
+            dumped_rows = int(self.metadata.total_rows)
+
         restored_rows = self.context.total_rows
-        dumped_rows = int(self.metadata.total_rows)
         if restored_rows != dumped_rows:
             raise ValueError(
                 f"The number of restored rows ({restored_rows}) is different from the metadata ({dumped_rows})"
@@ -359,6 +493,13 @@ class RestoreMode:
         )
 
         await connection.close()
+
+    def _prepare_tables_lists(self):
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
+            return
+
+        tables = [(table_info["schema"], table_info["table"]) for table_info in self.metadata.files.values()]
+        self.context.set_tables_lists(tables)
 
     async def run_analyze(self):
         if (self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
@@ -467,18 +608,26 @@ class RestoreMode:
                 server_settings=self.context.server_settings
             )
 
-            await self._check_db_is_empty(connection=connection)
+            await self._check_db_is_empty(connection)
             self._check_utils_version_for_dump()
 
-            await self._restore_pre_data()
-            await self._drop_constraints(connection=connection)
+            self.context.read_partial_tables_dicts()
+            self._prepare_tables_lists()
 
-            await self._restore_data(connection=connection)
+            await self._create_schemas_for_partial_mode(connection)
+            await self._create_functions_for_partial_mode(connection)
+            self._make_filtered_toc_list()
+
+            await self._restore_pre_data()
+            await self._drop_constraints(connection)
+
+            await self._restore_data(connection)
 
             await self._restore_post_data()
-            await self._sequences_init(connection=connection)
+            await self._sequences_init(connection)
 
             await self.run_analyze()
+            self._remove_toc_lists()
 
             self.context.logger.info("<------------- Finished restore")
         except Exception as ex:
