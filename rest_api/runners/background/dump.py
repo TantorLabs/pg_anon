@@ -13,8 +13,6 @@ class DumpRunner(BaseRunner):
     short_dump_path: str
     full_dump_path: str
 
-    _input_sens_dict_file_names: List[str]
-
     def __init__(self, request: DumpRequest):
         super().__init__(request)
         self._set_mode()
@@ -28,10 +26,24 @@ class DumpRunner(BaseRunner):
             self.mode = AnonMode.SYNC_DATA_DUMP.value
 
     def _prepare_dictionaries_cli_params(self):
-        self._input_sens_dict_file_names = list(write_dictionary_contents(self.request.sens_dict_contents).keys())
-        self.cli_params.append(
-            f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names)}"
-        )
+        input_sens_dict_file_names = list(write_dictionary_contents(self.request.sens_dict_contents).keys())
+        self.cli_params.append(f"--prepared-sens-dict-file={','.join(input_sens_dict_file_names)}")
+
+        if self.request.partial_tables_dict_contents:
+            input_partial_tables_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_dict_contents).keys()
+            )
+            self.cli_params.append(
+                f"--partial-tables-dict-file={','.join(input_partial_tables_dict_file_names)}"
+            )
+
+        if self.request.partial_tables_exclude_dict_contents:
+            input_partial_tables_exclude_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_exclude_dict_contents).keys()
+            )
+            self.cli_params.append(
+                f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
+            )
 
     def _prepare_dump_path_cli_params(self):
         self.short_dump_path = self.request.output_path.lstrip("/")

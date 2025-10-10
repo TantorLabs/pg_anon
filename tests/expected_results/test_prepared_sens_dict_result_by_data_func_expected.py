@@ -98,6 +98,41 @@
             "fields": {
                 "fld_5_email": "anon_funcs.digest(\"fld_5_email\", 'salt_word', 'md5')"
             }
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)"
+            }
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_01",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)"
+            }
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_02",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)"
+            }
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_2025_03",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)"
+            }
+        },
+        {
+            "schema": "schm_other_4",
+            "table": "partitioned_table_default",
+            "fields": {
+                "amount": "anon_funcs.noise(\"amount\", 10)"
+            }
         }
     ]
 }

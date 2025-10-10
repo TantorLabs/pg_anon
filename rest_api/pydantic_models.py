@@ -392,6 +392,8 @@ class ScanStatusResponse(StatelessRunnerResponse):
 class DumpRequest(StatelessRunnerRequest):
     type_id: int
     sens_dict_contents: List[DictionaryContent]
+    partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
+    partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
     output_path: str
     pg_dump_path: Optional[str] = None
 
@@ -413,6 +415,8 @@ class DumpDeleteRequest(BaseModel):
 class RestoreRequest(StatelessRunnerRequest):
     type_id: int
     input_path: str
+    partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
+    partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
     pg_restore_path: Optional[str] = None
     proc_conn_count: Optional[int] = None
     drop_custom_check_constr: bool = False

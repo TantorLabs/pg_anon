@@ -134,12 +134,6 @@ class DBOperations:
 
 class BasicUnitTest:
     async def init_env(self):
-        if "init_env" in passed_stages:
-            print("init_env already called")
-            res = PgAnonResult()
-            res.result_code = ResultCode.DONE
-            return res
-
         options = build_run_options([
             f"--db-host={params.test_db_host}",
             f"--db-name=postgres",
@@ -194,12 +188,6 @@ class BasicUnitTest:
         return res
 
     async def init_stress_env(self):
-        if "init_stress_env" in passed_stages:
-            print("init_stress_env already called")
-            res = PgAnonResult()
-            res.result_code = ResultCode.DONE
-            return res
-
         options = build_run_options([
             f"--db-host={params.test_db_host}",
             "--db-name=postgres",
@@ -562,8 +550,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -588,7 +575,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_03_restore(self):
         self.assertTrue("test_02_dump" in passed_stages)
 
-        input_dir = self.get_test_output_path("test")
+        input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -612,8 +599,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_exclude.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_04_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -638,8 +624,8 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_05_restore(self):
         self.assertTrue("test_04_dump" in passed_stages)
         prepared_sens_dict_file = self.get_test_dict_path("test_exclude.py")
-        
-        input_dir = self.get_test_output_path("test_exclude")
+
+        input_dir = self.get_test_output_path("PGAnonUnitTest.test_04_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -677,8 +663,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_05_restore" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sync_struct.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_06_sync_struct")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -701,7 +686,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
-            f"--db-name={params.test_target_db}_3",  # here will be created 3 empty tables
+            f"--db-name={params.test_target_db}_3",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
@@ -718,18 +703,76 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(
             await self.check_list_tables(
                 options,
-                [  # TODO: get list tables from specific dict
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'contracts'],
+                    ['public', 'inn_info'],
+                    ['public', 'key_value'],
+                    ['public', 'tbl_100'],
+                    ['public', 'tbl_constants'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_manager'],
+                    ['schm_mask_exclude_1', 'other_tbl'],
+                    ['schm_mask_exclude_1', 'some_tbl'],
+                    ['schm_mask_ext_exclude_2', 'card_numbers'],
+                    ['schm_mask_ext_exclude_2', 'other_ext_tbl_2'],
+                    ['schm_mask_ext_exclude_2', 'some_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'other_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'some_ext_tbl'],
+                    ['schm_mask_include_1', 'other_tbl'],
+                    ['schm_mask_include_1', 'some_tbl'],
+                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_mask_include_1', 'tbl_123_456'],
+                    ['schm_other_1', 'some_tbl'],
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
-                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_other_2', 'tbl_test_anon_functions'],
+                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_4', 'partitioned_table'],
+                    ['schm_other_4', 'partitioned_table_2025_01'],
+                    ['schm_other_4', 'partitioned_table_2025_02'],
+                    ['schm_other_4', 'partitioned_table_2025_03'],
+                    ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
                 ],
             )
         )
 
         objs = [
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3", 0],
+            ['public', 'contracts', 0],
+            ['public', 'inn_info', 0],
+            ['public', 'key_value', 0],
+            ['public', 'tbl_100', 0],
+            ['public', 'tbl_constants', 0],
+            ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_manager', 0],
+            ['schm_mask_exclude_1', 'other_tbl', 0],
+            ['schm_mask_exclude_1', 'some_tbl', 0],
+            ['schm_mask_ext_exclude_2', 'card_numbers', 0],
+            ['schm_mask_ext_exclude_2', 'other_ext_tbl_2', 0],
+            ['schm_mask_ext_exclude_2', 'some_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'other_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'some_ext_tbl', 0],
+            ['schm_mask_include_1', 'other_tbl', 0],
+            ['schm_mask_include_1', 'some_tbl', 0],
+            ["schm_mask_include_1", "tbl_123", 0],
+            ['schm_mask_include_1', 'tbl_123_456', 0],
+            ['schm_other_1', 'some_tbl', 0],
             ["schm_other_2", "exclude_tbl", 0],
             ["schm_other_2", "some_tbl", 0],
-            ["schm_mask_include_1", "tbl_123", 0],
+            ['schm_other_2', 'tbl_test_anon_functions', 0],
+            ['schm_other_3', 'some_tbl', 0],
+            ['schm_other_4', 'partitioned_table', 0],
+            ['schm_other_4', 'partitioned_table_2025_01', 0],
+            ['schm_other_4', 'partitioned_table_2025_02', 0],
+            ['schm_other_4', 'partitioned_table_2025_03', 0],
+            ['schm_other_4', 'partitioned_table_default', 0],
+            ["schm_other_4", "goods", 0],
         ]
         self.assertTrue(await self.check_rows_count(options, objs))
 
@@ -737,12 +780,10 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_06_sync_struct")
 
     async def test_07_sync_data(self):
-        # --mode=sync-data-dump ---> --mode=sync-data-restore [3 empty tables already exists]
         self.assertTrue("test_06_sync_struct" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sync_data.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_07_sync_data")
 
         options = build_run_options([
                 f"--db-host={params.test_db_host}",
@@ -783,10 +824,39 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue(
             await self.check_list_tables(
                 options,
-                [  # TODO: get list tables from specific dict
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'contracts'],
+                    ['public', 'inn_info'],
+                    ['public', 'key_value'],
+                    ['public', 'tbl_100'],
+                    ['public', 'tbl_constants'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_manager'],
+                    ['schm_mask_exclude_1', 'other_tbl'],
+                    ['schm_mask_exclude_1', 'some_tbl'],
+                    ['schm_mask_ext_exclude_2', 'card_numbers'],
+                    ['schm_mask_ext_exclude_2', 'other_ext_tbl_2'],
+                    ['schm_mask_ext_exclude_2', 'some_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'other_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'some_ext_tbl'],
+                    ['schm_mask_include_1', 'other_tbl'],
+                    ['schm_mask_include_1', 'some_tbl'],
+                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_mask_include_1', 'tbl_123_456'],
+                    ['schm_other_1', 'some_tbl'],
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
-                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_other_2', 'tbl_test_anon_functions'],
+                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_4', 'partitioned_table'],
+                    ['schm_other_4', 'partitioned_table_2025_01'],
+                    ['schm_other_4', 'partitioned_table_2025_02'],
+                    ['schm_other_4', 'partitioned_table_2025_03'],
+                    ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
                 ],
             )
         )
@@ -794,11 +864,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         objs = [
             ["schm_other_2", "exclude_tbl", rows_in_init_env * int(params.test_scale)],
             ["schm_other_2", "some_tbl", rows_in_init_env * int(params.test_scale)],
-            [
-                "schm_mask_include_1",
-                "tbl_123",
-                rows_in_init_env * int(params.test_scale),
-            ],
+            ["schm_mask_include_1", "tbl_123", rows_in_init_env * int(params.test_scale)],
         ]
         self.assertTrue(await self.check_rows_count(options, objs))
 
@@ -815,8 +881,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_07_sync_data" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sync_data_2.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_08_sync_data")
 
         options = build_run_options([
                 f"--db-host={params.test_db_host}",
@@ -873,7 +938,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_09_repeat_restore_in_existing_db(self):
         self.assertTrue("test_03_restore" in passed_stages)
 
-        input_dir = self.get_test_output_path("test")
+        input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -896,7 +961,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_10_repeat_restore_with_drop_db(self):
         self.assertTrue("test_03_restore" in passed_stages)
 
-        input_dir = self.get_test_output_path("test")
+        input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -916,6 +981,128 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_10_repeat_restore_with_drop_db")
+
+    async def test_11_dump_with_sql_conditions(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_sens_with_sql_conditions.py")
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_11_dump_with_sql_conditions")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'contracts'],
+                    ['public', 'inn_info'],
+                    ['public', 'key_value'],
+                    ['public', 'tbl_100'],
+                    ['public', 'tbl_constants'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_manager'],
+                    ['schm_mask_exclude_1', 'other_tbl'],
+                    ['schm_mask_exclude_1', 'some_tbl'],
+                    ['schm_mask_ext_exclude_2', 'card_numbers'],
+                    ['schm_mask_ext_exclude_2', 'other_ext_tbl_2'],
+                    ['schm_mask_ext_exclude_2', 'some_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'other_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'some_ext_tbl'],
+                    ['schm_mask_include_1', 'other_tbl'],
+                    ['schm_mask_include_1', 'some_tbl'],
+                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_mask_include_1', 'tbl_123_456'],
+                    ['schm_other_1', 'some_tbl'],
+                    ["schm_other_2", "exclude_tbl"],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_2', 'tbl_test_anon_functions'],
+                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_4', 'partitioned_table'],
+                    ['schm_other_4', 'partitioned_table_2025_01'],
+                    ['schm_other_4', 'partitioned_table_2025_02'],
+                    ['schm_other_4', 'partitioned_table_2025_03'],
+                    ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
+                ],
+            )
+        )
+
+        objs = [
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3", 0],
+            ['public', 'contracts', 0],
+            ['public', 'inn_info', 0],
+            ['public', 'key_value', 0],
+            ['public', 'tbl_100', 0],
+            ['public', 'tbl_constants', 0],
+            ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_manager', 0],
+            ['schm_mask_exclude_1', 'other_tbl', 0],
+            ['schm_mask_exclude_1', 'some_tbl', 0],
+            ['schm_mask_ext_exclude_2', 'card_numbers', 0],
+            ['schm_mask_ext_exclude_2', 'other_ext_tbl_2', 0],
+            ['schm_mask_ext_exclude_2', 'some_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'other_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'some_ext_tbl', 0],
+            ['schm_mask_include_1', 'other_tbl', 0],
+            ['schm_mask_include_1', 'some_tbl', 0],
+            ["schm_mask_include_1", "tbl_123", 0],
+            ['schm_mask_include_1', 'tbl_123_456', 0],
+            ['schm_other_1', 'some_tbl', 0],
+            ["schm_other_2", "exclude_tbl", 0],
+            ["schm_other_2", "some_tbl", 0],
+            ['schm_other_2', 'tbl_test_anon_functions', 0],
+            ['schm_other_3', 'some_tbl', 0],
+            ['schm_other_4', 'partitioned_table', 0],
+            ['schm_other_4', 'partitioned_table_2025_01', 0],
+            ['schm_other_4', 'partitioned_table_2025_02', 0],
+            ['schm_other_4', 'partitioned_table_2025_03', 0],
+            ['schm_other_4', 'partitioned_table_default', 0],
+            ["schm_other_4", "goods", 5],
+        ]
+
+        self.assertTrue(await self.check_rows_count(options, objs))
+
+        passed_stages.append("test_11_dump_with_sql_conditions")
 
 
 class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -960,10 +1147,8 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await DBOperations.init_env(db_conn, "init_additional_simple_env.sql", scale)
         await db_conn.close()
 
-    async def make_dump(self, db_name: str):
+    async def make_dump(self, db_name: str, output_dir: str):
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -984,13 +1169,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_01_init(self):
-        res = await self.init_env()
-        self.assertEqual(res.result_code, ResultCode.DONE)
-
-    async def test_02_dump_and_restore_with_clean_db(self):
-        self.assertTrue("init_env" in passed_stages)
-
+    async def make_restore(self, output_dir: str):
         restore_options = build_run_options([
             f"--db-host={params.test_db_host}",
             f"--db-name={self.test_target_db}",
@@ -1000,17 +1179,28 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--config={params.test_config}",
             "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
-            f"--input-dir={self.get_test_output_path('test_empty_dictionary')}",
+            f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
             "--clean-db",
             "--debug",
         ])
-
-        await self.init_db(self.test_source_db)
-        await self.make_dump(self.test_source_db)
-
         res = await PgAnonApp(restore_options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
+        return restore_options
+
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_dump_and_restore_with_clean_db(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        output_dir = self.get_test_output_path("PGAnonRestoreCleanTest.test_02_dump_and_restore_with_clean_db")
+
+        await self.init_db(self.test_source_db)
+        await self.make_dump(self.test_source_db, output_dir)
+        restore_options = await self.make_restore(output_dir)
+
         objs = [
             ["test_simple", "customer_company", rows_in_init_env],
             ["test_simple", "contracts", rows_in_init_env],
@@ -1041,27 +1231,12 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         Second restore must be failed, because in target DB will be added tables, what not include in dump
         """
         self.assertTrue("init_env" in passed_stages)
-
-        restore_options = build_run_options([
-            f"--db-host={params.test_db_host}",
-            f"--db-name={self.test_target_db}",
-            f"--db-user={params.test_db_user}",
-            f"--db-port={params.test_db_port}",
-            f"--db-user-password={params.test_db_user_password}",
-            f"--config={params.test_config}",
-            "--mode=restore",
-            f"--db-connections-per-process={params.db_connections_per_process}",
-            f"--input-dir={self.get_test_output_path('test_empty_dictionary')}",
-            "--drop-custom-check-constr",
-            "--clean-db",
-            "--debug",
-        ])
+        output_dir = self.get_test_output_path("PGAnonRestoreCleanTest.test_03_dump_and_wrong_restore_with_clean_db")
 
         await self.init_db(self.test_source_db)
-        await self.make_dump(self.test_source_db)
+        await self.make_dump(self.test_source_db, output_dir)
+        restore_options = await self.make_restore(output_dir)
 
-        res = await PgAnonApp(restore_options).run()
-        self.assertEqual(res.result_code, ResultCode.DONE)
         objs = [
             ["test_simple", "customer_company", rows_in_init_env],
             ["test_simple", "contracts", rows_in_init_env],
@@ -1095,25 +1270,24 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
-        output_dir = self.get_test_output_path("test_02_sync_struct_for_validate")
+        output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_02_sync_struct_for_validate")
 
         options = build_run_options([
-                f"--db-host={params.test_db_host}",
-                f"--db-name={params.test_source_db}",
-                f"--db-user={params.test_db_user}",
-                f"--db-port={params.test_db_port}",
-                f"--db-user-password={params.test_db_user_password}",
-                f"--config={params.test_config}",
-                "--mode=sync-struct-dump",
-                f"--processes={params.test_processes}",
-                f"--db-connections-per-process={params.db_connections_per_process}",
-                f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-                "--clear-output-dir",
-                "--debug",
-                f"--output-dir={output_dir}",
-                "--dbg-stage-3-validate-full"  # for not allowing post-data
-            ]
-        )
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=sync-struct-dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+            "--dbg-stage-3-validate-full"  # for not allowing post-data
+        ])
 
         res_dump = await PgAnonApp(options).run()
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
@@ -1139,7 +1313,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_02_sync_struct_for_validate" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
-        output_dir = self.get_test_output_path("test_03_validate_dict")
+        output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_03_validate_dict")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1166,7 +1340,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_03_validate_dict" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
-        output_dir = self.get_test_output_path("test_04_validate_data")
+        output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_04_validate_data")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1210,7 +1384,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("test_04_validate_data" in passed_stages)
         
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
-        output_dir = self.get_test_output_path("test_05_validate_full")
+        output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_05_validate_full")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1249,6 +1423,407 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_restore.result_code, ResultCode.DONE)
 
         passed_stages.append("test_05_validate_full")
+
+
+class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_partial_dump_include_restore_full(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_02_partial_dump_include_restore_full")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'inn_info'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_manager'],
+                    ['schm_other_1', 'some_tbl'],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_3', 'some_tbl'],
+                ],
+            )
+        )
+
+        passed_stages.append("test_02_partial_dump_include_restore_full")
+
+    async def test_03_partial_dump_exclude_restore_full(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_03_partial_dump_exclude_restore_full")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'contracts'],
+                    ['public', 'key_value'],
+                    ['public', 'tbl_100'],
+                    ['public', 'tbl_constants'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_mask_exclude_1', 'other_tbl'],
+                    ['schm_mask_exclude_1', 'some_tbl'],
+                    ['schm_mask_ext_exclude_2', 'card_numbers'],
+                    ['schm_mask_ext_exclude_2', 'other_ext_tbl_2'],
+                    ['schm_mask_ext_exclude_2', 'some_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'other_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'some_ext_tbl'],
+                    ['schm_mask_include_1', 'other_tbl'],
+                    ['schm_mask_include_1', 'some_tbl'],
+                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_mask_include_1', 'tbl_123_456'],
+                    ["schm_other_2", "exclude_tbl"],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_2', 'tbl_test_anon_functions'],
+                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_4', 'partitioned_table'],
+                    ['schm_other_4', 'partitioned_table_2025_01'],
+                    ['schm_other_4', 'partitioned_table_2025_02'],
+                    ['schm_other_4', 'partitioned_table_2025_03'],
+                    ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
+                ],
+            )
+        )
+
+        passed_stages.append("test_03_partial_dump_exclude_restore_full")
+
+    async def test_04_partial_dump_include_exclude_restore_full(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_04_partial_dump_include_exclude_restore_full")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['schm_customer', 'customer_company'],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_3', 'some_tbl'],
+                ],
+            )
+        )
+
+        passed_stages.append("test_04_partial_dump_include_exclude_restore_full")
+
+    async def test_05_partial_dump_include_restore_exclude(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_05_partial_dump_include_restore_exclude")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['schm_customer', 'customer_company'],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_3', 'some_tbl'],
+                ],
+            )
+        )
+
+        passed_stages.append("test_05_partial_dump_include_restore_exclude")
+    
+    async def test_06_partial_dump_exclude_restore_include(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_06_partial_dump_exclude_restore_include")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['schm_customer', 'customer_company'],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_3', 'some_tbl'],
+                ],
+            )
+        )
+
+        passed_stages.append("test_06_partial_dump_exclude_restore_include")
+        
+    async def test_07_partial_dump_full_restore_include_exclude(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+        output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_07_partial_dump_full_restore_include_exclude")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--clear-output-dir",
+            "--debug",
+            f"--output-dir={output_dir}",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['schm_customer', 'customer_company'],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_3', 'some_tbl'],
+                ],
+            )
+        )
+
+        passed_stages.append("test_07_partial_dump_full_restore_include_exclude")
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -1378,8 +1953,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_03_dump(self):
         self.assertTrue("init_env" in passed_stages)
 
-        dict_file_name = get_file_name_from_path(self.target_sens_dict)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1405,8 +1979,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_04_restore(self):
         self.assertTrue("test_03_dump" in passed_stages)
 
-        dict_file_name = get_file_name_from_path(self.target_sens_dict)
-        input_dir = self.get_test_output_path(dict_file_name)
+        input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1916,8 +2489,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path('mask_test.py')
-        dict_file_name = get_file_name_from_path(prepared_sens_dict_file)
-        output_dir = self.get_test_output_path(dict_file_name)
+        output_dir = self.get_test_output_path("PGAnonMaskUnitTest.test_02_mask_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",
@@ -1942,7 +2514,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
     async def test_03_mask_restore(self):
         self.assertTrue("test_02_mask_dump" in passed_stages)
-        input_dir = self.get_test_output_path("mask_test")
+        input_dir = self.get_test_output_path("PGAnonMaskUnitTest.test_02_mask_dump")
 
         options = build_run_options([
             f"--db-host={params.test_db_host}",

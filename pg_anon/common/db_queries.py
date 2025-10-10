@@ -88,19 +88,16 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int = None, conditio
 
     conditions = []
     query_condition = ''
-    need_where = True
 
     if condition:
-        condition_without_special_characters = re.sub('[^A-Z0-9]+', '', condition.upper())
-        if condition_without_special_characters.startswith('WHERE'):
-            need_where = False
+        condition = re.sub(r'^\s*where\b\s*', '', condition, flags=re.IGNORECASE)
         conditions.append(condition)
 
     if not_null:
         conditions.append(f'\"{field_info.column_name}\" is NOT NULL')
 
     if conditions:
-        query_condition = 'WHERE ' if need_where else ''
+        query_condition = 'WHERE '
         query_condition += ' and '.join(conditions)
 
     query_limit = get_limit_query(limit)

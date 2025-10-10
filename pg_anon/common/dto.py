@@ -47,6 +47,8 @@ class RunOptions:
     output_no_sens_dict_file: str
     prepared_sens_dict_files: Optional[List[str]]
     prepared_no_sens_dict_files: Optional[List[str]]
+    partial_tables_dict_files: Optional[List[str]]
+    partial_tables_exclude_dict_files: Optional[List[str]]
     scan_partial_rows: int
     view_only_sensitive_fields: bool
     schema_name: Optional[str]
@@ -211,8 +213,9 @@ class Metadata:
     total_rows: Optional[int] = None
     db_size: Optional[int] = None
 
-    # only in struct dump cases
-    schemas: Optional[List[str]] = None
+    # only in black and white lists cases
+    partial_dump_schemas: Optional[List[str]] = None
+    partial_dump_functions: Optional[List[str]] = None
 
     def _serialize_data(self) -> Dict:
         data = {
@@ -230,7 +233,8 @@ class Metadata:
             'total_rows': self.total_rows,
             'db_size': self.db_size,
 
-            'schemas': self.schemas,
+            'partial_dump_schemas': self.partial_dump_schemas,
+            'partial_dump_functions': self.partial_dump_functions,
         }
 
         if self.sequences_last_values is None:
@@ -244,10 +248,17 @@ class Metadata:
         if self.db_size is None:
             del data['db_size']
 
-        if self.schemas is None:
-            del data['schemas']
+        if self.partial_dump_schemas is None:
+            del data['partial_dump_schemas']
+            
+        if self.partial_dump_functions is None:
+            del data['partial_dump_functions']
 
         return data
+
+    def _serialize_tables(self) -> Dict:
+        data = [{k: v for k, v in table_data.items() if k in ("schema", "table")} for table_data in self.files.values()]
+        return {"tables": data}
 
     def _deserialize_data(self, data: Dict):
         self.created = data.get('created')
@@ -264,10 +275,16 @@ class Metadata:
         self.total_tables_size = data.get('total_tables_size')
         self.total_rows = data.get('total_rows')
 
-        self.schemas = data.get('schemas')
+        self.partial_dump_schemas = data.get('partial_dump_schemas')
+        self.partial_dump_functions = data.get('partial_dump_functions')
 
     def save_into_file(self, file_name: str):
         data = self._serialize_data()
+        with open(file_name, "w", encoding='utf-8') as out_file:
+            out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+
+    def save_dumped_tables_into_file(self, file_name: str):
+        data = self._serialize_tables()
         with open(file_name, "w", encoding='utf-8') as out_file:
             out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 

@@ -1,6 +1,5 @@
 import concurrent.futures
 import decimal
-import hashlib
 import json
 import os.path
 import pathlib
@@ -8,13 +7,11 @@ import re
 import subprocess
 import sys
 import traceback
-from typing import List, Optional, Dict, Union, Tuple
+from typing import List, Optional, Dict, Union, Tuple, Set
 
 import yaml
-from pkg_resources import parse_version as version
 
 from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT
-from pg_anon.common.db_utils import get_fields_list
 from pg_anon.common.dto import FieldInfo
 
 PARENS_PATTERN = re.compile(r'\([^\)]*\)')
@@ -68,7 +65,7 @@ def exception_handler(func):
 
 
 def get_major_version(str_version):
-    return version(re.findall(r"(\d+)", str_version)[0])
+    return re.findall(r"(\d+)", str_version)[0]
 
 
 def pretty_size(bytes_v):
@@ -185,115 +182,6 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
     return result
 
 
-async def get_dump_query(ctx, table_schema: str, table_name: str, table_rule, files: Dict,
-                         excluded_objs: List, included_objs: List, nulls_last: bool = False):
-
-    table_name_full = f'"{table_schema}"."{table_name}"'
-
-    # dictionary_exclude has the highest priority
-    if "dictionary_exclude" in ctx.prepared_dictionary_obj:
-        exclude_rule = get_dict_rule_for_table(
-            dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
-            schema=table_schema,
-            table=table_name,
-        )
-
-        if exclude_rule is not None and table_rule is None:
-            excluded_objs.append(
-                [
-                    exclude_rule,
-                    table_schema,
-                    table_name,
-                    "if found and not found_white_list",
-                ]
-            )
-            ctx.logger.info("Skipping: " + str(table_name_full))
-            return None
-
-    hashed_name = hashlib.md5(
-        (table_schema + "_" + table_name).encode()
-    ).hexdigest()
-
-    files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
-
-    if table_rule is None:
-        included_objs.append(
-            [table_rule, table_schema, table_name, "if not found_white_list"]
-        )
-        # there is no table in the dictionary, so it will be transferred "as is"
-        if (ctx.options.dbg_stage_1_validate_dict
-                or ctx.options.dbg_stage_2_validate_data
-                or ctx.options.dbg_stage_3_validate_full):
-            query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
-            return query
-        else:
-            query = f"SELECT * FROM {table_name_full}"
-            return query
-    else:
-        included_objs.append(
-            [table_rule, table_schema, table_name, "if found_white_list"]
-        )
-        # table found in dictionary
-        if "raw_sql" in table_rule:
-            # the table is transferred using "raw_sql"
-            if (ctx.options.dbg_stage_1_validate_dict
-                    or ctx.options.dbg_stage_2_validate_data
-                    or ctx.options.dbg_stage_3_validate_full):
-                query = table_rule["raw_sql"] + " " + ctx.validate_limit
-                ctx.logger.info(str(query))
-                return query
-            else:
-                query = table_rule["raw_sql"]
-                return query
-        else:
-            # the table is transferred with the specific fields for anonymization
-            fields_list = await get_fields_list(
-                connection_params=ctx.connection_params,
-                server_settings=ctx.server_settings,
-                table_schema=table_schema,
-                table_name=table_name
-            )
-
-            sql_expr = ""
-
-            def _check_field(_field_name: str):
-                if _field_name in table_rule["fields"]:
-                    return _field_name, table_rule["fields"][_field_name]
-                return None, None
-
-            for cnt, column_info in enumerate(fields_list):
-                column_name = column_info["column_name"]
-                udt_name = column_info["udt_name"]
-                field_name, field_value = _check_field(column_name)
-
-                if field_name:
-                    if field_value.find("SQL:") == 0:
-                        sql_expr += f'({field_value[4:]}) as "{field_name}"'
-                    else:
-                        sql_expr += f'{field_value}::{udt_name} as "{field_name}"'
-                else:
-                    # field "as is"
-                    sql_expr += f'"{column_name}" as "{column_name}"'
-
-                if cnt != len(fields_list) - 1:
-                    sql_expr += ",\n"
-
-            query = f"SELECT {sql_expr} FROM {table_name_full}"
-            if (ctx.options.dbg_stage_1_validate_dict
-                    or ctx.options.dbg_stage_2_validate_data
-                    or ctx.options.dbg_stage_3_validate_full):
-                query += f" {ctx.validate_limit}"
-
-            if nulls_last:
-                ordering = ", ".join([
-                    field["column_name"] + ' NULLS LAST' for field in fields_list
-                    if field["is_nullable"].lower() == "yes"
-                ])
-                query += f" ORDER BY {ordering}"
-
-            return query
-
-
 def get_file_name_from_path(path: str) -> str:
     """
     Extract file name without extension from path
@@ -382,3 +270,36 @@ def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
     tb_exc = traceback.TracebackException.from_exception(exc)
     lines = list(tb_exc.format())
     return "".join(lines[-limit:])
+
+
+def filter_db_tables(
+        tables: List[Tuple[str, str]],
+        white_list_rules: Optional[List[Dict]] = None,
+        black_list_rules: Optional[List[Dict]] = None
+) -> Tuple[List[Tuple[str, str]], Set[Tuple[str, str]], Set[Tuple[str, str]]]:
+    filtered_tables = []
+    black_listed_tables = set()
+    white_listed_tables = set()
+    if not (white_list_rules or black_list_rules):
+        return tables, white_listed_tables, black_listed_tables
+
+    for table_data in tables:
+        # black list has the highest priority for pg_dump / pg_restore
+        if black_list_rules:
+            if table_excluded := get_dict_rule_for_table(black_list_rules, *table_data):
+                # if table in black list, this table must be filtered out
+                black_listed_tables.add(table_data)
+                continue
+
+        # white list has the second priority for pg_dump / pg_restore
+        if white_list_rules:
+            if table_included := get_dict_rule_for_table(white_list_rules, *table_data):
+                # if white list is using and table in white list, this table must not be filtered
+                white_listed_tables.add(table_data)
+                filtered_tables.append(table_data)
+                continue
+
+        # if table not in black list and white list not using, this table must not be filtered
+        filtered_tables.append(table_data)
+
+    return filtered_tables, black_listed_tables, white_listed_tables

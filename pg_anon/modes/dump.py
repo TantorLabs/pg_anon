@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import hashlib
-import json
 import os
 import re
 import subprocess
@@ -14,12 +13,13 @@ from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
 
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
-from pg_anon.common.db_utils import create_connection, create_pool, get_tables_to_dump, get_db_size
+from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
+    get_functions_using_for_constraints
 from pg_anon.common.dto import Metadata
-from pg_anon.common.enums import VerboseOptions, AnonMode
+from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
-    exception_helper, get_dict_rule_for_table, get_dump_query, get_file_name_from_path, chunkify, get_pg_util_version
+    exception_helper, get_dict_rule_for_table, get_file_name_from_path, chunkify, get_pg_util_version
 )
 from pg_anon.context import Context
 
@@ -30,7 +30,7 @@ class DumpMode:
 
     metadata: Metadata
     metadata_file_name: str = 'metadata.json'
-    metadata_file_path: str
+    dumped_tables_file_name: str = 'dumped_tables.py'
 
     _data_dump_queries: Optional[List[str]] = None
     _data_dump_files: Optional[Dict] = None
@@ -39,6 +39,7 @@ class DumpMode:
     _total_tables_size: int = 0
     _total_rows: int = 0
     _sequences_last_values: Dict = None
+    _constraint_functions: List[str] = None
 
     _need_dump_pre_and_post_sections: bool = True
     _need_dump_data: bool = True
@@ -59,20 +60,26 @@ class DumpMode:
             self.output_dir = self.context.options.output_dir
 
         self.metadata_file_path = os.path.join(self.output_dir, self.metadata_file_name)
+        self.dumped_tables_file_path = os.path.join(self.output_dir, self.dumped_tables_file_name)
 
         self._need_dump_pre_and_post_sections = self.context.options.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
         self._need_dump_data = self.context.options.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
         self._skip_pre_data_dump = (
             not self._need_dump_pre_and_post_sections
+            or self.context.options.dbg_stage_1_validate_dict
             or self.context.options.dbg_stage_2_validate_data
         )
         self._skip_post_data_dump = (
             not self._need_dump_pre_and_post_sections
+            or self.context.options.dbg_stage_1_validate_dict
             or self.context.options.dbg_stage_2_validate_data
             or self.context.options.dbg_stage_3_validate_full
         )
 
     def _prepare_output_dir(self):
+        if self.context.options.dbg_stage_1_validate_dict:
+            return
+
         os.makedirs(self.output_dir, exist_ok=True)
 
         if self.output_dir_is_empty:
@@ -91,6 +98,8 @@ class DumpMode:
             ".json",
             ".backup",
             ".bin",
+            ".py",
+            ".list",
         ]
 
         for root, dirs, files in os.walk(self.output_dir):
@@ -142,6 +151,7 @@ class DumpMode:
                 if sequence_data[0] == file["schema"] and sequence_data[1] == file["table"]:
                     self._sequences_last_values[seq_name] = {
                         "schema": sequence_data[3],
+                        "table": sequence_data[1],
                         "seq_name": sequence_data[4],
                         "value": sequence_last_value,
                     }
@@ -162,11 +172,13 @@ class DumpMode:
 
         self.metadata.prepared_sens_dict_files = ','.join(self.context.options.prepared_sens_dict_files)
 
-        if self.context.options.mode == AnonMode.SYNC_STRUCT_DUMP:
-            self.metadata.schemas = list(
-                dict_obj["schema"] for dict_obj in self.context.prepared_dictionary_obj["dictionary"]
-            )
-        else:
+        # Schemas and functions used in constraints need to be preserved only when a table whitelist is applied.
+        if self.context.white_listed_tables:
+            self.metadata.partial_dump_schemas = list({schema for schema, _ in self.context.tables})
+            if self._constraint_functions:
+                self.metadata.partial_dump_functions = self._constraint_functions
+
+        if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
             self.metadata.files = self._data_dump_files
             self.metadata.sequences_last_values = self._sequences_last_values
 
@@ -183,19 +195,27 @@ class DumpMode:
         self.metadata.dbg_stage_3_validate_full = self.context.options.dbg_stage_3_validate_full
 
         self.metadata.save_into_file(file_name=self.metadata_file_path)
+        if self._need_dump_data:
+            self.metadata.save_dumped_tables_into_file(file_name=self.dumped_tables_file_path)
 
     async def _run_pg_dump(self, section):
         specific_tables = []
-        if self.context.options.mode == AnonMode.SYNC_STRUCT_DUMP:
-            tmp_list = []
-            for v in self.context.prepared_dictionary_obj["dictionary"]:
-                tmp_list.append(["-t", f'"{v["schema"]}"."{v["table"]}"'])
-            specific_tables = [item for sublist in tmp_list for item in sublist]
+
+        if self.context.black_listed_tables:
+            black_list = [
+                ("-T", f'"{table_schema}"."{table_name}"') for table_schema, table_name in self.context.black_listed_tables
+            ]
+            specific_tables.extend([item for sublist in black_list for item in sublist])
+
+        if self.context.white_listed_tables:
+            white_list = [
+                ("-t", f'"{table_schema}"."{table_name}"') for table_schema, table_name in self.context.white_listed_tables
+            ]
+            specific_tables.extend([item for sublist in white_list for item in sublist])
 
         tmp_list = []
         for v in self.context.exclude_schemas:
             tmp_list.append(["--exclude-schema", v])
-
         exclude_schemas = [item for sublist in tmp_list for item in sublist]
 
         command = [
@@ -323,18 +343,11 @@ class DumpMode:
 
         return {hashlib.sha256(query.encode()).hexdigest(): count_rows}
 
-    async def _prepare_dump_queries(self, connection: Connection):
-        tables = await get_tables_to_dump(
-            connection=connection,
-            excluded_schemas=self.context.exclude_schemas,
-        )
+    async def _prepare_dump_queries(self):
         self._data_dump_queries = []
         self._data_dump_files = {}
 
-        included_objs = []  # for debug purposes
-        excluded_objs = []  # for debug purposes
-
-        for table_schema, table_name in tables:
+        for table_schema, table_name in self.context.tables:
             table_rule = get_dict_rule_for_table(
                 dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
                 schema=table_schema,
@@ -347,17 +360,11 @@ class DumpMode:
                 table_name=table_name,
                 table_rule=table_rule,
                 files=self._data_dump_files,
-                included_objs=included_objs,
-                excluded_objs=excluded_objs
             )
 
             if query:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
-
-        if self.context.options.verbose == VerboseOptions.DEBUG:
-            self.context.logger.debug("included_objs:\n" + json.dumps(included_objs, indent=4))
-            self.context.logger.debug("excluded_objs:\n" + json.dumps(excluded_objs, indent=4))
 
     def _process_dump_data(self, name: str, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
         tasks_res = []
@@ -454,24 +461,19 @@ class DumpMode:
             queue.close()
             self.context.logger.debug(f"<================ Process [{name}] closed")
 
-    async def _dump_data(self):
+    async def _dump_data(self, connection: Connection):
         if not self._need_dump_data:
             self.context.logger.info("-------------> Skipped dump data")
             return
 
         self.context.logger.info("-------------> Started dump data")
 
-        connection = await create_connection(
-            self.context.connection_params,
-            server_settings=self.context.server_settings
-        )
-
         try:
             async with connection.transaction(isolation='repeatable_read', readonly=True):
                 transaction_snapshot_id = await connection.fetchval("select pg_export_snapshot()")
 
                 # Preparing dump queries
-                await self._prepare_dump_queries(connection)
+                await self._prepare_dump_queries()
                 if not self._data_dump_queries:
                     raise Exception("No objects for dump!")
 
@@ -544,20 +546,32 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
+    async def _prepare_tables_lists(self, connection: Connection):
+        tables = await get_db_tables(connection, self.context.exclude_schemas)
+        self.context.set_tables_lists(tables)
+
+    async def _prepare_functions_list(self, connection: Connection):
+        if self.context.black_listed_tables or self.context.white_listed_tables:
+            self._constraint_functions = await get_functions_using_for_constraints(connection, self.context.tables)
+
     async def run(self) -> None:
         self.context.logger.info("-------------> Started dump")
 
         try:
+            connection = await create_connection(
+                self.context.connection_params,
+                server_settings=self.context.server_settings
+            )
+
             self.context.read_prepared_dict()
-
-            if self.context.options.dbg_stage_1_validate_dict:
-                return
-
+            self.context.read_partial_tables_dicts()
             self._prepare_output_dir()
 
+            await self._prepare_tables_lists(connection)
+            await self._prepare_functions_list(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
-            await self._dump_data()
+            await self._dump_data(connection)
             await self._prepare_and_save_metadata()
 
             self.context.logger.info("<------------- Finished dump")

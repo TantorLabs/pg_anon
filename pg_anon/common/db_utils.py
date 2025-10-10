@@ -1,5 +1,6 @@
+import hashlib
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import asyncpg
 from asyncpg import Connection, Pool
@@ -7,6 +8,8 @@ from asyncpg import Connection, Pool
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, DEFAULT_EXCLUDED_SCHEMAS
 from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query
 from pg_anon.common.dto import FieldInfo, ConnectionParams
+from pg_anon.common.utils import get_dict_rule_for_table
+from pg_anon.context import Context
 from pg_anon.logger import get_logger
 
 logger = get_logger()
@@ -158,12 +161,18 @@ async def exec_data_scan_func_query(connection: Connection, scan_func: str, valu
     return res
 
 
-async def get_tables_to_dump(connection: Connection, excluded_schemas: List[str]) -> List:
+async def get_db_tables(
+        connection: Connection,
+        excluded_schemas: Optional[List[str]] = None,
+) -> List[Tuple[str, str]]:
+    if not excluded_schemas:
+        excluded_schemas = []
+
     excluded_schemas_str = ", ".join(
         [f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]]
     )
 
-    query_db_obj = f"""
+    query = f"""
             SELECT t.table_schema, t.table_name
             FROM information_schema.tables t
             JOIN pg_class c ON c.relname = t.table_name
@@ -175,8 +184,30 @@ async def get_tables_to_dump(connection: Connection, excluded_schemas: List[str]
                 AND pt.partrelid IS NULL;
         """
 
-    db_objs = await connection.fetch(query_db_obj)
-    return db_objs
+    tables = await connection.fetch(query)
+    return list(map(tuple, tables))
+
+
+async def get_functions_using_for_constraints(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
+    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+    args = [item for table_data in tables for item in table_data]
+    query = f"""
+          WITH tables_to_check AS (
+              VALUES {values_placeholders}
+          )
+          SELECT DISTINCT
+              pg_get_functiondef(p.oid) || E'\n' AS function_sql
+          FROM tables_to_check t
+          JOIN pg_class c ON c.relname = t.column2
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_constraint con ON con.conrelid = c.oid
+          JOIN pg_proc p ON pg_get_constraintdef(con.oid) LIKE '%' || p.proname || '%'
+          WHERE con.contype = 'c'
+            AND n.nspname = t.column1;
+          """
+
+    result = await connection.fetch(query, *args)
+    return [row[0] for row in result]
 
 
 async def check_db_is_empty(connection: Connection) -> bool:
@@ -215,3 +246,113 @@ async def get_pg_version(connection_params: ConnectionParams, server_settings: D
     pg_version = await db_conn.fetchval("select version()")
     await db_conn.close()
     return re.findall(r"(\d+\.\d+)", str(pg_version))[0]
+
+
+async def get_dump_query(
+        ctx: Context,
+        table_schema: str,
+        table_name: str,
+        table_rule: Optional[Dict] = None,
+        nulls_last: bool = False,
+        files: Optional[Dict] = None
+):
+    table_name_full = f'"{table_schema}"."{table_name}"'
+
+    # black list has the highest priority for pg_dump / pg_restore
+    if ctx.black_listed_tables and (table_schema, table_name) in ctx.black_listed_tables:
+        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        return None
+
+    # white list has the second priority for pg_dump / pg_restore
+    if ctx.white_listed_tables and (table_schema, table_name) not in ctx.white_listed_tables:
+        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        return None
+
+    # dictionary_exclude has third priority
+    if "dictionary_exclude" in ctx.prepared_dictionary_obj:
+        exclude_rule = get_dict_rule_for_table(
+            dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
+            schema=table_schema,
+            table=table_name,
+        )
+
+        if exclude_rule is not None and table_rule is None:
+            ctx.logger.info("Skipping: " + str(table_name_full))
+            return None
+
+    hashed_name = hashlib.md5(
+        (table_schema + "_" + table_name).encode()
+    ).hexdigest()
+
+    if files is not None:
+        files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
+
+    if table_rule is None:
+        # there is no table in the dictionary, so it will be transferred "as is"
+        if (ctx.options.dbg_stage_1_validate_dict
+                or ctx.options.dbg_stage_2_validate_data
+                or ctx.options.dbg_stage_3_validate_full):
+            query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
+            return query
+        else:
+            query = f"SELECT * FROM {table_name_full}"
+            return query
+    else:
+        # table found in dictionary
+        if "raw_sql" in table_rule:
+            # the table is transferred using "raw_sql"
+            if (ctx.options.dbg_stage_1_validate_dict
+                    or ctx.options.dbg_stage_2_validate_data
+                    or ctx.options.dbg_stage_3_validate_full):
+                query = table_rule["raw_sql"] + " " + ctx.validate_limit
+                ctx.logger.info(str(query))
+                return query
+            else:
+                query = table_rule["raw_sql"]
+                return query
+        else:
+            # the table is transferred with the specific fields for anonymization
+            fields_list = await get_fields_list(
+                connection_params=ctx.connection_params,
+                server_settings=ctx.server_settings,
+                table_schema=table_schema,
+                table_name=table_name
+            )
+
+            sql_expr = ""
+
+            for cnt, column_info in enumerate(fields_list):
+                column_name = column_info["column_name"]
+                udt_name = column_info["udt_name"]
+                field_anon_rule = table_rule["fields"].get(column_name)
+
+                if field_anon_rule:
+                    if field_anon_rule.find("SQL:") == 0:
+                        sql_expr += f'({field_anon_rule[4:]}) as "{column_name}"'
+                    else:
+                        sql_expr += f'{field_anon_rule}::{udt_name} as "{column_name}"'
+                else:
+                    # field "as is"
+                    sql_expr += f'"{column_name}" as "{column_name}"'
+
+                if cnt != len(fields_list) - 1:
+                    sql_expr += ",\n"
+
+            query = f"SELECT {sql_expr}\nFROM {table_name_full}"
+            if sql_condition := table_rule.get('sql_condition'):
+                condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
+                query += f"\nWHERE {condition}"
+
+            if (ctx.options.dbg_stage_1_validate_dict
+                    or ctx.options.dbg_stage_2_validate_data
+                    or ctx.options.dbg_stage_3_validate_full):
+                query += f" {ctx.validate_limit}"
+
+            if nulls_last:
+                ordering = ", ".join([
+                    field["column_name"] + ' NULLS LAST' for field in fields_list
+                    if field["is_nullable"].lower() == "yes"
+                ])
+                query += f" ORDER BY {ordering}"
+
+            return query

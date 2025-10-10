@@ -167,6 +167,18 @@ def get_arg_parser():
         help="In 'create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
     )
     parser.add_argument(
+        "--partial-tables-dict-file",
+        dest="partial_tables_dict_files",
+        type=parse_comma_separated_list,
+        help="In 'dump' or 'restore' mode input file or file list with tables. Only the tables specified in this dictionary will be included.",
+    )
+    parser.add_argument(
+        "--partial-tables-exclude-dict-file",
+        dest="partial_tables_exclude_dict_files",
+        type=parse_comma_separated_list,
+        help="In 'dump' or 'restore' mode input file or file list with tables. Only the tables specified in this dictionary will be excluded.",
+    )
+    parser.add_argument(
         "--scan-partial-rows",
         type=int,
         default=10000,
