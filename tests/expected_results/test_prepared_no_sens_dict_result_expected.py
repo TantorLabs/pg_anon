@@ -193,6 +193,19 @@
         },
         {
             "schema": "schm_other_4",
+            "table": "goods",
+            "fields": [
+                "created_at",
+                "description",
+                "quantity",
+                "release_date",
+                "title",
+                "type_id",
+                "valid_until"
+            ]
+        },
+        {
+            "schema": "schm_other_4",
             "table": "partitioned_table",
             "fields": [
                 "created_at",

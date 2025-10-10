@@ -338,7 +338,11 @@ async def get_dump_query(
                 if cnt != len(fields_list) - 1:
                     sql_expr += ",\n"
 
-            query = f"SELECT {sql_expr} FROM {table_name_full}"
+            query = f"SELECT {sql_expr}\nFROM {table_name_full}"
+            if sql_condition := table_rule.get('sql_condition'):
+                condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
+                query += f"\nWHERE {condition}"
+
             if (ctx.options.dbg_stage_1_validate_dict
                     or ctx.options.dbg_stage_2_validate_data
                     or ctx.options.dbg_stage_3_validate_full):

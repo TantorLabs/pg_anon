@@ -677,6 +677,8 @@ FROM generate_series(1, 100) AS v;
 ----------
 CREATE SCHEMA IF NOT EXISTS schm_other_4;
 DROP TABLE IF EXISTS schm_other_4.partitioned_table;
+DROP TABLE IF EXISTS schm_other_4.orders;
+
 CREATE TABLE schm_other_4.partitioned_table (
     id BIGSERIAL,
     sale_date DATE NOT NULL,
@@ -711,9 +713,32 @@ CREATE TABLE schm_other_4.partitioned_table_default
 PARTITION OF schm_other_4.partitioned_table
 DEFAULT;
 
+CREATE TABLE schm_other_4.goods (
+    id BIGSERIAL,
+    title varchar(64) NOT NULL,
+    description text,
+    release_date DATE NOT NULL,
+    valid_until DATE NOT NULL,
+    type_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+
 INSERT INTO schm_other_4.partitioned_table(sale_date, product_id, quantity, amount, region_code) VALUES
 ('2025-01-15', 1, 2, 99.98, 'US'),
 ('2025-01-20', 2, 1, 25.50, 'EU' ),
 ('2025-02-10', 1, 3, 149.97, 'US'),
 ('2025-03-03', 3, 1, 15.70, 'US'),
 ('2025-05-05', 1, 4, 76.23, 'EU');
+
+
+INSERT INTO schm_other_4.goods (title, description, release_date, valid_until, type_id, quantity)
+SELECT
+    'Good ' || v AS title,
+    'Description of good ' || v AS description,
+    NOW() - (v || ' days')::interval AS release_date,
+    NOW() + ((v + 10) || ' days')::interval AS valid_until,
+    v AS type_id,
+    v AS quantity
+FROM generate_series(1, 1512) AS v;

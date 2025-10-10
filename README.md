@@ -418,9 +418,9 @@ python pg_anon.py --mode=create-dict \
 
 #### Requirements for input --meta-dict-file (metadict):
 
-Input metadict.py file should contain that type of structure:
+Input file should contain that type of structure:
 ```python
-var = {
+{
     "field": {  # Which fields to anonymize without scanning the content
         "rules": [  # List of regular expressions to search for fields by name
             "^fld_5_em",
@@ -505,6 +505,65 @@ var = {
 }
 ```
 
+#### Requirements for input --prepared-sens-dict-file:
+Fields contains in dictionary of sensitive fields will be used as "sensitive fields" in `--mode=create-dict`. Also will be used rules, from this file. 
+Input file should contain that type of structure:
+```python
+{
+    "dictionary": [ # List of anonymization rules for dump
+        {
+            "schema": "schm_customer", # Table schema
+            "table": "customer_company", # Table name
+            "fields": { # Fields what will be anonymized. Other fields will be dumped "as is"
+                "company_name": "anon_funcs.digest(\"company_name\", 'salt_word', 'sha256')",
+                "email": "anon_funcs.digest(\"email\", 'salt_word', 'sha256')",
+            },
+        },
+        {
+            "schema": "schm_other_4", # Table schema
+            "table": "goods", # Table name
+            "fields": { # Fields what will be anonymized (other fields will be dumped "as is")
+                "title": "anon_funcs.digest(\"title\", 'salt_word', 'sha256')",
+                "description": "anon_funcs.digest(\"description\", 'salt_word', 'sha256')",
+                "quantity": "10",
+            },
+            "sql_condition": # Optional. Condition in raw SQL format for filtering data to dump. (This section ignored for --mode=create-dict)
+            """
+            WHERE release_date > NOW() - '15 days'::interval
+            AND valid_until < NOW() + '15 days'::interval
+            """
+        }
+    ],   
+    # Optional section. It uses for excluding schemas and tables from data dump. If table in "dictionary_exclude" and in "dictionary" sections, then table will be dumped  
+    # "dictionary_exclude": [ 
+    #     {
+    #         "schema_mask": "*", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+    #         "table_mask": "*", # Can use "table" for full name matching or "table_mask" for regexp matching
+    #     }
+    # ]
+}
+```
+
+#### Requirements for input --prepared-no-sens-dict-file:
+Fields contains in dictionary of sensitive fields will be used as "NOT sensitive fields" in `--mode=create-dict` 
+Input file should contain that type of structure:
+```python
+{
+    "no_sens_dictionary": [
+        {
+            "schema": "schm_other_4",
+            "table": "goods",
+            "fields": [
+                "release_date",
+                "valid_until",
+                "type_id",
+                "created_at",
+            ]
+        },
+   ]
+}
+```
+
 ### Run dump mode
 
 #### Prerequisites:
@@ -554,15 +613,83 @@ var = {
 
 Possible options in mode=dump:
 
-| Option                        | Description                                                                                                                                |
-|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file`   | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually |
-| `--dbg-stage-1-validate-dict` | Validate dictionary, show the tables and run SQL queries without data export (default false)                                               |
-| `--dbg-stage-2-validate-data` | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                   |
-| `--dbg-stage-3-validate-full` | Makes all logic with "limit" in SQL queries (default false)                                                                                |
-| `--clear-output-dir`          | In dump mode clears output dict from previous dump or another files. (default true)                                                        |
-| `--pg-dump`                   | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                          |
-| `--output-dir`                | Output directory for dump files. (default "")                                                                                              |
+| Option                               | Description                                                                                                                                                                                                    |
+|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`          | Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually                                                                     |
+| `--partial-tables-dict-file`         | Input file or file list containing a dict of tables to be included in the dump. All tables not listed in these files will be excluded. These files must be prepared manually (acts as a whitelist). (Optional) |
+| `--partial-tables-exclude-dict-file` | Input file or file list containing a dict of tables to be excluded from the dump. This files can be prepared manually only (works like blacklist). (Optional)                                                  |
+| `--dbg-stage-1-validate-dict`        | Validate dictionary, show the tables and run SQL queries without data export (default false)                                                                                                                   |
+| `--dbg-stage-2-validate-data`        | Validate data, show the tables and run SQL queries with data export in prepared database (default false)                                                                                                       |
+| `--dbg-stage-3-validate-full`        | Makes all logic with "limit" in SQL queries (default false)                                                                                                                                                    |
+| `--clear-output-dir`                 | In dump mode clears output dict from previous dump or another files. (default true)                                                                                                                            |
+| `--pg-dump`                          | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                              |
+| `--output-dir`                       | Output directory for dump files. (default "")                                                                                                                                                                  |
+
+#### Requirements for input --prepared-sens-dict-file:
+
+Input file should contain that type of structure:
+```python
+{
+    "dictionary": [ # List of anonymization rules for dump
+        {
+            "schema": "schm_customer", # Table schema
+            "table": "customer_company", # Table name
+            "fields": { # Fields what will be anonymized. Other fields will be dumped "as is"
+                "company_name": "anon_funcs.digest(\"company_name\", 'salt_word', 'sha256')",
+                "email": "anon_funcs.digest(\"email\", 'salt_word', 'sha256')",
+            },
+        },
+        {
+            "schema": "schm_other_4", # Table schema
+            "table": "goods", # Table name
+            "fields": { # Fields what will be anonymized (other fields will be dumped "as is")
+                "title": "anon_funcs.digest(\"title\", 'salt_word', 'sha256')",
+                "description": "anon_funcs.digest(\"description\", 'salt_word', 'sha256')",
+                "quantity": "10",
+            },
+            "sql_condition": # Optional. Condition in raw SQL format for filtering data to dump
+            """
+            WHERE release_date > NOW() - '15 days'::interval
+            AND valid_until < NOW() + '15 days'::interval
+            """
+        }
+    ],   
+    # # Optional section. It uses for excluding schemas and tables from data dump. If table in "dictionary_exclude" and in "dictionary" sections, then table will be dumped
+    # Important! This section only excludes data from dump, but not tables from structure. For excluding tables from structure use --partial-tables-dict-file and --partial-tables-exclude-dict-file options
+    # "dictionary_exclude": [ 
+    #     {
+    #         "schema_mask": "*", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+    #         "table_mask": "*", # Can use "table" for full name matching or "table_mask" for regexp matching
+    #     }
+    # ]
+}
+```
+
+#### Requirements for input --partial-tables-dict-file and --partial-tables-exclude-dict-file:
+
+Input file should contain that type of structure:
+```python
+{
+    "tables": [ # List of tables waht can be include to dump (if using for --partial-tables-dict-file) or exclude from dump (if using for --partial-tables-exclude-dict-file)  
+        {
+            "schema": "public", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "inn_info" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema": "schm_customer", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table_mask": "^customer_" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema_mask": "^schm_other", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "some_tbl" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema_mask": "^schm_mask_", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table_mask": "*" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+    ]
+}
+```
 
 ### Run restore mode
 
@@ -613,15 +740,43 @@ Possible options in mode=dump:
 
 Possible options in `--mode restore`:
 
-| Option                       | Description                                                                                                                            |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `--input-dir`                | Input directory, with the dump files, created in dump mode                                                                             |
-| `--disable-checks`           | Disable checks of disk space and PostgreSQL version (default false)                                                                    |
-| `--seq-init-by-max-value`    | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database. |
-| `--drop-custom-check-constr` | Drop all CHECK constrains containing user-defined procedures to avoid performance degradation at the data loading stage.               |
-| `--pg-restore`               | Path to the `pg_dump` Postgres tool.                                                                                                   |
-| `--clean-db`                 | Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.                                      |
-| `--drop-db`                  | Drop target database before restore. Mutually exclusive with --clean-db.                                                               |
+| Option                               | Description                                                                                                                                                                                                    |
+|--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--input-dir`                        | Input directory, with the dump files, created in dump mode                                                                                                                                                     |
+| `--partial-tables-dict-file`         | Input file or file list containing a dict of tables to be included in the dump. All tables not listed in these files will be excluded. These files must be prepared manually (acts as a whitelist). (Optional) |
+| `--partial-tables-exclude-dict-file` | Input file or file list containing a dict of tables to be excluded from the dump. This files can be prepared manually only (works like blacklist). (Optional)                                                  |
+| `--disable-checks`                   | Disable checks of disk space and PostgreSQL version (default false)                                                                                                                                            |
+| `--seq-init-by-max-value`            | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database.                                                                         |
+| `--drop-custom-check-constr`         | Drop all CHECK constrains containing user-defined procedures to avoid performance degradation at the data loading stage.                                                                                       |
+| `--pg-restore`                       | Path to the `pg_dump` Postgres tool.                                                                                                                                                                           |
+| `--clean-db`                         | Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.                                                                                                              |
+| `--drop-db`                          | Drop target database before restore. Mutually exclusive with --clean-db.                                                                                                                                       |
+
+#### Requirements for input --partial-tables-dict-file and --partial-tables-exclude-dict-file:
+
+Input file should contain that type of structure:
+```python
+{
+    "tables": [ # List of tables waht can be include to dump (if using for --partial-tables-dict-file) or exclude from dump (if using for --partial-tables-exclude-dict-file)  
+        {
+            "schema": "public", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "inn_info" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema": "schm_customer", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table_mask": "^customer_" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema_mask": "^schm_other", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table": "some_tbl" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+        {
+            "schema_mask": "^schm_mask_", # Can use "schema" for full name matching or "schema_mask" for regexp matching. Required one of them
+            "table_mask": "*" # Can use "table" for full name matching or "table_mask" for regexp matching. Required one of them
+        },
+    ]
+}
+```
 
 ### Run view-fields mode
 

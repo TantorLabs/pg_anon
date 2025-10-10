@@ -735,6 +735,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['schm_other_4', 'partitioned_table_2025_02'],
                     ['schm_other_4', 'partitioned_table_2025_03'],
                     ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
                 ],
             )
         )
@@ -771,6 +772,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ['schm_other_4', 'partitioned_table_2025_02', 0],
             ['schm_other_4', 'partitioned_table_2025_03', 0],
             ['schm_other_4', 'partitioned_table_default', 0],
+            ["schm_other_4", "goods", 0],
         ]
         self.assertTrue(await self.check_rows_count(options, objs))
 
@@ -854,6 +856,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['schm_other_4', 'partitioned_table_2025_02'],
                     ['schm_other_4', 'partitioned_table_2025_03'],
                     ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
                 ],
             )
         )
@@ -978,6 +981,128 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_10_repeat_restore_with_drop_db")
+
+    async def test_11_dump_with_sql_conditions(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test_sens_with_sql_conditions.py")
+        output_dir = self.get_test_output_path("PGAnonUnitTest.test_11_dump_with_sql_conditions")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--debug",
+        ])
+
+        res_dump = await PgAnonApp(options).run()
+        self.assertEqual(res_dump.result_code, ResultCode.DONE)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=restore",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={output_dir}",
+            "--drop-custom-check-constr",
+            f"--drop-db",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        self.assertTrue(
+            await self.check_list_tables(
+                options,
+                [
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2"],
+                    ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
+                    ['public', 'contracts'],
+                    ['public', 'inn_info'],
+                    ['public', 'key_value'],
+                    ['public', 'tbl_100'],
+                    ['public', 'tbl_constants'],
+                    ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_manager'],
+                    ['schm_mask_exclude_1', 'other_tbl'],
+                    ['schm_mask_exclude_1', 'some_tbl'],
+                    ['schm_mask_ext_exclude_2', 'card_numbers'],
+                    ['schm_mask_ext_exclude_2', 'other_ext_tbl_2'],
+                    ['schm_mask_ext_exclude_2', 'some_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'other_ext_tbl'],
+                    ['schm_mask_ext_include_2', 'some_ext_tbl'],
+                    ['schm_mask_include_1', 'other_tbl'],
+                    ['schm_mask_include_1', 'some_tbl'],
+                    ["schm_mask_include_1", "tbl_123"],
+                    ['schm_mask_include_1', 'tbl_123_456'],
+                    ['schm_other_1', 'some_tbl'],
+                    ["schm_other_2", "exclude_tbl"],
+                    ["schm_other_2", "some_tbl"],
+                    ['schm_other_2', 'tbl_test_anon_functions'],
+                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_4', 'partitioned_table'],
+                    ['schm_other_4', 'partitioned_table_2025_01'],
+                    ['schm_other_4', 'partitioned_table_2025_02'],
+                    ['schm_other_4', 'partitioned_table_2025_03'],
+                    ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
+                ],
+            )
+        )
+
+        objs = [
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'2", 0],
+            ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3", 0],
+            ['public', 'contracts', 0],
+            ['public', 'inn_info', 0],
+            ['public', 'key_value', 0],
+            ['public', 'tbl_100', 0],
+            ['public', 'tbl_constants', 0],
+            ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_manager', 0],
+            ['schm_mask_exclude_1', 'other_tbl', 0],
+            ['schm_mask_exclude_1', 'some_tbl', 0],
+            ['schm_mask_ext_exclude_2', 'card_numbers', 0],
+            ['schm_mask_ext_exclude_2', 'other_ext_tbl_2', 0],
+            ['schm_mask_ext_exclude_2', 'some_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'other_ext_tbl', 0],
+            ['schm_mask_ext_include_2', 'some_ext_tbl', 0],
+            ['schm_mask_include_1', 'other_tbl', 0],
+            ['schm_mask_include_1', 'some_tbl', 0],
+            ["schm_mask_include_1", "tbl_123", 0],
+            ['schm_mask_include_1', 'tbl_123_456', 0],
+            ['schm_other_1', 'some_tbl', 0],
+            ["schm_other_2", "exclude_tbl", 0],
+            ["schm_other_2", "some_tbl", 0],
+            ['schm_other_2', 'tbl_test_anon_functions', 0],
+            ['schm_other_3', 'some_tbl', 0],
+            ['schm_other_4', 'partitioned_table', 0],
+            ['schm_other_4', 'partitioned_table_2025_01', 0],
+            ['schm_other_4', 'partitioned_table_2025_02', 0],
+            ['schm_other_4', 'partitioned_table_2025_03', 0],
+            ['schm_other_4', 'partitioned_table_default', 0],
+            ["schm_other_4", "goods", 5],
+        ]
+
+        self.assertTrue(await self.check_rows_count(options, objs))
+
+        passed_stages.append("test_11_dump_with_sql_conditions")
 
 
 class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
@@ -1323,7 +1448,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-dict-files={partial_tables_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1387,7 +1512,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-exclude-dict-files={partial_tables_exclude_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1445,6 +1570,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ['schm_other_4', 'partitioned_table_2025_02'],
                     ['schm_other_4', 'partitioned_table_2025_03'],
                     ['schm_other_4', 'partitioned_table_default'],
+                    ["schm_other_4", "goods"],
                 ],
             )
         )
@@ -1470,8 +1596,8 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-dict-files={partial_tables_dict_file}",
-            f"--partial-tables-exclude-dict-files={partial_tables_exclude_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1532,7 +1658,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-dict-files={partial_tables_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1551,7 +1677,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
-            f"--partial-tables-exclude-dict-files={partial_tables_exclude_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
             "--drop-custom-check-constr",
             f"--drop-db",
             "--debug",
@@ -1594,7 +1720,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-exclude-dict-files={partial_tables_exclude_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1613,7 +1739,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
-            f"--partial-tables-dict-files={partial_tables_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
             "--drop-custom-check-constr",
             f"--drop-db",
             "--debug",
@@ -1656,7 +1782,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
-            f"--partial-tables-exclude-dict-files={partial_tables_exclude_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
             "--clear-output-dir",
             "--debug",
             f"--output-dir={output_dir}",
@@ -1675,7 +1801,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
             "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
-            f"--partial-tables-dict-files={partial_tables_dict_file}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
             "--drop-custom-check-constr",
             f"--drop-db",
             "--debug",
