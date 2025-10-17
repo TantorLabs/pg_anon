@@ -3,6 +3,8 @@ from typing import List, Any, Optional, Dict
 
 from pydantic import BaseModel, Field, model_validator
 
+from rest_api.enums import DumpMode, ScanMode, RestoreMode
+
 
 #############################################
 # Common
@@ -26,28 +28,18 @@ class TaskStatus(BaseModel):
 
 
 class ScanType(BaseModel):
-    id: int
     title: str
     slug: str
 
 
 class DumpType(BaseModel):
-    id: int
     title: str
     slug: str
 
 
 class RestoreType(BaseModel):
-    id: int
     title: str
     slug: str
-
-
-class DictionaryType(BaseModel):
-    id: int
-    title: str
-    slug: str
-
 
 #############################################
 # DB Connections
@@ -341,6 +333,7 @@ class StatelessRunnerRequest(BaseModel):
     webhook_metadata: Optional[Any] = None  # data what will be sent on webhook "as is"
     webhook_extra_headers: Optional[Dict[str, str]] = None
     webhook_verify_ssl: Optional[bool] = True
+    save_dicts: Optional[bool] = False
 
 
 class StatelessRunnerResponse(BaseModel):
@@ -368,7 +361,7 @@ class DictionaryContent(DictionaryMetadata):
 # Stateless | Scan
 #############################################
 class ScanRequest(StatelessRunnerRequest):
-    type_id: int
+    type: ScanMode
 
     meta_dict_contents: List[DictionaryContent]
     sens_dict_contents: List[DictionaryContent] = Field(default_factory=list)
@@ -390,7 +383,7 @@ class ScanStatusResponse(StatelessRunnerResponse):
 # Stateless | Dump
 #############################################
 class DumpRequest(StatelessRunnerRequest):
-    type_id: int
+    type: DumpMode
     sens_dict_contents: List[DictionaryContent]
     partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
     partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
@@ -413,7 +406,7 @@ class DumpDeleteRequest(BaseModel):
 # Stateless | Restore
 #############################################
 class RestoreRequest(StatelessRunnerRequest):
-    type_id: int
+    type: RestoreMode
     input_path: str
     partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
     partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
@@ -486,3 +479,14 @@ class ViewDataContent(BaseModel):
 class ViewDataResponse(BaseModel):
     status_id: int
     content: Optional[ViewDataContent] = None
+
+
+#############################################
+# Stateless | Operations
+#############################################
+class OperationDataResponse(BaseModel):
+    run_status: Dict[str, Any]
+    run_options: Dict[str, Any]
+    dictionaries: Dict[str, Any]
+    extra_data: Optional[Dict[str, Any]] = None
+

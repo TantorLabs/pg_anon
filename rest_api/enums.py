@@ -1,24 +1,24 @@
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class ScanModeHandbook(Enum):
-    FULL = 1
-    PARTIAL = 2
+class ScanMode(StrEnum):
+    FULL = "full"
+    PARTIAL = "partial"
 
 
-class DumpModeHandbook(Enum):
-    FULL = 1
-    STRUCT = 2
-    DATA = 3
+class DumpMode(StrEnum):
+    FULL = "dump"
+    STRUCT = "sync-struct-dump"
+    DATA = "sync-data-dump"
 
 
-class RestoreModeHandbook(Enum):
-    FULL = 1
-    STRUCT = 2
-    DATA = 3
+class RestoreMode(StrEnum):
+    FULL = "restore"
+    STRUCT = "sync-struct-restore"
+    DATA = "sync-data-restore"
 
 
-class ResponseStatusesHandbook(Enum):
+class ResponseStatus(Enum):
     UNKNOWN = 1
     SUCCESS = 2
     ERROR = 3

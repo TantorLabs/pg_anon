@@ -1,18 +1,18 @@
+import ast
 import concurrent.futures
 import decimal
 import json
-import os.path
-import pathlib
 import re
 import subprocess
 import sys
 import traceback
-from typing import List, Optional, Dict, Union, Tuple, Set
+from pathlib import Path
+from typing import List, Optional, Dict, Union, Tuple, Set, Any
 
 import yaml
 
-from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT
-from pg_anon.common.dto import FieldInfo
+from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.dto import FieldInfo, RunOptions
 
 PARENS_PATTERN = re.compile(r'\([^\)]*\)')
 
@@ -26,7 +26,7 @@ def get_pg_util_version(util_name):
 
 
 def check_pg_util(ctx, util_name, output_util_res):
-    if not os.path.isfile(util_name):
+    if not Path(util_name).is_file():
         ctx.logger.error("ERROR: program %s is not exists!" % util_name)
         return False
 
@@ -182,16 +182,6 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
     return result
 
 
-def get_file_name_from_path(path: str) -> str:
-    """
-    Extract file name without extension from path
-    :param path: file path
-    :return: only file_name without extension
-    """
-    file_name = os.path.basename(path)
-    return os.path.splitext(file_name)[0]
-
-
 def validate_exists_mode(mode: str):
     from pg_anon.common.enums import AnonMode
 
@@ -203,19 +193,18 @@ def validate_exists_mode(mode: str):
     return True
 
 
-def get_file_size(file_path: str) -> int:
-    if os.path.exists(file_path):
-        return os.path.getsize(file_path)
-    return 0
+def get_file_size(file_path: str | Path) -> int:
+    path = Path(file_path)
+    return path.stat().st_size if path.exists() else 0
 
 
-def get_folder_size(folder_path: str) -> int:
+def get_folder_size(folder_path: str | Path) -> int:
     total_size = 0
+    folder_path = Path(folder_path)
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_file = []
-        for dirpath, dirnames, filenames in os.walk(folder_path):
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
+        for file_path in folder_path.rglob('*'):
+            if file_path.is_file():
                 future_to_file.append(executor.submit(get_file_size, file_path))
 
         # Собираем результаты
@@ -229,12 +218,12 @@ def simple_slugify(value: str):
     return re.sub(r'\W+', '-', value).strip('-').lower()
 
 
-def read_yaml(file_path: str) -> Dict:
-    path = pathlib.Path(file_path)
+def read_yaml(file_path: str | Path) -> Dict:
+    path = Path(file_path)
     if path.suffix not in ('.yml', '.yaml'):
         raise ValueError("File must be .yml or .yaml")
 
-    with open(os.path.abspath(file_path), "r") as file:
+    with open(path.absolute(), "r") as file:
         data = yaml.safe_load(file)
 
     return data
@@ -303,3 +292,67 @@ def filter_db_tables(
         filtered_tables.append(table_data)
 
     return filtered_tables, black_listed_tables, white_listed_tables
+
+
+def save_json_file(file_path: str | Path, data: Dict):
+    with open(file_path, "w", encoding='utf-8') as out_file:
+        out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+
+
+def read_dict_data_from_file(dictionary_file_path: Path) -> Optional[Dict[str, Any]]:
+    with open(dictionary_file_path, "r") as dictionary_file:
+        data = dictionary_file.read().strip()
+
+    if not data:
+        return
+
+    try:
+        dict_data = ast.literal_eval(data)
+    except Exception as exc:
+        raise ValueError(f"Can't read data from file: {dictionary_file_path}")
+
+    if not dict_data:
+        return
+
+    if not isinstance(dict_data, dict):
+        raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_path}")
+
+    return dict_data
+
+
+def save_dicts_info_file(options: RunOptions):
+    def serialize_dict(file_path: str) -> Optional[Dict[str, Any]]:
+        file_path = Path(file_path)
+        if not file_path.exists():
+            return None
+        return {
+            "name": file_path.name,
+            "content": read_dict_data_from_file(file_path)
+        }
+
+    data = {
+        "meta_dict_files": [
+            serialize_dict(file) for file in options.meta_dict_files
+        ] if options.meta_dict_files else None,
+        "output_sens_dict_file": serialize_dict(
+            options.output_sens_dict_file
+        ) if options.output_sens_dict_file else None,
+        "output_no_sens_dict_file": serialize_dict(
+            options.output_no_sens_dict_file
+        ) if options.output_no_sens_dict_file else None,
+        "prepared_sens_dict_files": [
+            serialize_dict(file) for file in options.prepared_sens_dict_files
+        ] if options.prepared_sens_dict_files else None,
+        "prepared_no_sens_dict_files": [
+            serialize_dict(file) for file in options.prepared_no_sens_dict_files
+        ] if options.prepared_no_sens_dict_files else None,
+        "partial_tables_dict_files": [
+            serialize_dict(file) for file in options.partial_tables_dict_files
+        ] if options.partial_tables_dict_files else None,
+        "partial_tables_exclude_dict_files": [
+            serialize_dict(file) for file in options.partial_tables_exclude_dict_files
+        ] if options.partial_tables_exclude_dict_files else None,
+    }
+
+    saved_dicts_info_file = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
+    save_json_file(saved_dicts_info_file, data)

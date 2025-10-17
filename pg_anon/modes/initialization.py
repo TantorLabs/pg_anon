@@ -1,5 +1,4 @@
-import os
-
+from pg_anon.common.constants import BASE_DIR
 from pg_anon.common.db_utils import create_connection
 from pg_anon.common.utils import exception_helper
 from pg_anon.context import Context
@@ -22,7 +21,7 @@ class InitMode:
         await tr.start()
 
         try:
-            with open(os.path.join(self.context.current_dir, "init.sql"), "r") as f:
+            with open(BASE_DIR / "init.sql", "r") as f:
                 data = f.read()
             await db_conn.execute(data)
             await tr.commit()

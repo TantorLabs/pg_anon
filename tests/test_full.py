@@ -1,22 +1,24 @@
 import copy
+import filecmp
 import json
 import os
 import re
 import sys
 import unittest
 from decimal import Decimal
+from pathlib import Path
 from typing import Dict, Set
 
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
+from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
-from pg_anon.common.dto import PgAnonResult, ConnectionParams
+from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.utils import (
     exception_helper,
     recordset_to_list_flat,
     to_json, get_dict_rule_for_table,
-    get_file_name_from_path,
 )
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
@@ -1834,7 +1836,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.target_no_sens_dict = self.get_test_dict_path("test_prepared_no_sens_dict_result.py", output=True)
         self.target_no_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_no_sens_dict_result_expected.py")
 
-    def assert_sens_dicts(self, prepared_sens_dict: str, prepared_sens_dict_expected: str):
+    def assert_sens_dicts(self, prepared_sens_dict: str | Path, prepared_sens_dict_expected: str | Path):
         """
         Comparing sens dicts
         :param prepared_sens_dict: output prepared sens dict
@@ -1882,7 +1884,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertTrue(flag_of_identity)
 
-    def assert_no_sens_dicts(self, prepared_no_sens_dict: str, prepared_no_sens_dict_expected: str) -> bool:
+    def assert_no_sens_dicts(self, prepared_no_sens_dict: str | Path, prepared_no_sens_dict_expected: str | Path) -> bool:
         """
         Comparing no sens dicts
         :param prepared_no_sens_dict: output prepared no sens dict
@@ -1894,6 +1896,36 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         # Checking no-sens dict
         with (open(prepared_no_sens_dict, "r", encoding="utf-8") as file1,
               open(prepared_no_sens_dict_expected, "r", encoding="utf-8") as file2):
+            d1 = json.load(file1)
+            d2 = json.load(file2)
+
+            # Checking fields count first
+            self.assertEqual(len(d1['no_sens_dictionary']), len(d2['no_sens_dictionary']))
+
+            # Sorting fields for next comparison
+            sorted_d1 = sorted(d1['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+            sorted_d2 = sorted(d2['no_sens_dictionary'], key=lambda x: (x['schema'], x['table']))
+
+            # Comparing fields between dicts
+            for d1_field, d2_field in zip(sorted_d1, sorted_d2):
+                self.assertEqual(d1_field['schema'], d2_field['schema'])
+                self.assertEqual(d1_field['table'], d2_field['table'])
+                self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
+
+        print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
+
+    def assert_meta_dicts(self, meta_dict: str | Path, meta_dict_expected: str | Path) -> bool:
+        """
+        Comparing meta dicts
+        :param meta_dict: input prepared meta dict
+        :param meta_dict_expected: prepared meta dict for comparison
+        :raise AssertError: if dicts are not identical
+        """
+
+        print(f"============> Started comparison of {meta_dict} and {meta_dict_expected}")
+        # Checking no-sens dict
+        with (open(meta_dict, "r", encoding="utf-8") as file1,
+              open(meta_dict_expected, "r", encoding="utf-8") as file2):
             d1 = json.load(file1)
             d2 = json.load(file2)
 
@@ -2038,11 +2070,10 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
         self.assertEqual(len(not_found_in_target), 3)
         self.assertEqual(not_found_in_target, [
-                ["columnar_internal", "tbl_200", "id"],
-                ["columnar_internal", "tbl_200", "val"],
-                ["columnar_internal", "tbl_200", "val_skip"],
-            ]
-        )
+            ["columnar_internal", "tbl_200", "id"],
+            ["columnar_internal", "tbl_200", "val"],
+            ["columnar_internal", "tbl_200", "val_skip"],
+        ])
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_04_restore")
@@ -2394,6 +2425,148 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_14_create_dict_using_words_and_phrases_constants")
+
+    async def test_15_create_dict_save_dicts(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dict = self.get_test_dict_path('test_meta_dict.py')
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict}",
+            f"--prepared-sens-dict-file={self.target_sens_dict_expected}",
+            f"--prepared-no-sens-dict-file={self.target_no_sens_dict_expected}",
+            f"--output-sens-dict-file={self.target_sens_dict}",
+            f"--output-no-sens-dict-file={self.target_no_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--save-dicts",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertTrue(os.path.exists(self.target_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(self.target_sens_dict, self.target_sens_dict_expected)
+        self.assert_no_sens_dicts(self.target_no_sens_dict, self.target_no_sens_dict_expected)
+
+        saved_dicts_info = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
+        saved_meta_dict = Path(options.run_dir) / 'input' / Path(meta_dict).name
+        saved_prepared_sens_dict = Path(options.run_dir) / 'input' / Path(self.target_sens_dict_expected).name
+        saved_prepared_no_sens_dict = Path(options.run_dir) / 'input' / Path(self.target_no_sens_dict_expected).name
+        saved_target_sens_dict = Path(options.run_dir) / 'output' / Path(self.target_sens_dict).name
+        saved_target_no_sens_dict = Path(options.run_dir) / 'output' / Path(self.target_no_sens_dict).name
+
+        saved_dicts_info.exists()
+        saved_meta_dict.exists()
+        saved_prepared_sens_dict.exists()
+        saved_prepared_no_sens_dict.exists()
+        saved_target_sens_dict.exists()
+        saved_target_no_sens_dict.exists()
+
+        filecmp.cmp(saved_meta_dict, meta_dict, shallow=False)
+        filecmp.cmp(saved_prepared_sens_dict, self.target_sens_dict_expected, shallow=False)
+        filecmp.cmp(saved_prepared_no_sens_dict, self.target_no_sens_dict_expected, shallow=False)
+        filecmp.cmp(saved_target_sens_dict, self.target_sens_dict_expected, shallow=False)
+        filecmp.cmp(saved_target_no_sens_dict, self.target_no_sens_dict_expected, shallow=False)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_15_create_dict_save_dicts")
+
+    async def test_16_dump_save_dicts(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_16_dump_save_dicts")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=dump",
+            f"--prepared-sens-dict-file={self.target_sens_dict}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            "--save-dicts",
+            "--debug",
+        ])
+
+        self.options["dump"] = options
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        saved_dicts_info = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
+        target_sens_dict = Path(options.run_dir) / 'input' / Path(self.target_sens_dict).name
+        partial_tables_dict = Path(options.run_dir) / 'input' / Path(partial_tables_dict_file).name
+        partial_tables_exclude_dict = Path(options.run_dir) / 'input' / Path(partial_tables_exclude_dict_file).name
+
+        saved_dicts_info.exists()
+        target_sens_dict.exists()
+        partial_tables_dict.exists()
+        partial_tables_exclude_dict.exists()
+
+        filecmp.cmp(target_sens_dict, self.target_sens_dict, shallow=False)
+        filecmp.cmp(partial_tables_dict, partial_tables_dict_file, shallow=False)
+        filecmp.cmp(partial_tables_exclude_dict, partial_tables_exclude_dict_file, shallow=False)
+
+        passed_stages.append("test_16_dump_save_dicts")
+
+    async def test_17_restore_save_dicts(self):
+        self.assertTrue("test_16_dump_save_dicts" in passed_stages)
+
+        input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_16_dump_save_dicts")
+        partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
+        partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}_4",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--mode=restore",
+            f"--input-dir={input_dir}",
+            f"--partial-tables-dict-file={partial_tables_dict_file}",
+            f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
+            "--drop-custom-check-constr",
+            "--save-dicts",
+            "--drop-db",
+            "--debug",
+        ])
+        self.options["restore"] = options
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+        saved_dicts_info = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
+        partial_tables_dict = Path(options.run_dir) / 'input' / Path(partial_tables_dict_file).name
+        partial_tables_exclude_dict = Path(options.run_dir) / 'input' / Path(partial_tables_exclude_dict_file).name
+
+        saved_dicts_info.exists()
+        partial_tables_dict.exists()
+        partial_tables_exclude_dict.exists()
+
+        filecmp.cmp(partial_tables_dict, partial_tables_dict_file, shallow=False)
+        filecmp.cmp(partial_tables_exclude_dict, partial_tables_exclude_dict_file, shallow=False)
+
+        passed_stages.append("test_17_restore_save_dicts")
 
 
 class TmpResults:

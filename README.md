@@ -415,6 +415,7 @@ python pg_anon.py --mode=create-dict \
 | `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value (Optional)                                                                                 |
 | `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                                  |
 | `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000). Actual rows count can be smaller after getting unique values                        |
+| `--save-dicts`                 | Duplicate all input and output dictionaries to dir `runs`                                                                                                    |
 
 #### Requirements for input --meta-dict-file (metadict):
 
@@ -624,6 +625,7 @@ Possible options in mode=dump:
 | `--clear-output-dir`                 | In dump mode clears output dict from previous dump or another files. (default true)                                                                                                                            |
 | `--pg-dump`                          | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                              |
 | `--output-dir`                       | Output directory for dump files. (default "")                                                                                                                                                                  |
+| `--save-dicts`                       | Duplicate all input dictionaries to dir `runs`                                                                                                                                                                 |
 
 #### Requirements for input --prepared-sens-dict-file:
 
@@ -751,6 +753,7 @@ Possible options in `--mode restore`:
 | `--pg-restore`                       | Path to the `pg_dump` Postgres tool.                                                                                                                                                                           |
 | `--clean-db`                         | Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.                                                                                                              |
 | `--drop-db`                          | Drop target database before restore. Mutually exclusive with --clean-db.                                                                                                                                       |
+| `--save-dicts`                       | Duplicate all input dictionaries to dir `runs`                                                                                                                                                                     |
 
 #### Requirements for input --partial-tables-dict-file and --partial-tables-exclude-dict-file:
 

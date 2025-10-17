@@ -1,3 +1,12 @@
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+RUNS_BASE_DIR = BASE_DIR / 'runs'
+
+SAVED_RUN_OPTIONS_FILE_NAME = 'run_options.json'
+SAVED_RUN_STATUS_FILE_NAME = 'run_status.json'
+SAVED_DICTS_INFO_FILE_NAME = 'saved_dicts_info.json'
+
 ANON_UTILS_DB_SCHEMA_NAME = 'anon_funcs'
 DEFAULT_HASH_FUNC = f"{ANON_UTILS_DB_SCHEMA_NAME}.digest(\"%s\", 'salt_word', 'md5')"
 

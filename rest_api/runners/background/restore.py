@@ -1,7 +1,5 @@
-from typing import List
-
 from pg_anon.common.enums import AnonMode
-from rest_api.enums import RestoreModeHandbook
+from rest_api.enums import RestoreMode
 from rest_api.pydantic_models import RestoreRequest
 from rest_api.runners.background import BaseRunner
 from rest_api.utils import get_full_dump_path, write_dictionary_contents
@@ -18,17 +16,17 @@ class RestoreRunner(BaseRunner):
         self._set_mode()
 
     def _set_mode(self):
-        if self.request.type_id == RestoreModeHandbook.FULL:
+        if self.request.type == RestoreMode.FULL:
             self.mode = AnonMode.RESTORE.value
-        elif self.request.type_id == RestoreModeHandbook.STRUCT:
+        elif self.request.type == RestoreMode.STRUCT:
             self.mode = AnonMode.SYNC_STRUCT_RESTORE.value
-        elif self.request.type_id == RestoreModeHandbook.DATA:
+        elif self.request.type == RestoreMode.DATA:
             self.mode = AnonMode.SYNC_DATA_RESTORE.value
 
     def _prepare_dictionaries_cli_params(self):
         if self.request.partial_tables_dict_contents:
             input_partial_tables_dict_file_names = list(
-                write_dictionary_contents(self.request.partial_tables_dict_contents).keys()
+                write_dictionary_contents(self.request.partial_tables_dict_contents, self.base_tmp_dir).keys()
             )
             self.cli_params.append(
                 f"--partial-tables-dict-file={','.join(input_partial_tables_dict_file_names)}"
@@ -36,7 +34,7 @@ class RestoreRunner(BaseRunner):
 
         if self.request.partial_tables_exclude_dict_contents:
             input_partial_tables_exclude_dict_file_names = list(
-                write_dictionary_contents(self.request.partial_tables_exclude_dict_contents).keys()
+                write_dictionary_contents(self.request.partial_tables_exclude_dict_contents, self.base_tmp_dir).keys()
             )
             self.cli_params.append(
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"

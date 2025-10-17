@@ -3,6 +3,7 @@ import gzip
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import uuid
 from datetime import datetime
@@ -19,14 +20,14 @@ from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
-    exception_helper, get_dict_rule_for_table, get_file_name_from_path, chunkify, get_pg_util_version
+    exception_helper, get_dict_rule_for_table, chunkify, get_pg_util_version, save_dicts_info_file
 )
 from pg_anon.context import Context
 
 
 class DumpMode:
     context: Context
-    output_dir: str
+    output_dir: Path
 
     metadata: Metadata
     metadata_file_name: str = 'metadata.json'
@@ -52,15 +53,13 @@ class DumpMode:
         os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
         if not self.context.options.output_dir:
-            prepared_dict_name = get_file_name_from_path(self.context.options.prepared_sens_dict_files[0])
-            self.output_dir = os.path.join(self.context.current_dir, "output", prepared_dict_name)
-        elif self.context.options.output_dir.find("""/""") == -1 and self.context.options.output_dir.find("""\\""") == -1:
-            self.output_dir = os.path.join(self.context.current_dir, "output", str(self.context.options.output_dir))
+            prepared_dict_name = Path(self.context.options.prepared_sens_dict_files[0]).stem
+            self.output_dir = Path.cwd() / prepared_dict_name
         else:
-            self.output_dir = self.context.options.output_dir
+            self.output_dir = Path.cwd() / str(self.context.options.output_dir)
 
-        self.metadata_file_path = os.path.join(self.output_dir, self.metadata_file_name)
-        self.dumped_tables_file_path = os.path.join(self.output_dir, self.dumped_tables_file_name)
+        self.metadata_file_path = self.output_dir / self.metadata_file_name
+        self.dumped_tables_file_path = self.output_dir / self.dumped_tables_file_name
 
         self._need_dump_pre_and_post_sections = self.context.options.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
         self._need_dump_data = self.context.options.mode in (AnonMode.SYNC_DATA_DUMP, AnonMode.DUMP)
@@ -80,7 +79,7 @@ class DumpMode:
         if self.context.options.dbg_stage_1_validate_dict:
             return
 
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         if self.output_dir_is_empty:
             return
@@ -92,7 +91,7 @@ class DumpMode:
             self._clear_output_dir()
 
     def _clear_output_dir(self):
-        expected_file_extensions = [
+        expected_file_extensions = {
             ".sql",
             ".gz",
             ".json",
@@ -100,21 +99,20 @@ class DumpMode:
             ".bin",
             ".py",
             ".list",
-        ]
+        }
 
-        for root, dirs, files in os.walk(self.output_dir):
-            for file in files:
-                file_extension = Path(file).suffix.lower()
-                if file_extension not in expected_file_extensions:
-                    msg = f"Option --clear-output-dir enabled. Unexpected file extension: {os.path.join(root, file)}"
+        for file_path in Path(self.output_dir).rglob("*"):
+            if file_path.is_file():
+                if file_path.suffix.lower() not in expected_file_extensions:
+                    msg = f"Option --clear-output-dir enabled. Unexpected file extension: {file_path}"
                     self.context.logger.error(msg)
                     raise Exception(msg)
 
-                os.remove(os.path.join(root, file))
+                file_path.unlink()
 
     @property
     def output_dir_is_empty(self) -> bool:
-        return not bool(os.listdir(self.output_dir))
+        return not any(self.output_dir.iterdir())
 
     async def _count_totals(self, connection: Connection):
         for query, file_key in zip(self._data_dump_queries, self._data_dump_files):
@@ -194,9 +192,9 @@ class DumpMode:
         self.metadata.dbg_stage_2_validate_data = self.context.options.dbg_stage_2_validate_data
         self.metadata.dbg_stage_3_validate_full = self.context.options.dbg_stage_3_validate_full
 
-        self.metadata.save_into_file(file_name=self.metadata_file_path)
+        self.metadata.save_into_file(self.metadata_file_path)
         if self._need_dump_data:
-            self.metadata.save_dumped_tables_into_file(file_name=self.dumped_tables_file_path)
+            self.metadata.save_dumped_tables_into_file(self.dumped_tables_file_path)
 
     async def _run_pg_dump(self, section):
         specific_tables = []
@@ -238,7 +236,7 @@ class DumpMode:
             "c",
             "-s",
             "-f",
-            os.path.join(self.output_dir, section.replace("-", "_") + ".backup"),
+            str((self.output_dir / section.replace("-", "_")).with_suffix(".backup")),
             self.context.options.db_name,
         ]
         if not self.context.options.db_host:
@@ -258,7 +256,7 @@ class DumpMode:
             self.context.logger.error(msg)
             raise RuntimeError(msg)
 
-    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str):
+    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str | Path):
         try:
             if self.context.options.dbg_stage_1_validate_dict:
                 return await db_conn.execute(query)
@@ -272,8 +270,8 @@ class DumpMode:
             self.context.logger.error(exc)
             raise exc
 
-    async def compress_file(self, file_path: str, remove_origin_file_after_compress: bool = True):
-        gzipped_file_path = f'{file_path}.gz'
+    async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True):
+        gzipped_file_path = file_path.with_name(file_path.name + ".gz")
 
         self.context.logger.debug(f"Start compressing file: {file_path}")
         with (open(file_path, "rb") as f_in,
@@ -283,11 +281,10 @@ class DumpMode:
 
         if remove_origin_file_after_compress:
             self.context.logger.debug(f"Removing origin file: {file_path}")
-            os.remove(file_path)
+            file_path.unlink()
 
     async def _dump_data_by_query(self, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str, process_name: Optional[str] = None):
-        file_path = str(os.path.join(self.output_dir, file_name.split(".")[0]))
-        binary_output_file_path = f'{file_path}.bin'
+        binary_output_file_path = self.output_dir / Path(file_name).stem
 
         task_id = uuid.uuid4()
         dump_is_complete = False
@@ -316,9 +313,7 @@ class DumpMode:
                 # Processing files no need to keep connection, after receiving data into binary file
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file start - {binary_output_file_path}")
 
-                await self.compress_file(
-                    file_path=binary_output_file_path
-                )
+                await self.compress_file(binary_output_file_path)
                 compress_is_complete = True
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file end - {binary_output_file_path}")
 
@@ -554,10 +549,28 @@ class DumpMode:
         if self.context.black_listed_tables or self.context.white_listed_tables:
             self._constraint_functions = await get_functions_using_for_constraints(connection, self.context.tables)
 
+    def _save_input_dicts_to_run_dir(self):
+        if not self.context.options.save_dicts:
+            return
+
+        input_dicts_dir = Path(self.context.options.run_dir) / 'input'
+        input_dicts_dir.mkdir(parents=True, exist_ok=True)
+
+        input_dict_files = self.context.options.prepared_sens_dict_files
+        if self.context.options.partial_tables_dict_files:
+            input_dict_files.extend(self.context.options.partial_tables_dict_files)
+        if self.context.options.partial_tables_exclude_dict_files:
+            input_dict_files.extend(self.context.options.partial_tables_exclude_dict_files)
+
+        for dict_file in input_dict_files:
+            shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
+
     async def run(self) -> None:
         self.context.logger.info("-------------> Started dump")
 
         try:
+            self._save_input_dicts_to_run_dir()
+
             connection = await create_connection(
                 self.context.connection_params,
                 server_settings=self.context.server_settings
@@ -578,3 +591,9 @@ class DumpMode:
         except Exception as ex:
             self.context.logger.error("<------------- Dump failed\n" + exception_helper())
             raise ex
+        finally:
+            if connection:
+                await connection.close()
+
+            if self.context.options.save_dicts:
+                save_dicts_info_file(self.context.options)

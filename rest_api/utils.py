@@ -1,7 +1,8 @@
 import asyncio
+import json
 import os
 import shutil
-import uuid
+from pathlib import Path
 from typing import List, Optional, Dict
 
 import aioprocessing
@@ -9,25 +10,24 @@ import aioprocessing
 from pg_anon.cli import run_pg_anon
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.utils import validate_exists_mode, simple_slugify
+from rest_api.constants import DUMP_STORAGE_BASE_DIR
 from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-DUMP_STORAGE_BASE_DIR = os.path.join(BASE_DIR, 'output')
 
 
 def get_full_dump_path(dump_path: str) -> str:
-    return os.path.join(DUMP_STORAGE_BASE_DIR, dump_path.lstrip("/"))
+    return str(DUMP_STORAGE_BASE_DIR / dump_path.lstrip("/"))
 
 
-def write_dictionary_contents(dictionary_contents: List[DictionaryContent]) -> Dict[str, DictionaryMetadata]:
+def write_dictionary_contents(dictionary_contents: List[DictionaryContent], base_dir: Path) -> Dict[str, DictionaryMetadata]:
     file_names = {}
+    base_dir.mkdir(parents=True, exist_ok=True)
 
     for dictionary_content in dictionary_contents:
-        file_name = f'/tmp/{simple_slugify(dictionary_content.name)}-{uuid.uuid4()}.py'
+        file_name = (base_dir / simple_slugify(dictionary_content.name)).with_suffix('.py')
         with open(file_name, "w") as out_file:
             out_file.write(dictionary_content.content)
 
-        file_names[file_name] = DictionaryMetadata(
+        file_names[str(file_name)] = DictionaryMetadata(
             name=dictionary_content.name,
             additional_info=dictionary_content.additional_info,
         )
@@ -35,9 +35,16 @@ def write_dictionary_contents(dictionary_contents: List[DictionaryContent]) -> D
     return file_names
 
 
-def read_dictionary_contents(file_path: str) -> str:
+def read_dictionary_contents(file_path: str | Path) -> str:
     with open(file_path, "r") as dictionary_file:
         data = dictionary_file.read()
+
+    return data
+
+
+def read_json_file(file_path: str | Path) -> Dict:
+    with open(file_path, "r") as file:
+        data = json.loads(file.read())
 
     return data
 

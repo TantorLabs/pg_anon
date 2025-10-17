@@ -1,7 +1,9 @@
-import os.path
+import uuid
 from typing import List
 
+from pg_anon.common.constants import BASE_DIR
 from pg_anon.common.dto import PgAnonResult
+from rest_api.constants import BASE_TEMP_DIR
 from rest_api.pydantic_models import StatelessRunnerRequest
 from rest_api.utils import run_pg_anon_worker
 
@@ -16,6 +18,7 @@ class BaseRunner:
     def __init__(self, request: StatelessRunnerRequest):
         self.request = request
         self.operation_id = request.operation_id
+        self.base_tmp_dir = BASE_TEMP_DIR / f'{self.operation_id}__{uuid.uuid4()}'
         self._prepare_cli_params()
 
     def _prepare_db_credentials_cli_params(self):
@@ -28,22 +31,28 @@ class BaseRunner:
         ])
 
     def _prepare_config(self):
-        config_file_path = "config.yml"
-        if os.path.exists(config_file_path):
+        config_file_path = BASE_DIR / "config.yml"
+        if config_file_path.exists():
             self.cli_params.extend([
-                f"--config={config_file_path}",
+                f"--config={str(config_file_path)}",
             ])
 
     def _prepare_verbosity_cli_params(self):
         self.cli_params.extend([
-            "--verbose=debug",
             "--debug",
         ])
+
+    def _prepare_other_cli_params(self):
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
 
     def _prepare_cli_params(self):
         self.cli_params = []
         self._prepare_db_credentials_cli_params()
         self._prepare_config()
+        self._prepare_other_cli_params()
 
     async def run(self):
         if not self.mode:
