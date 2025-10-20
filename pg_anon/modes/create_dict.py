@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from aioprocessing import AioQueue
 from asyncpg import Connection
 
-from pg_anon.common.constants import DEFAULT_HASH_FUNC, SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
 from pg_anon.common.dto import FieldInfo

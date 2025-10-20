@@ -325,9 +325,13 @@ def save_dicts_info_file(options: RunOptions):
         file_path = Path(file_path)
         if not file_path.exists():
             return None
+
+        with open(file_path, "r") as file:
+            content = file.read().strip()
+
         return {
             "name": file_path.name,
-            "content": read_dict_data_from_file(file_path)
+            "content": content
         }
 
     data = {
