@@ -720,10 +720,11 @@ class CreateDictMode:
             output_dicts_dir / Path(self.context.options.output_sens_dict_file).name
         )
 
-        shutil.copy2(
-            self.context.options.output_no_sens_dict_file,
-            output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
-        )
+        if self.context.options.output_no_sens_dict_file:
+            shutil.copy2(
+                self.context.options.output_no_sens_dict_file,
+                output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
+            )
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started create_dict mode")
