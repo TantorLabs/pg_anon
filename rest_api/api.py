@@ -219,7 +219,7 @@ async def stateless_operations_list(
                     if (operation_dir / SAVED_DICTS_INFO_FILE_NAME).exists():
                         operations.append(str(operation_dir.relative_to(RUNS_BASE_DIR)))
 
-        return operations
+    return operations
 
 
 @app.get(
