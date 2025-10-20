@@ -189,6 +189,9 @@ async def stateless_operations_list(
 
     operations = []
 
+    if not RUNS_BASE_DIR.exists():
+        return operations
+
     for year_dir in RUNS_BASE_DIR.iterdir():
         if not year_dir.is_dir() or not year_dir.name.isdigit():
             continue
