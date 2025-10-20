@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import HTTPException, Query, status
 
-from pg_anon.common.constants import RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.constants import RUNS_BASE_DIR
 
 
 def date_range_filter(
@@ -20,14 +20,10 @@ def date_range_filter(
 
 
 def get_operation_run_dir(internal_operation_id: str) -> Path:
-    run_dir = None
-    for path in RUNS_BASE_DIR.glob(f'*/*/*/{internal_operation_id}'):
-        run_dir = path
+    for run_dir in RUNS_BASE_DIR.glob(f'*/*/*/{internal_operation_id}'):
+        return run_dir
 
-    if not run_dir:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Operation run directory not found",
-        )
-
-    return run_dir
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Operation run directory not found",
+    )

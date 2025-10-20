@@ -3,6 +3,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 RUNS_BASE_DIR = BASE_DIR / 'runs'
 
+LOGS_DIR_NAME = 'logs'
+LOGS_FILE_NAME = 'logs.log'
 SAVED_RUN_OPTIONS_FILE_NAME = 'run_options.json'
 SAVED_RUN_STATUS_FILE_NAME = 'run_status.json'
 SAVED_DICTS_INFO_FILE_NAME = 'saved_dicts_info.json'

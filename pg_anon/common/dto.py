@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable, Dict, List
+from typing import Optional, Callable, Dict, List, Union
 
 from pg_anon.common.constants import SECRET_RUN_OPTIONS
 from pg_anon.common.enums import ResultCode, AnonMode, VerboseOptions, ScanMode
@@ -297,7 +297,7 @@ class Metadata:
         from pg_anon.common.utils import save_json_file
         save_json_file(file_path, self._serialize_tables())
 
-    def load_from_file(self, file_name: str | Path):
+    def load_from_file(self, file_name: Union[str, Path]):
         file_name = Path(file_name)
         with open(file_name, "r") as metadata_file:
             data = json.loads(metadata_file.read())

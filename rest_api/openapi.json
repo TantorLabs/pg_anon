@@ -565,9 +565,12 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Number of log lines to read from the end of the file",
               "default": 1000,
               "title": "Tail Lines"
-            }
+            },
+            "description": "Number of log lines to read from the end of the file"
           }
         ],
         "responses": {

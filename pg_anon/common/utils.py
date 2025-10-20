@@ -193,12 +193,12 @@ def validate_exists_mode(mode: str):
     return True
 
 
-def get_file_size(file_path: str | Path) -> int:
+def get_file_size(file_path: Union[str, Path]) -> int:
     path = Path(file_path)
     return path.stat().st_size if path.exists() else 0
 
 
-def get_folder_size(folder_path: str | Path) -> int:
+def get_folder_size(folder_path: Union[str, Path]) -> int:
     total_size = 0
     folder_path = Path(folder_path)
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -218,7 +218,7 @@ def simple_slugify(value: str):
     return re.sub(r'\W+', '-', value).strip('-').lower()
 
 
-def read_yaml(file_path: str | Path) -> Dict:
+def read_yaml(file_path: Union[str, Path]) -> Dict:
     path = Path(file_path)
     if path.suffix not in ('.yml', '.yaml'):
         raise ValueError("File must be .yml or .yaml")
@@ -294,7 +294,7 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def save_json_file(file_path: str | Path, data: Dict):
+def save_json_file(file_path: Union[str, Path], data: Dict):
     with open(file_path, "w", encoding='utf-8') as out_file:
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 

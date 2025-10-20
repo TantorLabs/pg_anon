@@ -1,11 +1,12 @@
-import ast
+import logging
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Any, List, Set, Tuple
+from typing import Dict, Optional, List, Set, Tuple
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS, \
+    LOGS_FILE_NAME, LOGS_DIR_NAME
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
@@ -263,12 +264,11 @@ class Context:
             elif self.options.verbose == VerboseOptions.INFO:
                 log_level = logging.INFO
 
-        log_file_name = "logs.log"
-        log_dir = Path(self.options.run_dir) / "logs"
+        log_dir = Path(self.options.run_dir) / LOGS_DIR_NAME
 
         logger_add_file_handler(
             log_dir=log_dir,
-            log_file_name=log_file_name
+            log_file_name=LOGS_FILE_NAME
         )
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()

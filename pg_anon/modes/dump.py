@@ -8,7 +8,7 @@ import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Union
 
 from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
@@ -256,7 +256,7 @@ class DumpMode:
             self.context.logger.error(msg)
             raise RuntimeError(msg)
 
-    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str | Path):
+    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: Union[str, Path]):
         try:
             if self.context.options.dbg_stage_1_validate_dict:
                 return await db_conn.execute(query)

@@ -1,9 +1,9 @@
 import asyncio
 import json
-import os
 import shutil
+from collections import deque
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 
 import aioprocessing
 
@@ -35,18 +35,61 @@ def write_dictionary_contents(dictionary_contents: List[DictionaryContent], base
     return file_names
 
 
-def read_dictionary_contents(file_path: str | Path) -> str:
+def read_dictionary_contents(file_path: Union[str, Path]) -> str:
     with open(file_path, "r") as dictionary_file:
         data = dictionary_file.read()
 
     return data
 
 
-def read_json_file(file_path: str | Path) -> Dict:
+def read_json_file(file_path: Union[str, Path]) -> Dict:
     with open(file_path, "r") as file:
         data = json.loads(file.read())
 
     return data
+
+
+def read_logs_from_tail(logs_path: Union[str, Path], lines_count: int) -> List[str]:
+    def log_sort_key(file_path: Path):
+        parts = file_path.name.split(".")
+        try:
+            return int(parts[-1])
+        except ValueError:
+            return 0
+
+    log_files = sorted(logs_path.glob("*"), key=log_sort_key)
+
+    result_lines = deque(maxlen=lines_count)
+    block_size = 1024
+    for log_file in log_files:
+        if len(result_lines) >= lines_count:
+            break
+        buffer = bytearray()
+
+        with log_file.open("rb") as f:
+            f.seek(0, 2)
+            pointer = f.tell()
+
+            while pointer > 0 and len(result_lines) < lines_count:
+                read_size = min(block_size, pointer)
+                pointer -= read_size
+                f.seek(pointer)
+                buffer[:0] = f.read(read_size)
+                log_lines = buffer.split(b"\n")
+                for idx, line in enumerate(reversed(log_lines[1:])):
+                    if idx == 0 and line == b"":
+                        continue
+
+                    result_lines.appendleft(line.decode("utf-8", errors="replace"))
+                    if len(result_lines) >= lines_count:
+                        break
+
+                buffer = log_lines[0]
+
+            if buffer and len(result_lines) < lines_count:
+                result_lines.appendleft(buffer.decode("utf-8", errors="replace"))
+
+    return list(result_lines)
 
 
 def delete_folder(folder_path: str):
