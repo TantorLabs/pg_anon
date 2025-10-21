@@ -1,8 +1,10 @@
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+from pathlib import Path
+
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SAVED_RUN_STATUS_FILE_NAME, SAVED_RUN_OPTIONS_FILE_NAME
 from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, get_pg_version
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode
-from pg_anon.common.utils import check_pg_util, exception_helper
+from pg_anon.common.utils import check_pg_util, exception_helper, save_json_file
 from pg_anon.context import Context
 from pg_anon.modes.create_dict import CreateDictMode
 from pg_anon.modes.dump import DumpMode
@@ -16,6 +18,10 @@ from pg_anon.version import __version__
 class PgAnonApp:
 
     def __init__(self, options: RunOptions):
+        run_dir = Path(options.run_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        save_json_file(run_dir / SAVED_RUN_OPTIONS_FILE_NAME, options.to_dict())
+
         self.context = Context(options)
         self.result = PgAnonResult()
         self._skip_check_postgres_utils = self.context.options.mode in (
@@ -113,6 +119,7 @@ class PgAnonApp:
                 f"result_code = {self.result.result_code.value}, "
                 f"elapsed: {self.result.elapsed} sec"
             )
+            save_json_file(Path(self.context.options.run_dir) / SAVED_RUN_STATUS_FILE_NAME, self.result.to_dict())
 
             return self.result
 

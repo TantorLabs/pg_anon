@@ -2,9 +2,11 @@ import argparse
 import asyncio
 import sys
 import uuid
+from datetime import datetime
 from typing import Optional, List
 
 from pg_anon import PgAnonApp
+from pg_anon.common.constants import RUNS_BASE_DIR
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, VerboseOptions, ScanMode, ResultCode
 from pg_anon.common.utils import parse_comma_separated_list
@@ -217,6 +219,12 @@ def get_arg_parser():
         help="In 'view-fields' mode output in JSON format. By default using table output",
     )
     parser.add_argument(
+        "--save-dicts",
+        action="store_true",
+        default=False,
+        help="Saves all input and output dictionaries to dir `runs` in modes: 'create-dict', 'dump', 'restore'",
+    )
+    parser.add_argument(
         "--fields-count",
         type=int,
         default=5000,
@@ -253,9 +261,20 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
         args_dict["debug"] = True
         args_dict["verbose"] = VerboseOptions.DEBUG
 
+    internal_operation_id = str(uuid.uuid4())
+    start_date = datetime.today()
+    run_dir = str(
+        RUNS_BASE_DIR /
+        str(start_date.year) /
+        str(start_date.month) /
+        str(start_date.day) /
+        internal_operation_id
+    )
+
     args_dict.update({
         'pg_anon_version': __version__,
-        'internal_operation_id': str(uuid.uuid4()),
+        'internal_operation_id': internal_operation_id,
+        'run_dir': run_dir,
     })
     return RunOptions(**args_dict)
 

@@ -1,21 +1,28 @@
 import json
+from datetime import date, datetime, UTC
 from pathlib import Path
 from typing import List
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Depends, status, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from pg_anon.common.constants import RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME, SAVED_RUN_STATUS_FILE_NAME, \
+    SAVED_RUN_OPTIONS_FILE_NAME, LOGS_DIR_NAME
 from pg_anon.common.db_utils import check_db_connection
 from pg_anon.common.dto import ConnectionParams
+from pg_anon.common.enums import AnonMode
+from pg_anon.common.utils import get_folder_size
 from rest_api.callbacks import scan_callback, dump_callback, restore_callback
-from rest_api.enums import ResponseStatusesHandbook
+from rest_api.dependencies import date_range_filter, get_operation_run_dir
+from rest_api.enums import ResponseStatus, DumpMode, RestoreMode, ScanMode
 from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, \
     ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, DictionaryType
+    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
+    OperationDataResponse
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
-from rest_api.utils import get_full_dump_path, delete_folder
+from rest_api.utils import get_full_dump_path, delete_folder, read_json_file, read_logs_from_tail
 
 app = FastAPI(
     title='Stateless web service for pg_anon'
@@ -92,7 +99,7 @@ async def stateless_view_fields(request: ViewFieldsRequest):
     data = await runner.run()
 
     return ViewFieldsResponse(
-        status_id=ResponseStatusesHandbook.SUCCESS.value,
+        status_id=ResponseStatus.SUCCESS.value,
         content=data
     )
 
@@ -113,7 +120,7 @@ async def stateless_view_data(request: ViewDataRequest):
     data = await runner.run()
 
     return ViewDataResponse(
-        status_id=ResponseStatusesHandbook.SUCCESS.value,
+        status_id=ResponseStatus.SUCCESS.value,
         content=data
     )
 
@@ -165,6 +172,113 @@ async def stateless_dump_start(request: RestoreRequest, background_tasks: Backgr
 
 
 #############################################
+# Operations
+#############################################
+
+@app.get(
+    '/operation',
+    tags=['Operations'],
+    summary='List of operations',
+    response_model=List[str],
+)
+async def stateless_operations_list(
+    filters: dict = Depends(date_range_filter)
+):
+    date_before = filters["date_before"]
+    date_after = filters["date_after"]
+
+    operations = []
+
+    if not RUNS_BASE_DIR.exists():
+        return operations
+
+    for year_dir in RUNS_BASE_DIR.iterdir():
+        if not year_dir.is_dir() or not year_dir.name.isdigit():
+            continue
+
+        for month_dir in sorted(year_dir.iterdir()):
+            if not month_dir.is_dir() or not month_dir.name.isdigit():
+                continue
+
+            for day_dir in sorted(month_dir.iterdir()):
+                if not day_dir.is_dir() or not day_dir.name.isdigit():
+                    continue
+
+                try:
+                    run_date = date(int(year_dir.name), int(month_dir.name), int(day_dir.name))
+                except ValueError:
+                    continue
+
+                if date_after and run_date < date_after:
+                    continue
+                if date_before and run_date > date_before:
+                    continue
+
+                for operation_dir in day_dir.iterdir():
+                    # Return only operations run with "--save-dict"
+                    if (operation_dir / SAVED_DICTS_INFO_FILE_NAME).exists():
+                        operations.append(str(operation_dir.relative_to(RUNS_BASE_DIR)))
+
+    return operations
+
+
+@app.get(
+    '/operation/{internal_operation_id}',
+    tags=['Operations'],
+    summary='Operation details',
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Operation run directory not found"},
+    },
+    response_model=OperationDataResponse,
+)
+async def stateless_operation_data(operation_run_dir: Path = Depends(get_operation_run_dir)):
+    saved_dicts_info_file_path = operation_run_dir / SAVED_DICTS_INFO_FILE_NAME
+    run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
+    run_status_file_path = operation_run_dir / SAVED_RUN_STATUS_FILE_NAME
+
+    if not (saved_dicts_info_file_path.exists() and run_options_file_path.exists() and run_status_file_path.exists()):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Operation run directory have a wrong structure",
+        )
+
+    run_options_data = read_json_file(run_options_file_path)
+    run_status_data = read_json_file(run_status_file_path)
+    saved_dicts_info_data = read_json_file(saved_dicts_info_file_path)
+
+    operation_status = ResponseStatus.SUCCESS if run_status_data['result_code'] == 'done' else ResponseStatus.ERROR
+    extra_data = None
+    if run_options_data['mode'] in (AnonMode.DUMP.value, AnonMode.SYNC_DATA_DUMP.value, AnonMode.SYNC_STRUCT_DUMP.value):
+        extra_data = {"dump_size": get_folder_size(run_options_data['output_dir'])}
+
+    return {
+        "run_status": {
+            "status_id": operation_status.value,
+            "status": operation_status.name.lower(),
+            "started": datetime.fromtimestamp(float(run_status_data['started']), tz=UTC).replace(microsecond=0).isoformat(),
+            "ended": datetime.fromtimestamp(float(run_status_data['ended']), tz=UTC).replace(microsecond=0).isoformat(),
+        },
+        "run_options": run_options_data,
+        "dictionaries": saved_dicts_info_data,
+        "extra_data": extra_data
+    }
+
+
+@app.get(
+    '/operation/{internal_operation_id}/logs',
+    tags=['Operations'],
+    summary='Logs of operation',
+    response_model=List[str],
+)
+async def stateless_operation_logs(
+        operation_run_dir: Path = Depends(get_operation_run_dir),
+        tail_lines: int = Query(1000, gt=0, description="Number of log lines to read from the end of the file"),
+):
+    logs_file_path = operation_run_dir / LOGS_DIR_NAME
+    return read_logs_from_tail(logs_file_path, tail_lines)
+
+
+#############################################
 # Handbooks
 #############################################
 
@@ -203,21 +317,19 @@ async def task_statuses():
 async def dump_types():
     return [
         DumpType(
-            id=1,
             title="Полный",
-            slug="full",
+            slug=DumpMode.FULL.value,
         ),
         DumpType(
-            id=2,
             title="Только структура",
-            slug="structure",
+            slug=DumpMode.STRUCT.value,
         ),
         DumpType(
-            id=3,
             title="Только данные",
-            slug="data",
+            slug=DumpMode.DATA.value,
         ),
     ]
+
 
 @app.get(
     '/handbook/restore-types',
@@ -228,19 +340,16 @@ async def dump_types():
 async def restore_types():
     return [
         RestoreType(
-            id=1,
             title="Полный",
-            slug="full",
+            slug=RestoreMode.FULL.value,
         ),
         RestoreType(
-            id=2,
             title="Только структура",
-            slug="structure",
+            slug=RestoreMode.STRUCT.value,
         ),
         RestoreType(
-            id=3,
             title="Только данные",
-            slug="data",
+            slug=RestoreMode.DATA.value,
         ),
     ]
 
@@ -251,16 +360,14 @@ async def restore_types():
     summary='List of scan types',
     response_model=List[ScanType],
 )
-async def dump_types():
+async def scan_types():
     return [
         ScanType(
-            id=1,
             title="Полное сканирование",
-            slug="full",
+            slug=ScanMode.FULL.value,
         ),
         ScanType(
-            id=2,
             title="Частичное сканирование",
-            slug="partial",
+            slug=ScanMode.PARTIAL.value,
         ),
     ]

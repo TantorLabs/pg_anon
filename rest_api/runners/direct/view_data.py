@@ -4,6 +4,7 @@ from pg_anon.cli import build_run_options
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
+from rest_api.constants import BASE_TEMP_DIR
 from rest_api.pydantic_models import ViewDataRequest, ViewDataContent
 from rest_api.utils import write_dictionary_contents
 
@@ -30,7 +31,7 @@ class ViewDataRunner:
         ])
 
     def _prepare_dictionaries_cli_params(self):
-        self._input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents)
+        self._input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents, BASE_TEMP_DIR)
         self.cli_params.append(
             f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names.keys())}"
         )

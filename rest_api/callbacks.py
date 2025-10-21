@@ -6,7 +6,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from pg_anon.common.utils import get_folder_size
-from rest_api.enums import ResponseStatusesHandbook
+from rest_api.enums import ResponseStatus
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest, RestoreRequest, \
     StatelessRunnerResponse
 from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner, RestoreRunner
@@ -59,8 +59,8 @@ async def scan_callback(request: ScanRequest):
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
-                status=ResponseStatusesHandbook.IN_PROGRESS.name.lower(),
+                status_id=ResponseStatus.IN_PROGRESS.value,
+                status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
             ),
             verify_ssl=request.webhook_verify_ssl,
@@ -99,8 +99,8 @@ async def scan_callback(request: ScanRequest):
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.ERROR.value,
-                status=ResponseStatusesHandbook.ERROR.name.lower(),
+                status_id=ResponseStatus.ERROR.value,
+                status=ResponseStatus.ERROR.name.lower(),
                 webhook_metadata=request.webhook_metadata,
                 **scan_runner_params
             ),
@@ -115,8 +115,8 @@ async def scan_callback(request: ScanRequest):
         response_body=ScanStatusResponse(
             operation_id=request.operation_id,
             internal_operation_id=scan_runner.result.internal_operation_id,
-            status_id=ResponseStatusesHandbook.SUCCESS.value,
-            status=ResponseStatusesHandbook.SUCCESS.name.lower(),
+            status_id=ResponseStatus.SUCCESS.value,
+            status=ResponseStatus.SUCCESS.name.lower(),
             started=scan_runner.result.start_date.isoformat(timespec="seconds"),
             ended=scan_runner.result.end_date.isoformat(timespec="seconds"),
             run_options=scan_runner.result.run_options.to_dict(),
@@ -144,8 +144,8 @@ async def dump_callback(request: DumpRequest):
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
-                status=ResponseStatusesHandbook.IN_PROGRESS.name.lower(),
+                status_id=ResponseStatus.IN_PROGRESS.value,
+                status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
             ),
             verify_ssl=request.webhook_verify_ssl,
@@ -178,8 +178,8 @@ async def dump_callback(request: DumpRequest):
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.ERROR.value,
-                status=ResponseStatusesHandbook.ERROR.name.lower(),
+                status_id=ResponseStatus.ERROR.value,
+                status=ResponseStatus.ERROR.name.lower(),
                 webhook_metadata=request.webhook_metadata,
                 **dump_runner_params
             ),
@@ -194,8 +194,8 @@ async def dump_callback(request: DumpRequest):
         response_body=DumpStatusResponse(
             operation_id=request.operation_id,
             internal_operation_id=dump_runner.result.internal_operation_id,
-            status_id=ResponseStatusesHandbook.SUCCESS.value,
-            status=ResponseStatusesHandbook.SUCCESS.name.lower(),
+            status_id=ResponseStatus.SUCCESS.value,
+            status=ResponseStatus.SUCCESS.name.lower(),
             started=dump_runner.result.start_date.isoformat(timespec="seconds"),
             ended=dump_runner.result.end_date.isoformat(timespec="seconds"),
             run_options=dump_runner.result.run_options.to_dict(),
@@ -218,8 +218,8 @@ async def restore_callback(request: RestoreRequest):
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.IN_PROGRESS.value,
-                status=ResponseStatusesHandbook.IN_PROGRESS.name.lower(),
+                status_id=ResponseStatus.IN_PROGRESS.value,
+                status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
             ),
             verify_ssl=request.webhook_verify_ssl,
@@ -251,8 +251,8 @@ async def restore_callback(request: RestoreRequest):
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
-                status_id=ResponseStatusesHandbook.ERROR.value,
-                status=ResponseStatusesHandbook.ERROR.name.lower(),
+                status_id=ResponseStatus.ERROR.value,
+                status=ResponseStatus.ERROR.name.lower(),
                 webhook_metadata=request.webhook_metadata,
                 **restore_runner_params
             ),
@@ -267,8 +267,8 @@ async def restore_callback(request: RestoreRequest):
         response_body=StatelessRunnerResponse(
             operation_id=request.operation_id,
             internal_operation_id=restore_runner.result.internal_operation_id,
-            status_id=ResponseStatusesHandbook.SUCCESS.value,
-            status=ResponseStatusesHandbook.SUCCESS.name.lower(),
+            status_id=ResponseStatus.SUCCESS.value,
+            status=ResponseStatus.SUCCESS.name.lower(),
             started=restore_runner.result.start_date.isoformat(timespec="seconds"),
             ended=restore_runner.result.end_date.isoformat(timespec="seconds"),
             run_options=restore_runner.result.run_options.to_dict(),

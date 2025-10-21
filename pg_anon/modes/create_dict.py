@@ -1,8 +1,9 @@
 import asyncio
 import json
-import os
 import re
+import shutil
 import time
+from pathlib import Path
 from typing import List, Dict, Optional
 
 from aioprocessing import AioQueue
@@ -19,7 +20,7 @@ from pg_anon.common.utils import (
     exception_helper,
     setof_to_list,
     get_dict_rule_for_table,
-    normalize_field_type,
+    normalize_field_type, save_dicts_info_file, safe_compile,
 )
 from pg_anon.context import Context
 
@@ -40,7 +41,7 @@ class CreateDictMode:
         elif "schema_mask" in rule:
             if rule["schema_mask"] == "*":
                 schema_matched = True
-            elif re.search(rule["schema_mask"], field["nspname"]) is not None:
+            elif re.search(safe_compile(rule["schema_mask"]), field["nspname"]) is not None:
                 schema_matched = True
         else:
             # Required schema or schema_mask
@@ -52,7 +53,7 @@ class CreateDictMode:
             else:
                 if rule["table_mask"] == "*":
                     table_matched = True
-                elif re.search(rule["table_mask"], field["relname"]) is not None:
+                elif re.search(safe_compile(rule["table_mask"]), field["relname"]) is not None:
                     table_matched = True
         elif field["relname"] == rule["table"]:
             table_matched = True
@@ -666,9 +667,9 @@ class CreateDictMode:
 
         output_sens_dict = {"dictionary": list(prepared_sens_dict_rules.values())}
 
-        output_sens_dict_filename = os.path.join(self.context.current_dir, "dict", self.context.options.output_sens_dict_file)
-        output_dir = os.path.dirname(output_sens_dict_filename)
-        os.makedirs(output_dir, exist_ok=True)
+        output_sens_dict_filename = Path.cwd() / self.context.options.output_sens_dict_file
+        output_dir = output_sens_dict_filename.parent
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         with open(output_sens_dict_filename, "w", encoding='utf-8') as file:
             file.write(json.dumps(output_sens_dict, indent=4, ensure_ascii=False))
@@ -687,19 +688,60 @@ class CreateDictMode:
                 )
 
             output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
-            output_no_sens_dict_file_name = os.path.join(self.context.current_dir, "dict", self.context.options.output_no_sens_dict_file)
+            output_no_sens_dict_file_name = Path.cwd() / self.context.options.output_no_sens_dict_file
             with open(output_no_sens_dict_file_name, "w", encoding='utf-8') as file:
                 file.write(json.dumps(output_no_sens_dict, indent=4, ensure_ascii=False))
+
+    def _save_input_dicts_to_run_dir(self):
+        if not self.context.options.save_dicts:
+            return
+
+        input_dicts_dir = Path(self.context.options.run_dir) / 'input'
+        input_dicts_dir.mkdir(parents=True, exist_ok=True)
+
+        input_dict_files = self.context.options.meta_dict_files
+        if self.context.options.prepared_sens_dict_files:
+            input_dict_files.extend(self.context.options.prepared_sens_dict_files)
+        if self.context.options.prepared_no_sens_dict_files:
+            input_dict_files.extend(self.context.options.prepared_no_sens_dict_files)
+
+        for dict_file in input_dict_files:
+            shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
+
+    def _save_output_dicts_to_run_dir(self):
+        if not self.context.options.save_dicts:
+            return
+
+        output_dicts_dir = Path(self.context.options.run_dir) / 'output'
+        output_dicts_dir.mkdir(parents=True, exist_ok=True)
+
+        shutil.copy2(
+            self.context.options.output_sens_dict_file,
+            output_dicts_dir / Path(self.context.options.output_sens_dict_file).name
+        )
+
+        if self.context.options.output_no_sens_dict_file:
+            shutil.copy2(
+                self.context.options.output_no_sens_dict_file,
+                output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
+            )
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started create_dict mode")
 
         try:
+            self._save_input_dicts_to_run_dir()
+
             self.context.read_meta_dict()
             if self.context.options.prepared_sens_dict_files:
                 self.context.read_prepared_dict()
             await self._create_dict()
+
+            self._save_output_dicts_to_run_dir()
             self.context.logger.info("<------------- Finished create_dict mode")
         except Exception as ex:
             self.context.logger.error("<------------- create_dict failed\n" + exception_helper())
             raise ex
+        finally:
+            if self.context.options.save_dicts:
+                save_dicts_info_file(self.context.options)

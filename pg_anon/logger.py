@@ -1,13 +1,13 @@
 import logging
-import os
 import sys
-from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 
 class Logger:
     _instance = None
     _formatter: str
-    _file_handler_is_setup: bool = False
 
     logger = None
 
@@ -30,16 +30,17 @@ class Logger:
 
         return cls._instance
 
-    def add_file_handler(self, log_dir: str, log_file_name: str):
-        if self._file_handler_is_setup:
-            return
+    def add_file_handler(self, log_dir: Path, log_file_name: str):
+        for handler in list(self.logger.handlers):
+            if isinstance(handler, logging.FileHandler):
+                self.logger.removeHandler(handler)
+                handler.close()
 
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        log_dir.mkdir(parents=True, exist_ok=True)
 
-        file_handler = RotatingFileHandler(
-            os.path.join(log_dir, log_file_name),
-            maxBytes=1024 * 10000,
+        file_handler = ConcurrentRotatingFileHandler(
+            log_dir / log_file_name,
+            maxBytes=10 * 1024 * 1024,
             backupCount=10,
         )
         file_handler.setFormatter(self._formatter)
@@ -66,7 +67,7 @@ def get_logger():
     return Logger().logger
 
 
-def logger_add_file_handler(log_dir: str, log_file_name: str):
+def logger_add_file_handler(log_dir: Path, log_file_name: str):
     Logger().add_file_handler(
         log_dir=log_dir,
         log_file_name=log_file_name,

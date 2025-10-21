@@ -1,6 +1,7 @@
 # Service specific
 output/
 log/
+runs/
 tests/output_dict/
 tests/output/
 tests/saved_results/

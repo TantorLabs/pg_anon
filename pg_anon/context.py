@@ -1,22 +1,21 @@
-import ast
 import logging
 import os
 import re
-from datetime import datetime
-from typing import Dict, Optional, Any, List, Set, Tuple
+from pathlib import Path
+from typing import Dict, Optional, List, Set, Tuple
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS, \
+    LOGS_FILE_NAME, LOGS_DIR_NAME
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
-    split_constants_to_words_and_phrases, simple_slugify, filter_db_tables
+    split_constants_to_words_and_phrases, filter_db_tables, read_dict_data_from_file, safe_compile
 from pg_anon.logger import logger_add_file_handler, logger_set_log_level, get_logger
 
 
 class Context:
     @exception_handler
     def __init__(self, options: RunOptions):
-        self.current_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
         self.options = options
         self.config = read_yaml(options.config) if options.config else None
         self.pg_version = None
@@ -39,7 +38,6 @@ class Context:
         self.white_listed_tables: Set[Tuple[str, str]] = set()
         self.logger = None
         self.data_const_constants_min_length = None
-        self.start_time = datetime.now().strftime('%Y_%m_%d__%H_%M')
         self.setup_logger()
 
         if not options.db_user_password:
@@ -123,7 +121,7 @@ class Context:
 
         if meta_dict["field"]["rules"]:
             self.meta_dictionary_obj["field"]["rules"].extend(
-                [re.compile(v) for v in meta_dict["field"]["rules"]]
+                [safe_compile(v) for v in meta_dict["field"]["rules"]]
             )
 
         if meta_dict["field"]["constants"]:
@@ -138,7 +136,7 @@ class Context:
         if meta_dict["data_regex"]["rules"]:
             # re.DOTALL using for searching in text with \n
             self.meta_dictionary_obj["data_regex"]["rules"].extend(
-                [re.compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
+                [safe_compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
             )
 
         if meta_dict["data_const"]["constants"]["words"]:
@@ -178,26 +176,6 @@ class Context:
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
 
-    def _read_dict_data_from_file(self, dictionary_file_name: str) -> Optional[Dict[str, Any]]:
-        with open(os.path.join(self.current_dir, dictionary_file_name), "r") as dictionary_file:
-            data = dictionary_file.read().strip()
-
-        if not data:
-            return
-
-        try:
-            dict_data = ast.literal_eval(data)
-        except Exception as exc:
-            raise ValueError(f"Can't read data from file: {dictionary_file_name}")
-
-        if not dict_data:
-            return
-
-        if not isinstance(dict_data, dict):
-            raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_name}")
-
-        return dict_data
-
     def read_meta_dict(self):
         self.meta_dictionary_obj = self._make_meta_dict()
         dict_files_list = self.options.meta_dict_files
@@ -206,7 +184,7 @@ class Context:
             dict_files_list += self.options.prepared_no_sens_dict_files
 
         for dict_file in dict_files_list:
-            dict_data = self._read_dict_data_from_file(os.path.join("dict", dict_file))
+            dict_data = read_dict_data_from_file(Path.cwd() / dict_file)
             if dict_data:
                 self._append_meta_dict(self._make_meta_dict(dict_data))
 
@@ -221,9 +199,9 @@ class Context:
         }
 
         for dict_file in self.options.prepared_sens_dict_files:
-            dictionary_file_name = os.path.join("dict", dict_file)
-            dict_data = self._read_dict_data_from_file(dictionary_file_name)
-            self.prepared_dictionary_contents = {dictionary_file_name: str(dict_data)}
+            dictionary_file_name = Path.cwd() / dict_file
+            dict_data = read_dict_data_from_file(dictionary_file_name)
+            self.prepared_dictionary_contents = {str(dictionary_file_name): str(dict_data)}
 
             if not dict_data:
                 continue
@@ -240,12 +218,12 @@ class Context:
     def read_partial_tables_dicts(self):
         if self.options.partial_tables_dict_files:
             for dict_file in self.options.partial_tables_dict_files:
-                if dict_data := self._read_dict_data_from_file(os.path.join("dict", dict_file)):
+                if dict_data := read_dict_data_from_file(Path.cwd() / dict_file):
                     self.included_tables_rules.extend(dict_data.get("tables", []))
 
         if self.options.partial_tables_exclude_dict_files:
             for dict_file in self.options.partial_tables_exclude_dict_files:
-                if dict_data := self._read_dict_data_from_file(os.path.join("dict", dict_file)):
+                if dict_data := read_dict_data_from_file(Path.cwd() / dict_file):
                     self.excluded_tables_rules.extend(dict_data.get("tables", []))
 
     def set_postgres_version(self, pg_version: str):
@@ -285,24 +263,11 @@ class Context:
             elif self.options.verbose == VerboseOptions.INFO:
                 log_level = logging.INFO
 
-        additional_file_name = None
-        if self.options.mode == AnonMode.CREATE_DICT and self.options.meta_dict_files:
-            additional_file_name = os.path.splitext(os.path.basename(self.options.meta_dict_files[0]))[0]
-        elif self.options.prepared_sens_dict_files:
-            additional_file_name = os.path.splitext(os.path.basename(self.options.prepared_sens_dict_files[0]))[0]
-        elif self.options.input_dir:
-            additional_file_name = os.path.basename(self.options.input_dir)
-
-        log_file_name_parts = [self.start_time, self.options.mode.value]
-        if additional_file_name:
-            log_file_name_parts.append(simple_slugify(additional_file_name))
-
-        log_file_name = "__".join(log_file_name_parts) + ".log"
-        log_dir = os.path.join(self.current_dir, "log")
+        log_dir = Path(self.options.run_dir) / LOGS_DIR_NAME
 
         logger_add_file_handler(
             log_dir=log_dir,
-            log_file_name=log_file_name
+            log_file_name=LOGS_FILE_NAME
         )
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()

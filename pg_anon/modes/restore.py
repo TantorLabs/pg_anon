@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from copy import copy
+from pathlib import Path
 from typing import Optional
 
 import asyncpg
@@ -19,23 +20,23 @@ from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
     get_pg_util_version,
-    pretty_size,
+    pretty_size, save_dicts_info_file,
 )
 from pg_anon.context import Context
 
 
 class RestoreMode:
     context: Context
-    input_dir: str
+    input_dir: Path
 
     metadata: Metadata
     metadata_file_name: str = 'metadata.json'
-    metadata_file_path: str
+    metadata_file_path: Path
 
     _toc_list_pre_data_file_name: str = 'toc_pre_data_filtered.list'
-    _toc_list_pre_data_file_path: Optional[str] = None
+    _toc_list_pre_data_file_path: Optional[Path] = None
     _toc_list_post_data_file_name: str = 'toc_post_data_filtered.list'
-    _toc_list_post_data_file_path: Optional[str] = None
+    _toc_list_post_data_file_path: Optional[Path] = None
 
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
@@ -43,16 +44,9 @@ class RestoreMode:
 
     def __init__(self, context: Context):
         self.context = context
+        self.input_dir = Path.cwd() / self.context.options.input_dir
 
-        if (
-            self.context.options.input_dir.find("""/""") == -1
-            and self.context.options.input_dir.find("""\\""") == -1
-        ):
-            self.context.options.input_dir = os.path.join(self.context.current_dir, "output", self.context.options.input_dir)
-
-        self.input_dir = str(self.context.options.input_dir)
-
-        if not os.path.exists(self.input_dir):
+        if not self.input_dir.exists():
             msg = f"ERROR: input directory {self.input_dir} does not exists"
             self.context.logger.error(msg)
             raise RuntimeError(msg)
@@ -74,7 +68,7 @@ class RestoreMode:
         )
 
     def _load_metadata(self):
-        self.metadata_file_path = os.path.join(self.input_dir, self.metadata_file_name)
+        self.metadata_file_path = self.input_dir / self.metadata_file_name
         self.metadata = Metadata()
         self.metadata.load_from_file(self.metadata_file_path)
 
@@ -170,12 +164,12 @@ class RestoreMode:
         ])
 
         for section in ["pre_data", "post_data"]:
-            command = ["pg_restore", "-l", os.path.join(self.input_dir, f"{section}.backup")]
+            command = ["pg_restore", "-l", str(self.input_dir / f"{section}.backup")]
             if section == "pre_data":
-                self._toc_list_pre_data_file_path = os.path.join(self.input_dir, self._toc_list_pre_data_file_name)
+                self._toc_list_pre_data_file_path = self.input_dir / self._toc_list_pre_data_file_name
                 toc_file_path = self._toc_list_pre_data_file_path
             else:
-                self._toc_list_post_data_file_path = os.path.join(self.input_dir, self._toc_list_post_data_file_name)
+                self._toc_list_post_data_file_path = self.input_dir / self._toc_list_post_data_file_name
                 toc_file_path = self._toc_list_post_data_file_path
 
             proc = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
@@ -197,11 +191,8 @@ class RestoreMode:
         if self.context.options.debug:
             return
 
-        if os.path.exists(self._toc_list_pre_data_file_path):
-            os.remove(self._toc_list_pre_data_file_path)
-
-        if os.path.exists(self._toc_list_post_data_file_path):
-            os.remove(self._toc_list_post_data_file_path)
+        self._toc_list_pre_data_file_path.unlink(missing_ok=True)
+        self._toc_list_post_data_file_path.unlink(missing_ok=True)
 
     async def _run_pg_restore(self, section: str):
         os.environ["PGPASSWORD"] = self.context.options.db_user_password
@@ -220,7 +211,7 @@ class RestoreMode:
             self.context.options.db_name,
             "-j",
             str(self.context.options.db_connections_per_process),
-            os.path.join(self.input_dir, section.replace("-", "_") + ".backup"),
+            str((self.input_dir / section.replace("-", "_")).with_suffix(".backup")),
         ]
         if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
@@ -334,16 +325,13 @@ class RestoreMode:
     async def _restore_table_data(
             self,
             pool: asyncpg.Pool,
-            dump_file: str,
+            dump_file: Path,
             schema_name: str,
             table_name: str,
             transaction_snapshot_id: str,
     ):
         self.context.logger.info(f"{'>':=>20} Started task copy_to_table {schema_name}.{table_name}")
-        if dump_file.endswith('.bin.gz'):
-            extracted_file = f"{dump_file[:-7]}.bin"
-        else:
-            extracted_file = f"{dump_file}.bin"
+        extracted_file = Path(dump_file.stem)
 
         with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
             trg_file.writelines(src_file)
@@ -370,7 +358,7 @@ class RestoreMode:
                 f"\n{exc=}"
             )
         finally:
-            os.remove(extracted_file)
+            extracted_file.unlink()
 
         self.context.logger.info(f"{'>':=>20} Finished task {schema_name}.{str(table_name)}")
 
@@ -398,7 +386,7 @@ class RestoreMode:
                     self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
                     continue
 
-                full_path = os.path.join(self.input_dir, file_name)
+                full_path = self.input_dir / file_name
                 if len(tasks) >= self.context.options.db_connections_per_process:
                     # Wait for some restore to finish before adding a new one
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -410,7 +398,7 @@ class RestoreMode:
                     loop.create_task(
                         self._restore_table_data(
                             pool=pool,
-                            dump_file=str(full_path),
+                            dump_file=full_path,
                             schema_name=target["schema"],
                             table_name=target["table"],
                             transaction_snapshot_id=transaction_snapshot_id,
@@ -500,6 +488,23 @@ class RestoreMode:
 
         tables = [(table_info["schema"], table_info["table"]) for table_info in self.metadata.files.values()]
         self.context.set_tables_lists(tables)
+
+    def _save_input_dicts_to_run_dir(self):
+        if not self.context.options.save_dicts:
+            return
+
+        input_dicts_dir = Path(self.context.options.run_dir) / 'input'
+        input_dicts_dir.mkdir(parents=True, exist_ok=True)
+
+        input_dict_files = []
+        if self.context.options.partial_tables_dict_files:
+            input_dict_files.extend(self.context.options.partial_tables_dict_files)
+        if self.context.options.partial_tables_exclude_dict_files:
+            input_dict_files.extend(self.context.options.partial_tables_exclude_dict_files)
+
+        for dict_file in input_dict_files:
+            shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
+
 
     async def run_analyze(self):
         if (self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
@@ -602,6 +607,8 @@ class RestoreMode:
         connection = None
 
         try:
+            self._save_input_dicts_to_run_dir()
+
             await self._drop_database()
             connection = await create_connection(
                 self.context.connection_params,
@@ -636,3 +643,6 @@ class RestoreMode:
         finally:
             if connection:
                 await connection.close()
+
+            if self.context.options.save_dicts:
+                save_dicts_info_file(self.context.options)

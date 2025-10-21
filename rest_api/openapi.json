@@ -422,6 +422,185 @@
         }
       }
     },
+    "/operation": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "List of operations",
+        "operationId": "stateless_operations_list_operation_get",
+        "parameters": [
+          {
+            "name": "date_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter: operations before this date",
+              "title": "Date Before"
+            },
+            "description": "Filter: operations before this date"
+          },
+          {
+            "name": "date_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter: operations after this date",
+              "title": "Date After"
+            },
+            "description": "Filter: operations after this date"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Stateless Operations List Operation Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operation/{internal_operation_id}": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Operation details",
+        "operationId": "stateless_operation_data_operation__internal_operation_id__get",
+        "parameters": [
+          {
+            "name": "internal_operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Internal Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationDataResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Operation run directory not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/operation/{internal_operation_id}/logs": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Logs of operation",
+        "operationId": "stateless_operation_logs_operation__internal_operation_id__logs_get",
+        "parameters": [
+          {
+            "name": "internal_operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Internal Operation Id"
+            }
+          },
+          {
+            "name": "tail_lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Number of log lines to read from the end of the file",
+              "default": 1000,
+              "title": "Tail Lines"
+            },
+            "description": "Number of log lines to read from the end of the file"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Stateless Operation Logs Operation  Internal Operation Id  Logs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/handbook/task-statuses": {
       "get": {
         "tags": [
@@ -503,7 +682,7 @@
           "Handbooks"
         ],
         "summary": "List of scan types",
-        "operationId": "dump_types_handbook_scan_types_get",
+        "operationId": "scan_types_handbook_scan_types_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -514,7 +693,7 @@
                     "$ref": "#/components/schemas/ScanType"
                   },
                   "type": "array",
-                  "title": "Response Dump Types Handbook Scan Types Get"
+                  "title": "Response Scan Types Handbook Scan Types Get"
                 }
               }
             }
@@ -624,6 +803,15 @@
         ],
         "title": "DumpDeleteRequest"
       },
+      "DumpMode": {
+        "type": "string",
+        "enum": [
+          "dump",
+          "sync-struct-dump",
+          "sync-data-dump"
+        ],
+        "title": "DumpMode"
+      },
       "DumpRequest": {
         "properties": {
           "operation_id": {
@@ -672,9 +860,20 @@
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "type_id": {
-            "type": "integer",
-            "title": "Type Id"
+          "save_dicts": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Dicts",
+            "default": false
+          },
+          "type": {
+            "$ref": "#/components/schemas/DumpMode"
           },
           "sens_dict_contents": {
             "items": {
@@ -754,7 +953,7 @@
           "operation_id",
           "db_connection_params",
           "webhook_status_url",
-          "type_id",
+          "type",
           "sens_dict_contents",
           "output_path"
         ],
@@ -762,10 +961,6 @@
       },
       "DumpType": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -777,7 +972,6 @@
         },
         "type": "object",
         "required": [
-          "id",
           "title",
           "slug"
         ],
@@ -808,6 +1002,49 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "OperationDataResponse": {
+        "properties": {
+          "run_status": {
+            "type": "object",
+            "title": "Run Status"
+          },
+          "run_options": {
+            "type": "object",
+            "title": "Run Options"
+          },
+          "dictionaries": {
+            "type": "object",
+            "title": "Dictionaries"
+          },
+          "extra_data": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_status",
+          "run_options",
+          "dictionaries"
+        ],
+        "title": "OperationDataResponse"
+      },
+      "RestoreMode": {
+        "type": "string",
+        "enum": [
+          "restore",
+          "sync-struct-restore",
+          "sync-data-restore"
+        ],
+        "title": "RestoreMode"
       },
       "RestoreRequest": {
         "properties": {
@@ -857,9 +1094,20 @@
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "type_id": {
-            "type": "integer",
-            "title": "Type Id"
+          "save_dicts": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Dicts",
+            "default": false
+          },
+          "type": {
+            "$ref": "#/components/schemas/RestoreMode"
           },
           "input_path": {
             "type": "string",
@@ -936,17 +1184,13 @@
           "operation_id",
           "db_connection_params",
           "webhook_status_url",
-          "type_id",
+          "type",
           "input_path"
         ],
         "title": "RestoreRequest"
       },
       "RestoreType": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -958,11 +1202,18 @@
         },
         "type": "object",
         "required": [
-          "id",
           "title",
           "slug"
         ],
         "title": "RestoreType"
+      },
+      "ScanMode": {
+        "type": "string",
+        "enum": [
+          "full",
+          "partial"
+        ],
+        "title": "ScanMode"
       },
       "ScanRequest": {
         "properties": {
@@ -1012,9 +1263,20 @@
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "type_id": {
-            "type": "integer",
-            "title": "Type Id"
+          "save_dicts": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Dicts",
+            "default": false
+          },
+          "type": {
+            "$ref": "#/components/schemas/ScanMode"
           },
           "meta_dict_contents": {
             "items": {
@@ -1081,17 +1343,13 @@
           "operation_id",
           "db_connection_params",
           "webhook_status_url",
-          "type_id",
+          "type",
           "meta_dict_contents"
         ],
         "title": "ScanRequest"
       },
       "ScanType": {
         "properties": {
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
           "title": {
             "type": "string",
             "title": "Title"
@@ -1103,7 +1361,6 @@
         },
         "type": "object",
         "required": [
-          "id",
           "title",
           "slug"
         ],

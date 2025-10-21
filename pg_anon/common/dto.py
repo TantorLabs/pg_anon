@@ -3,7 +3,8 @@ import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, UTC
 from enum import Enum
-from typing import Optional, Callable, Dict, List
+from pathlib import Path
+from typing import Optional, Callable, Dict, List, Union
 
 from pg_anon.common.constants import SECRET_RUN_OPTIONS
 from pg_anon.common.enums import ResultCode, AnonMode, VerboseOptions, ScanMode
@@ -13,6 +14,7 @@ from pg_anon.common.enums import ResultCode, AnonMode, VerboseOptions, ScanMode
 class RunOptions:
     pg_anon_version: str
     internal_operation_id: str
+    run_dir: str
     debug: bool
     config: Optional[str]
     db_host: str
@@ -61,6 +63,7 @@ class RunOptions:
     application_name_suffix: Optional[str]
     version: bool
     json: bool
+    save_dicts: bool
 
     def to_dict(self):
         return {
@@ -71,6 +74,7 @@ class RunOptions:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
 
 
 class PgAnonResult:
@@ -100,6 +104,13 @@ class PgAnonResult:
     def complete(self):
         self.end_time = time.time()
         self.result_code = ResultCode.DONE
+
+    def to_dict(self):
+        return {
+            "result_code": self.result_code.value,
+            "started": self.start_time,
+            "ended": self.end_time,
+        }
 
     @property
     def elapsed(self):
@@ -278,17 +289,16 @@ class Metadata:
         self.partial_dump_schemas = data.get('partial_dump_schemas')
         self.partial_dump_functions = data.get('partial_dump_functions')
 
-    def save_into_file(self, file_name: str):
-        data = self._serialize_data()
-        with open(file_name, "w", encoding='utf-8') as out_file:
-            out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+    def save_into_file(self, file_path: Path):
+        from pg_anon.common.utils import save_json_file
+        save_json_file(file_path, self._serialize_data())
 
-    def save_dumped_tables_into_file(self, file_name: str):
-        data = self._serialize_tables()
-        with open(file_name, "w", encoding='utf-8') as out_file:
-            out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+    def save_dumped_tables_into_file(self, file_path: Path):
+        from pg_anon.common.utils import save_json_file
+        save_json_file(file_path, self._serialize_tables())
 
-    def load_from_file(self, file_name: str):
+    def load_from_file(self, file_name: Union[str, Path]):
+        file_name = Path(file_name)
         with open(file_name, "r") as metadata_file:
             data = json.loads(metadata_file.read())
             self._deserialize_data(data)
