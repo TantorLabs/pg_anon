@@ -13,6 +13,9 @@ import yaml
 
 from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.dto import FieldInfo, RunOptions
+from pg_anon.logger import get_logger
+
+logger = get_logger()
 
 PARENS_PATTERN = re.compile(r'\([^\)]*\)')
 
@@ -163,13 +166,13 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
         if "schema_mask" in rule:
             if rule["schema_mask"] == "*":
                 schema_mask_matched = True
-            elif re.search(rule["schema_mask"], schema) is not None:
+            elif re.search(safe_compile(rule["schema_mask"]), schema) is not None:
                 schema_mask_matched = True
 
         if "table_mask" in rule:
             if rule["table_mask"] == "*":
                 table_mask_matched = True
-            elif re.search(rule["table_mask"], table) is not None:
+            elif re.search(safe_compile(rule["table_mask"]), table) is not None:
                 table_mask_matched = True
 
         if schema_mask_matched and table_matched:
@@ -292,6 +295,14 @@ def filter_db_tables(
         filtered_tables.append(table_data)
 
     return filtered_tables, black_listed_tables, white_listed_tables
+
+
+def safe_compile(pattern: str, flags=0):
+    try:
+        return re.compile(pattern, flags)
+    except re.error:
+        logger.error(f"Regex pattern is invalid: {pattern}. This pattern will be ignored")
+        return re.compile(r"(?!)")  # Never matching. Instead of None
 
 
 def save_json_file(file_path: Union[str, Path], data: Dict):

@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 import re
 from pathlib import Path
@@ -10,7 +9,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS,
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
-    split_constants_to_words_and_phrases, filter_db_tables, read_dict_data_from_file
+    split_constants_to_words_and_phrases, filter_db_tables, read_dict_data_from_file, safe_compile
 from pg_anon.logger import logger_add_file_handler, logger_set_log_level, get_logger
 
 
@@ -122,7 +121,7 @@ class Context:
 
         if meta_dict["field"]["rules"]:
             self.meta_dictionary_obj["field"]["rules"].extend(
-                [re.compile(v) for v in meta_dict["field"]["rules"]]
+                [safe_compile(v) for v in meta_dict["field"]["rules"]]
             )
 
         if meta_dict["field"]["constants"]:
@@ -137,7 +136,7 @@ class Context:
         if meta_dict["data_regex"]["rules"]:
             # re.DOTALL using for searching in text with \n
             self.meta_dictionary_obj["data_regex"]["rules"].extend(
-                [re.compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
+                [safe_compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
             )
 
         if meta_dict["data_const"]["constants"]["words"]:

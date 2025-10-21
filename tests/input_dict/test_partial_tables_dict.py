@@ -16,5 +16,9 @@
             "schema_mask": "schm_customer",
             "table_mask": "*"
         },
+        {
+            "schema_mask": "^*",  # wrong regex
+            "table_mask": "^*"  # wrong regex
+        },
     ]
 }

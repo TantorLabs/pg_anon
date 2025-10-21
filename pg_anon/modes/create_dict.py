@@ -20,7 +20,7 @@ from pg_anon.common.utils import (
     exception_helper,
     setof_to_list,
     get_dict_rule_for_table,
-    normalize_field_type, save_dicts_info_file,
+    normalize_field_type, save_dicts_info_file, safe_compile,
 )
 from pg_anon.context import Context
 
@@ -41,7 +41,7 @@ class CreateDictMode:
         elif "schema_mask" in rule:
             if rule["schema_mask"] == "*":
                 schema_matched = True
-            elif re.search(rule["schema_mask"], field["nspname"]) is not None:
+            elif re.search(safe_compile(rule["schema_mask"]), field["nspname"]) is not None:
                 schema_matched = True
         else:
             # Required schema or schema_mask
@@ -53,7 +53,7 @@ class CreateDictMode:
             else:
                 if rule["table_mask"] == "*":
                     table_matched = True
-                elif re.search(rule["table_mask"], field["relname"]) is not None:
+                elif re.search(safe_compile(rule["table_mask"]), field["relname"]) is not None:
                     table_matched = True
         elif field["relname"] == rule["table"]:
             table_matched = True

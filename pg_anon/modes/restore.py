@@ -12,7 +12,6 @@ from typing import Optional
 import asyncpg
 from asyncpg import Connection
 
-from pg_anon.common.constants import BASE_DIR
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool
 from pg_anon.common.dto import Metadata

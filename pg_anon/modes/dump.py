@@ -567,6 +567,7 @@ class DumpMode:
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started dump")
+        connection = None
 
         try:
             self._save_input_dicts_to_run_dir()
