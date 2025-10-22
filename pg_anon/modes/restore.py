@@ -164,7 +164,7 @@ class RestoreMode:
         ])
 
         for section in ["pre_data", "post_data"]:
-            command = ["pg_restore", "-l", str(self.input_dir / f"{section}.backup")]
+            command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]
             if section == "pre_data":
                 self._toc_list_pre_data_file_path = self.input_dir / self._toc_list_pre_data_file_name
                 toc_file_path = self._toc_list_pre_data_file_path
