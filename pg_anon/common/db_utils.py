@@ -188,26 +188,197 @@ async def get_db_tables(
     return list(map(tuple, tables))
 
 
-async def get_functions_using_for_constraints(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
+async def get_schemas(connection: Connection) -> List[str]:
+    query = f"""
+    SELECT nspname AS schema_name
+    FROM pg_namespace
+    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    ORDER BY nspname;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_functions_ddl(connection: Connection) -> List[str]:
+    query = f"""
+    SELECT pg_get_functiondef(p.oid) AS ddl
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'anon_funcs')
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_domains_ddl(connection: Connection) -> List[str]:
+    query = f"""
+    SELECT
+        'CREATE DOMAIN ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
+        ' AS ' || pg_catalog.format_type(t.typbasetype, t.typtypmod) ||
+        COALESCE(' DEFAULT ' || t.typdefault, '') ||
+        COALESCE(' ' || pg_get_constraintdef(c.oid), '') || ';' AS ddl
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    LEFT JOIN pg_constraint c ON c.contypid = t.oid
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND t.typtype = 'd'
+    ORDER BY n.nspname, t.typname;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_types_ddl(connection: Connection) -> List[str]:
+    query = f"""
+    WITH user_types AS (
+        SELECT
+            n.nspname AS schema_name,
+            t.typname AS type_name,
+            t.typtype,
+            t.typrelid,
+            t.oid,
+            t.typbasetype
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND t.typtype IN ('c', 'e') -- composite, enum
+          -- excluding row-types
+          AND (t.typtype != 'c' OR t.typrelid = 0)
+    )
+    SELECT
+        'DO $$' || E'\n' ||
+        'BEGIN' || E'\n' ||
+        '    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = ' || quote_literal(type_name) || ') THEN' || E'\n' ||
+        '        ' ||
+        CASE
+            WHEN typtype = 'e' THEN
+                'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) ||
+                ' AS ENUM (' ||
+                string_agg(quote_literal(e.enumlabel), ', ') || ');'
+            WHEN typtype = 'c' THEN
+                'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) || ' AS (' ||
+                string_agg(
+                    quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod),
+                    ', '
+                ) || ');'
+            END || E'\n' ||
+        '    END IF;' || E'\n' ||
+        'END;' || E'\n' ||
+        '$$;' as ddl
+    FROM user_types t
+    LEFT JOIN pg_enum e ON e.enumtypid = t.oid
+    LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0
+    GROUP BY schema_name, type_name, typtype, t.oid, t.typbasetype
+    ORDER BY schema_name, type_name;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_indexes_data(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
     values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
-          WITH tables_to_check AS (
-              VALUES {values_placeholders}
-          )
-          SELECT DISTINCT
-              pg_get_functiondef(p.oid) || E'\n' AS function_sql
-          FROM tables_to_check t
-          JOIN pg_class c ON c.relname = t.column2
-          JOIN pg_namespace n ON n.oid = c.relnamespace
-          JOIN pg_constraint con ON con.conrelid = c.oid
-          JOIN pg_proc p ON pg_get_constraintdef(con.oid) LIKE '%' || p.proname || '%'
-          WHERE con.contype = 'c'
-            AND n.nspname = t.column1;
-          """
+    WITH tables_to_check AS (
+        VALUES {values_placeholders}
+    )
+    SELECT
+        n.nspname as "schema"
+        ,t.relname as "table"
+        ,i.relname AS "index_name"
+        ,tt.column1 IS null as "is_excluded"
+    FROM pg_index ix
+    JOIN pg_class i ON i.oid = ix.indexrelid
+    JOIN pg_class t ON t.oid = ix.indrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    LEFT JOIN tables_to_check tt ON tt.column1 = n.nspname AND tt.column2 = t.relname
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+    """
 
-    result = await connection.fetch(query, *args)
-    return [row[0] for row in result]
+    return await connection.fetch(query, *args)
+
+
+async def get_views_related_to_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
+    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+    args = [item for table_data in tables for item in table_data]
+    query = f"""
+    WITH tables_to_check AS (
+        VALUES {values_placeholders}
+    ),
+    all_views AS (
+        SELECT 
+            schemaname AS view_schema,
+            viewname AS view_name,
+            definition AS view_definition,
+            'view' AS view_type
+        FROM pg_views
+        WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+        UNION ALL
+        SELECT 
+            schemaname AS view_schema,
+            matviewname AS view_name,
+            definition AS view_definition,
+            'materialized_view' AS view_type
+        FROM pg_matviews
+        WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+    ),
+    all_tables AS (
+        SELECT 
+            n.nspname AS table_schema,
+            c.relname AS table_name
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind = 'r'  -- only tables
+          AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    )
+    select DISTINCT
+        v.view_schema
+        ,v.view_name
+        ,v.view_type
+        ,t.table_schema
+        ,t.table_name
+        ,tt.column1 is null as "is_excluded"
+    FROM all_views v
+    JOIN all_tables t
+      ON v.view_definition ILIKE '%' || t.table_schema || '.' || t.table_name || '%'
+       OR v.view_definition ILIKE '%' || t.table_name || '%'
+    LEFT JOIN tables_to_check tt ON tt.column1 = t.table_schema AND tt.column2 = t.table_name
+    ORDER BY v.view_schema, v.view_name, t.table_schema, t.table_name;
+    """
+
+    return await connection.fetch(query, *args)
+
+
+async def get_constraints_to_excluded_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
+    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+    args = [item for table_data in tables for item in table_data]
+    query = f"""
+    WITH tables_to_check AS (
+        VALUES {values_placeholders}
+    )
+    select
+        n_from.nspname AS "table_schema_from"
+        ,c_from.relname AS "table_name_from"
+        ,conname AS "constraint_name"
+        ,n_to.nspname AS "table_schema_to"
+        ,c_to.relname AS "table_name_to"
+        ,t_to.column1 IS NULL AS "is_excluded"
+    FROM pg_constraint con
+    JOIN pg_class c_to ON c_to.oid = con.confrelid
+    JOIN pg_namespace n_to ON n_to.oid = c_to.relnamespace
+    LEFT JOIN tables_to_check t_to   ON t_to.column1 = n_to.nspname   AND t_to.column2 = c_to.relname
+    JOIN pg_class c_from ON c_from.oid = con.conrelid
+    JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
+    LEFT JOIN tables_to_check t_from ON t_from.column1 = n_from.nspname AND t_from.column2 = c_from.relname
+    WHERE con.contype IN ('p','f')
+      AND n_to.nspname NOT IN ('pg_catalog', 'information_schema') 
+    """
+
+    return await connection.fetch(query, *args)
 
 
 async def check_db_is_empty(connection: Connection) -> bool:

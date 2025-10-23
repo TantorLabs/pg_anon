@@ -219,6 +219,10 @@ class Metadata:
 
     # only in data dumps cases
     sequences_last_values: Optional[Dict] = None
+    views: Optional[Dict] = None
+    indexes: Optional[Dict] = None
+    constraints: Optional[Dict] = None
+
     files: Optional[Dict[str, Dict[str, str]]] = None
     total_tables_size: Optional[int] = None
     total_rows: Optional[int] = None
@@ -227,6 +231,8 @@ class Metadata:
     # only in black and white lists cases
     partial_dump_schemas: Optional[List[str]] = None
     partial_dump_functions: Optional[List[str]] = None
+    partial_dump_types: Optional[List[str]] = None
+    partial_dump_domains: Optional[List[str]] = None
 
     def _serialize_data(self) -> Dict:
         data = {
@@ -239,6 +245,10 @@ class Metadata:
             'dbg_stage_3_validate_full': self.dbg_stage_3_validate_full,
 
             'seq_lastvals': self.sequences_last_values,
+            'views': self.views,
+            'indexes': self.indexes,
+            'constraints': self.constraints,
+
             'files': self.files,
             'total_tables_size': self.total_tables_size,
             'total_rows': self.total_rows,
@@ -246,10 +256,19 @@ class Metadata:
 
             'partial_dump_schemas': self.partial_dump_schemas,
             'partial_dump_functions': self.partial_dump_functions,
+            'partial_dump_types': self.partial_dump_types,
+            'partial_dump_domains': self.partial_dump_domains,
         }
 
         if self.sequences_last_values is None:
             del data['seq_lastvals']
+        if self.views is None:
+            del data['views']
+        if self.indexes is None:
+            del data['indexes']
+        if self.constraints is None:
+            del data['constraints']
+
         if self.files is None:
             del data['files']
         if self.total_tables_size is None:
@@ -260,10 +279,13 @@ class Metadata:
             del data['db_size']
 
         if self.partial_dump_schemas is None:
-            del data['partial_dump_schemas']
-            
+            del data['partial_dump_schemas']    
         if self.partial_dump_functions is None:
             del data['partial_dump_functions']
+        if self.partial_dump_types is None:
+            del data['partial_dump_types']
+        if self.partial_dump_domains is None:
+            del data['partial_dump_domains']
 
         return data
 
@@ -282,12 +304,18 @@ class Metadata:
         self.dbg_stage_3_validate_full = data.get('dbg_stage_3_validate_full')
 
         self.sequences_last_values = data.get('seq_lastvals')
+        self.views = data.get('views')
+        self.indexes = data.get('indexes')
+        self.constraints = data.get('constraints')
+
         self.files = data.get('files')
         self.total_tables_size = data.get('total_tables_size')
         self.total_rows = data.get('total_rows')
 
         self.partial_dump_schemas = data.get('partial_dump_schemas')
         self.partial_dump_functions = data.get('partial_dump_functions')
+        self.partial_dump_types = data.get('partial_dump_types')
+        self.partial_dump_domains = data.get('partial_dump_domains')
 
     def save_into_file(self, file_path: Path):
         from pg_anon.common.utils import save_json_file

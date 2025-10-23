@@ -273,7 +273,7 @@ def filter_db_tables(
     black_listed_tables = set()
     white_listed_tables = set()
     if not (white_list_rules or black_list_rules):
-        return tables, white_listed_tables, black_listed_tables
+        return tables, black_listed_tables, white_listed_tables
 
     for table_data in tables:
         # black list has the highest priority for pg_dump / pg_restore
@@ -301,7 +301,7 @@ def safe_compile(pattern: str, flags=0):
     try:
         return re.compile(pattern, flags)
     except re.error:
-        logger.error(f"Regex pattern is invalid: {pattern}. This pattern will be ignored")
+        logger.warn(f"Regex pattern is invalid: {pattern}. This pattern will be ignored")
         return re.compile(r"(?!)")  # Never matching. Instead of None
 
 

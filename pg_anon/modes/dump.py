@@ -15,7 +15,8 @@ from asyncpg import Connection, Pool
 
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
 from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
-    get_functions_using_for_constraints
+    get_custom_functions_ddl, get_custom_domains_ddl, get_indexes_data, get_views_related_to_tables, get_schemas, \
+    get_constraints_to_excluded_tables
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -39,8 +40,15 @@ class DumpMode:
 
     _total_tables_size: int = 0
     _total_rows: int = 0
+    
+    _schemas: List[str] = None
     _sequences_last_values: Dict = None
-    _constraint_functions: List[str] = None
+    _indexes: Dict = None
+    _views: Dict = None
+    _constraints: Dict = None
+
+    _views_for_including: List[str] = None
+    _views_for_excluding: List[str] = None
 
     _need_dump_pre_and_post_sections: bool = True
     _need_dump_data: bool = True
@@ -136,23 +144,66 @@ class DumpMode:
         self.context.logger.debug(str(query))
         sequences_data = await connection.fetch(query)
 
-        for sequence_data in sequences_data:
-            seq_name = sequence_data[3] + "." + sequence_data[4]
+        for table_schema, table_name, _, sequence_schema, sequence_name in sequences_data:
+            full_sequence_name = sequence_schema + "." + sequence_name
             sequence_last_value = await connection.fetchval(
-                f'select last_value from "{sequence_data[3]}"."{sequence_data[4]}"'
+                f'select last_value from "{sequence_schema}"."{sequence_name}"'
             )
             if ((self.context.options.dbg_stage_2_validate_data or self.context.options.dbg_stage_3_validate_full)
                     and sequence_last_value > int(self.context.validate_limit.split()[1])):
                 sequence_last_value = 100
 
             for file in self._data_dump_files.values():
-                if sequence_data[0] == file["schema"] and sequence_data[1] == file["table"]:
-                    self._sequences_last_values[seq_name] = {
-                        "schema": sequence_data[3],
-                        "table": sequence_data[1],
-                        "seq_name": sequence_data[4],
+                if table_schema == file["schema"] and table_name == file["table"]:
+                    self._sequences_last_values[full_sequence_name] = {
+                        "schema": sequence_schema,
+                        "table": table_name,
+                        "seq_name": sequence_name,
                         "value": sequence_last_value,
+                        "is_excluded": (table_schema, table_name) not in self.context.tables
                     }
+
+    async def _prepare_indexes(self, connection: Connection):
+        self._indexes = {}
+        views_list = [(view_data['view_schema'], view_data['view_name']) for view_data in self._views.values() if not view_data['is_excluded']]
+        indexes_data = await get_indexes_data(connection, self.context.tables + views_list)
+        for schema, table, index_name, is_excluded in indexes_data:
+            self._indexes[index_name] = {
+                "schema": schema,
+                "table": table,
+                "index_name": index_name,
+                "is_excluded": is_excluded,
+            }
+
+    async def _prepare_views(self, connection: Connection):
+        self._views = {}
+        views_data = await get_views_related_to_tables(connection, self.context.tables)
+        for view_schema, view_name, view_type, table_schema, table_name, is_excluded in views_data:
+            if view_name in self._views and self._views[view_name]["is_excluded"]:
+                continue
+
+            self._views[view_name] = {
+                "view_schema": view_schema,
+                "view_name": view_name,
+                "view_type": view_type,
+                "table_schema": table_schema,
+                "table_name": table_name,
+                "is_excluded": is_excluded,
+            }
+
+    async def _prepare_constraints(self, connection: Connection):
+        self._constraints = {}
+        constraints_data = await get_constraints_to_excluded_tables(connection, self.context.tables)
+
+        for table_schema_from, table_name_from, constraint_name, table_schema_to, table_name_to, is_excluded in constraints_data:
+            self._constraints[constraint_name] = {
+                "table_schema_from": table_schema_from,
+                "table_name_from": table_name_from,
+                "constraint_name": constraint_name,
+                "table_schema_to": table_schema_to,
+                "table_name_to": table_name_to,
+                "is_excluded": is_excluded,
+            }
 
     async def _prepare_and_save_metadata(self):
         if self.context.options.dbg_stage_1_validate_dict:
@@ -172,13 +223,14 @@ class DumpMode:
 
         # Schemas and functions used in constraints need to be preserved only when a table whitelist is applied.
         if self.context.white_listed_tables:
-            self.metadata.partial_dump_schemas = list({schema for schema, _ in self.context.tables})
-            if self._constraint_functions:
-                self.metadata.partial_dump_functions = self._constraint_functions
+            self.metadata.partial_dump_schemas = self._schemas
 
         if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
             self.metadata.files = self._data_dump_files
             self.metadata.sequences_last_values = self._sequences_last_values
+            self.metadata.views = self._views
+            self.metadata.indexes = self._indexes
+            self.metadata.constraints = self._constraints
 
             self.metadata.total_tables_size = self._total_tables_size
             self.metadata.total_rows = self._total_rows
@@ -519,6 +571,11 @@ class DumpMode:
                 # Prepare data for metadata
                 await self._count_totals(connection=connection)
                 await self._prepare_sequences_last_values(connection=connection)
+                await self._prepare_views(connection=connection)
+                await self._prepare_indexes(connection=connection)
+                await self._prepare_constraints(connection=connection)
+                await self._prepare_objects_ddl_to_metadata(connection)
+                self._schemas = await get_schemas(connection)
         finally:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
@@ -545,9 +602,11 @@ class DumpMode:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
 
-    async def _prepare_functions_list(self, connection: Connection):
-        if self.context.black_listed_tables or self.context.white_listed_tables:
-            self._constraint_functions = await get_functions_using_for_constraints(connection, self.context.tables)
+    async def _prepare_objects_ddl_to_metadata(self, connection: Connection):
+        if self.context.white_listed_tables:
+            self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection)
+            self.metadata.partial_dump_types = await get_custom_functions_ddl(connection)
+            self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection)
 
     def _save_input_dicts_to_run_dir(self):
         if not self.context.options.save_dicts:
@@ -582,7 +641,6 @@ class DumpMode:
             self._prepare_output_dir()
 
             await self._prepare_tables_lists(connection)
-            await self._prepare_functions_list(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
             await self._dump_data(connection)

@@ -118,10 +118,10 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int = None, conditio
 def get_sequences_query():
     return """
         SELECT
-            pn_t.nspname,
+            pn_t.nspname AS table_schema,
             t.relname AS table_name,
             a.attname AS column_name,
-            pn_s.nspname,
+            pn_s.nspname AS sequence_schema,
             s.relname AS sequence_name
         FROM pg_class AS t
         JOIN pg_attribute AS a ON a.attrelid = t.oid

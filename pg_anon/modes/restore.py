@@ -136,32 +136,76 @@ class RestoreMode:
             )
 
     def _make_filtered_toc_list(self):
-        if not (self.context.black_listed_tables or self.context.white_listed_tables):
-            return
+        # if not (self.context.black_listed_tables or self.context.white_listed_tables):
+        #     return
 
-        # Make blacklist for tables
+        # Make blacklist for TABLE, DEFAULT, CONSTRAINT, TRIGGER, RULE
         blacklist = [
             re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
             for schema, table in self.context.black_listed_tables
         ]
-        # Update blacklist for sequences
-        blacklist.extend([
-            re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
-            for seq in self.metadata.sequences_last_values.values()
-            if (seq['schema'], seq['table']) in self.context.black_listed_tables
-        ])
 
-        # Make whitelist for tables
+        # Make whitelist for TABLE, DEFAULT, CONSTRAINT, FK CONSTRAINT, TRIGGER, RULE
         whitelist = [
             re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
             for schema, table in self.context.white_listed_tables
         ]
-        # Update whitelist for sequences
-        whitelist.extend([
-            re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
-            for seq in self.metadata.sequences_last_values.values()
-            if (seq['schema'], seq['table']) in self.context.white_listed_tables
-        ])
+
+        if self.metadata.sequences_last_values:
+            # Update blacklist for SEQUENCE, SEQUENCE OWNED BY
+            blacklist.extend([
+                re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                for seq in self.metadata.sequences_last_values.values()
+                if seq['is_excluded'] or (seq['schema'], seq['table']) in self.context.black_listed_tables
+            ])
+            # Update whitelist for SEQUENCE, SEQUENCE OWNED BY
+            whitelist.extend([
+                re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                for seq in self.metadata.sequences_last_values.values()
+                if not seq['is_excluded'] and (seq['schema'], seq['table']) in self.context.white_listed_tables
+            ])
+
+        if self.metadata.indexes:
+            # Update blacklist for INDEX
+            blacklist.extend([
+                re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                for index in self.metadata.indexes.values()
+                if index['is_excluded'] or (index['schema'], index['table']) in self.context.black_listed_tables
+            ])
+            # Update blacklist for INDEX
+            whitelist.extend([
+                re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                for index in self.metadata.indexes.values()
+                if not index['is_excluded'] and (index['schema'], index['table']) in self.context.white_listed_tables
+            ])
+
+        if self.metadata.views:
+            # Update blacklist for VIEW, MATERIALIZED VIEW
+            blacklist.extend([
+                re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                for view in self.metadata.views.values()
+                if view['is_excluded'] or (view['table_schema'], view['table_name']) in self.context.black_listed_tables
+            ])
+            # Update blacklist for VIEW, MATERIALIZED VIEW
+            whitelist.extend([
+                re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                for view in self.metadata.views.values()
+                if not view['is_excluded'] and (view['table_schema'], view['table_name']) in self.context.white_listed_tables
+            ])
+
+        if self.metadata.constraints:
+            # Update blacklist for FK CONSTRAINT
+            blacklist.extend([
+                re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
+                for constraint in self.metadata.constraints.values()
+                if constraint['is_excluded'] or (constraint['table_schema_to'], constraint['table_name_to']) in self.context.black_listed_tables
+            ])
+            # Update blacklist for FK CONSTRAINT
+            whitelist.extend([
+                re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
+                for constraint in self.metadata.constraints.values()
+                if not constraint['is_excluded'] and (constraint['table_schema_to'], constraint['table_name_to']) in self.context.white_listed_tables
+            ])
 
         for section in ["pre_data", "post_data"]:
             command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]
@@ -180,9 +224,11 @@ class RestoreMode:
                         continue
 
                     if blacklist and any(p.search(toc_line) for p in blacklist):
+                        self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by blacklist - "{toc_line}" ')
                         continue
 
                     if whitelist and not any(p.search(toc_line) for p in whitelist):
+                        self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by whitelist - "{toc_line}" ')
                         continue
 
                     f.write(f'{toc_line}\n')
@@ -255,6 +301,9 @@ class RestoreMode:
             await connection.execute(query)
         else:
             for sequence_data in self.metadata.sequences_last_values.values():
+                if sequence_data['is_excluded']:
+                    continue
+
                 sequence_relation = (sequence_data['schema'], sequence_data['table'])
 
                 if self.context.black_listed_tables and sequence_relation in self.context.black_listed_tables:
@@ -289,13 +338,18 @@ class RestoreMode:
             self.context.logger.info("PARTIAL RESTORE MODE: " + query)
             await connection.execute(query)
 
-    async def _create_functions_for_partial_mode(self, connection: Connection):
-        if not self.metadata.partial_dump_functions:
-            return
+    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection):
+        ddl_list = []
+        if self.metadata.partial_dump_functions:
+            ddl_list.extend(self.metadata.partial_dump_functions)
+        if self.metadata.partial_dump_functions:
+            ddl_list.extend(self.metadata.partial_dump_types)
+        if self.metadata.partial_dump_functions:
+            ddl_list.extend(self.metadata.partial_dump_domains)
 
-        for create_function_query in self.metadata.partial_dump_functions:
-            self.context.logger.info("PARTIAL RESTORE MODE: " + create_function_query)
-            await connection.execute(create_function_query)
+        for query in ddl_list:
+            self.context.logger.info("PARTIAL RESTORE MODE: " + query)
+            await connection.execute(query)
 
     async def _drop_constraints(self, connection: Connection):
         """
@@ -465,13 +519,13 @@ class RestoreMode:
 
         await connection.execute(
             f"""
-            DROP DATABASE {self.context.options.db_name};
+            DROP DATABASE "{self.context.options.db_name}";
             """
         )
 
         await connection.execute(
             f"""
-            CREATE DATABASE {self.context.options.db_name}
+            CREATE DATABASE "{self.context.options.db_name}"
             WITH TEMPLATE template0
                  OWNER {db_params[1]}
                  ENCODING '{db_params[2]}'
@@ -622,7 +676,7 @@ class RestoreMode:
             self._prepare_tables_lists()
 
             await self._create_schemas_for_partial_mode(connection)
-            await self._create_functions_for_partial_mode(connection)
+            await self._create_objects_from_ddl_for_partial_mode(connection)
             self._make_filtered_toc_list()
 
             await self._restore_pre_data()
