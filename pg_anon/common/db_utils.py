@@ -192,7 +192,7 @@ async def get_schemas(connection: Connection) -> List[str]:
     query = f"""
     SELECT nspname AS schema_name
     FROM pg_namespace
-    WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    WHERE nspname NOT LIKE 'pg_%' AND nspname NOT IN ('information_schema')
     ORDER BY nspname;
     """
 
