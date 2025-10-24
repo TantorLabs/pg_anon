@@ -287,6 +287,7 @@ class DumpMode:
             "-F",
             "c",
             "-s",
+            "--no-owner",
             "-f",
             str((self.output_dir / section.replace("-", "_")).with_suffix(".backup")),
             self.context.options.db_name,

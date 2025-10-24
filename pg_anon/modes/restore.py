@@ -257,6 +257,7 @@ class RestoreMode:
             self.context.options.db_name,
             "-j",
             str(self.context.options.db_connections_per_process),
+            "--no-owner",
             str((self.input_dir / section.replace("-", "_")).with_suffix(".backup")),
         ]
         if not self.context.options.db_host:
