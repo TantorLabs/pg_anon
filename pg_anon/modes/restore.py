@@ -194,18 +194,20 @@ class RestoreMode:
             ])
 
         if self.metadata.constraints:
-            # Update blacklist for FK CONSTRAINT
-            blacklist.extend([
-                re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
-                for constraint in self.metadata.constraints.values()
-                if constraint['is_excluded'] or (constraint['table_schema_to'], constraint['table_name_to']) in self.context.black_listed_tables
-            ])
-            # Update blacklist for FK CONSTRAINT
-            whitelist.extend([
-                re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
-                for constraint in self.metadata.constraints.values()
-                if not constraint['is_excluded'] and (constraint['table_schema_to'], constraint['table_name_to']) in self.context.white_listed_tables
-            ])
+            for constraint in self.metadata.constraints.values():
+                one_of_fk_tables_in_black_list = (constraint['table_schema_to'], constraint['table_name_to']) in self.context.black_listed_tables or (constraint['table_schema_from'], constraint['table_name_from']) in self.context.black_listed_tables
+                if constraint['is_excluded'] or one_of_fk_tables_in_black_list:
+                    # Update blacklist for FK CONSTRAINT
+                    blacklist.extend([
+                        re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
+                    ])
+
+                fk_tables_both_in_white_list = (constraint['table_schema_to'], constraint['table_name_to']) in self.context.white_listed_tables and (constraint['table_schema_from'], constraint['table_name_from']) in self.context.white_listed_tables
+                if not constraint['is_excluded'] and fk_tables_both_in_white_list:
+                    # Update blacklist for FK CONSTRAINT
+                    whitelist.extend([
+                        re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
+                    ])
 
         for section in ["pre_data", "post_data"]:
             command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]

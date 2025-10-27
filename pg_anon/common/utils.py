@@ -289,7 +289,7 @@ def filter_db_tables(
                 # if white list is using and table in white list, this table must not be filtered
                 white_listed_tables.add(table_data)
                 filtered_tables.append(table_data)
-                continue
+            continue
 
         # if table not in black list and white list not using, this table must not be filtered
         filtered_tables.append(table_data)
