@@ -136,74 +136,76 @@ class RestoreMode:
             )
 
     def _make_filtered_toc_list(self):
-        # if not (self.context.black_listed_tables or self.context.white_listed_tables):
-        #     return
+        whitelist = []
+        blacklist = []
 
-        # Make blacklist for TABLE, DEFAULT, CONSTRAINT, TRIGGER, RULE
-        blacklist = [
-            re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
-            for schema, table in self.context.black_listed_tables
-        ]
+        for schema, table in self.context.black_listed_tables:
+            # Make blacklist for TABLE, DEFAULT, TRIGGER, RULE
+            blacklist.append(re.compile(fr".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
+            # Update blacklist for CONSTRAINT
+            blacklist.append(re.compile(fr"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
 
-        # Make whitelist for TABLE, DEFAULT, CONSTRAINT, FK CONSTRAINT, TRIGGER, RULE
-        whitelist = [
-            re.compile(fr".*{re.escape(schema)} {re.escape(table)}")
-            for schema, table in self.context.white_listed_tables
-        ]
+        for schema, table in self.context.white_listed_tables:
+            # Make whitelist for TABLE, DEFAULT, CONSTRAINT, FK CONSTRAINT, TRIGGER, RULE
+            whitelist.append(re.compile(fr".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
+            # Update whitelist for CONSTRAINT
+            whitelist.append(re.compile(fr"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
 
         if self.metadata.sequences_last_values:
-            # Update blacklist for SEQUENCE, SEQUENCE OWNED BY
-            blacklist.extend([
-                re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
-                for seq in self.metadata.sequences_last_values.values()
-                if seq['is_excluded'] or (seq['schema'], seq['table']) in self.context.black_listed_tables
-            ])
-            # Update whitelist for SEQUENCE, SEQUENCE OWNED BY
-            whitelist.extend([
-                re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
-                for seq in self.metadata.sequences_last_values.values()
-                if not seq['is_excluded'] and (seq['schema'], seq['table']) in self.context.white_listed_tables
-            ])
+            for seq in self.metadata.sequences_last_values.values():
+                # Update blacklist for SEQUENCE, SEQUENCE OWNED BY
+                if seq['is_excluded'] or (seq['schema'], seq['table']) in self.context.black_listed_tables:
+                    blacklist.append(
+                        re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                    )
+
+                # Update whitelist for SEQUENCE, SEQUENCE OWNED BY
+                if not seq['is_excluded'] and (seq['schema'], seq['table']) in self.context.white_listed_tables:
+                    whitelist.append(
+                        re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                    )
 
         if self.metadata.indexes:
-            # Update blacklist for INDEX
-            blacklist.extend([
-                re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
-                for index in self.metadata.indexes.values()
-                if index['is_excluded'] or (index['schema'], index['table']) in self.context.black_listed_tables
-            ])
-            # Update blacklist for INDEX
-            whitelist.extend([
-                re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
-                for index in self.metadata.indexes.values()
-                if not index['is_excluded'] and (index['schema'], index['table']) in self.context.white_listed_tables
-            ])
+            for index in self.metadata.indexes.values():
+                # Update blacklist for INDEX
+                if index['is_excluded'] or (index['schema'], index['table']) in self.context.black_listed_tables:
+                    blacklist.append(
+                        re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                    )
+
+                # Update blacklist for INDEX
+                if not index['is_excluded'] and (index['schema'], index['table']) in self.context.white_listed_tables:
+                    whitelist.append(
+                        re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                    )
 
         if self.metadata.views:
-            # Update blacklist for VIEW, MATERIALIZED VIEW
-            blacklist.extend([
-                re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
-                for view in self.metadata.views.values()
-                if view['is_excluded'] or (view['table_schema'], view['table_name']) in self.context.black_listed_tables
-            ])
-            # Update blacklist for VIEW, MATERIALIZED VIEW
-            whitelist.extend([
-                re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
-                for view in self.metadata.views.values()
-                if not view['is_excluded'] and (view['table_schema'], view['table_name']) in self.context.white_listed_tables
-            ])
+            for view in self.metadata.views.values():
+                # Update blacklist for VIEW, MATERIALIZED VIEW
+                if view['is_excluded'] or (view['table_schema'], view['table_name']) in self.context.black_listed_tables:
+                    blacklist.append(
+                        re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                    )
+
+                # Update blacklist for VIEW, MATERIALIZED VIEW
+                if not view['is_excluded'] and (view['table_schema'], view['table_name']) in self.context.white_listed_tables:
+                    whitelist.append(
+                        re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                    )
 
         if self.metadata.constraints:
             for constraint in self.metadata.constraints.values():
-                one_of_fk_tables_in_black_list = (constraint['table_schema_to'], constraint['table_name_to']) in self.context.black_listed_tables or (constraint['table_schema_from'], constraint['table_name_from']) in self.context.black_listed_tables
-                if constraint['is_excluded'] or one_of_fk_tables_in_black_list:
+                constraint_table_to = (constraint['table_schema_to'], constraint['table_name_to'])
+                constraint_table_from = (constraint['table_schema_from'], constraint['table_name_from'])
+                one_of_constraint_tables_in_black_list = constraint_table_to in self.context.black_listed_tables or constraint_table_from in self.context.black_listed_tables
+                if constraint['is_excluded'] or one_of_constraint_tables_in_black_list:
                     # Update blacklist for FK CONSTRAINT
                     blacklist.extend([
                         re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
                     ])
 
-                fk_tables_both_in_white_list = (constraint['table_schema_to'], constraint['table_name_to']) in self.context.white_listed_tables and (constraint['table_schema_from'], constraint['table_name_from']) in self.context.white_listed_tables
-                if not constraint['is_excluded'] and fk_tables_both_in_white_list:
+                constraint_tables_both_in_white_list = constraint_table_to in self.context.white_listed_tables and constraint_table_from in self.context.white_listed_tables
+                if not constraint['is_excluded'] and constraint_tables_both_in_white_list:
                     # Update blacklist for FK CONSTRAINT
                     whitelist.extend([
                         re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
