@@ -6,4 +6,4 @@ try:
     __version__ = version("pg_anon")
 except PackageNotFoundError:
     # TMP: if package is not installed, return hardcoded
-    __version__ = "1.8.0"
+    __version__ = "1.8.1"

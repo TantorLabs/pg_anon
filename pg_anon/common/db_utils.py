@@ -101,7 +101,7 @@ async def get_fields_list(connection_params: ConnectionParams, table_schema: str
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
         """
-            SELECT column_name, udt_name, is_nullable FROM information_schema.columns
+            SELECT column_name, udt_name, is_nullable, is_generated FROM information_schema.columns
             WHERE table_schema = '%s' AND table_name='%s'
             ORDER BY ordinal_position ASC
         """
@@ -458,72 +458,63 @@ async def get_dump_query(
     if files is not None:
         files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
 
-    if table_rule is None:
-        # there is no table in the dictionary, so it will be transferred "as is"
+    if table_rule and "raw_sql" in table_rule:
+        # the table is transferred using "raw_sql"
         if (ctx.options.dbg_stage_1_validate_dict
                 or ctx.options.dbg_stage_2_validate_data
                 or ctx.options.dbg_stage_3_validate_full):
-            query = "SELECT * FROM %s %s" % (table_name_full, ctx.validate_limit)
+            query = table_rule["raw_sql"] + " " + ctx.validate_limit
+            ctx.logger.info(str(query))
             return query
         else:
-            query = f"SELECT * FROM {table_name_full}"
+            query = table_rule["raw_sql"]
             return query
     else:
-        # table found in dictionary
-        if "raw_sql" in table_rule:
-            # the table is transferred using "raw_sql"
-            if (ctx.options.dbg_stage_1_validate_dict
-                    or ctx.options.dbg_stage_2_validate_data
-                    or ctx.options.dbg_stage_3_validate_full):
-                query = table_rule["raw_sql"] + " " + ctx.validate_limit
-                ctx.logger.info(str(query))
-                return query
-            else:
-                query = table_rule["raw_sql"]
-                return query
-        else:
-            # the table is transferred with the specific fields for anonymization
-            fields_list = await get_fields_list(
-                connection_params=ctx.connection_params,
-                server_settings=ctx.server_settings,
-                table_schema=table_schema,
-                table_name=table_name
-            )
+        # the table is transferred with the specific fields for anonymization or transferred "as is"
+        fields_list = await get_fields_list(
+            connection_params=ctx.connection_params,
+            server_settings=ctx.server_settings,
+            table_schema=table_schema,
+            table_name=table_name
+        )
 
-            sql_expr = ""
+        sql_expr = ""
 
-            for cnt, column_info in enumerate(fields_list):
-                column_name = column_info["column_name"]
-                udt_name = column_info["udt_name"]
-                field_anon_rule = table_rule["fields"].get(column_name)
+        for cnt, column_info in enumerate(fields_list):
+            column_name = column_info["column_name"]
+            udt_name = column_info["udt_name"]
+            field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
 
-                if field_anon_rule:
-                    if field_anon_rule.find("SQL:") == 0:
-                        sql_expr += f'({field_anon_rule[4:]}) as "{column_name}"'
-                    else:
-                        sql_expr += f'{field_anon_rule}::{udt_name} as "{column_name}"'
+            if column_info["is_generated"] == 'ALWAYS':
+                continue
+
+            if field_anon_rule:
+                if field_anon_rule.find("SQL:") == 0:
+                    sql_expr += f'({field_anon_rule[4:]}) as "{column_name}"'
                 else:
-                    # field "as is"
-                    sql_expr += f'"{column_name}" as "{column_name}"'
+                    sql_expr += f'{field_anon_rule}::{udt_name} as "{column_name}"'
+            else:
+                # field "as is"
+                sql_expr += f'"{column_name}" as "{column_name}"'
 
-                if cnt != len(fields_list) - 1:
-                    sql_expr += ",\n"
+            if cnt != len(fields_list) - 1:
+                sql_expr += ",\n"
 
-            query = f"SELECT {sql_expr}\nFROM {table_name_full}"
-            if sql_condition := table_rule.get('sql_condition'):
-                condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
-                query += f"\nWHERE {condition}"
+        query = f"SELECT {sql_expr}\nFROM {table_name_full}"
+        if sql_condition := table_rule and table_rule.get('sql_condition'):
+            condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
+            query += f"\nWHERE {condition}"
 
-            if (ctx.options.dbg_stage_1_validate_dict
-                    or ctx.options.dbg_stage_2_validate_data
-                    or ctx.options.dbg_stage_3_validate_full):
-                query += f" {ctx.validate_limit}"
+        if (ctx.options.dbg_stage_1_validate_dict
+                or ctx.options.dbg_stage_2_validate_data
+                or ctx.options.dbg_stage_3_validate_full):
+            query += f" {ctx.validate_limit}"
 
-            if nulls_last:
-                ordering = ", ".join([
-                    field["column_name"] + ' NULLS LAST' for field in fields_list
-                    if field["is_nullable"].lower() == "yes"
-                ])
-                query += f" ORDER BY {ordering}"
+        if nulls_last:
+            ordering = ", ".join([
+                field["column_name"] + ' NULLS LAST' for field in fields_list
+                if field["is_nullable"].lower() == "yes"
+            ])
+            query += f" ORDER BY {ordering}"
 
-            return query
+        return query
