@@ -478,7 +478,7 @@ async def get_dump_query(
             table_name=table_name
         )
 
-        sql_expr = ""
+        fields = []
 
         for cnt, column_info in enumerate(fields_list):
             column_name = column_info["column_name"]
@@ -490,17 +490,14 @@ async def get_dump_query(
 
             if field_anon_rule:
                 if field_anon_rule.find("SQL:") == 0:
-                    sql_expr += f'({field_anon_rule[4:]}) as "{column_name}"'
+                    fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
                 else:
-                    sql_expr += f'{field_anon_rule}::{udt_name} as "{column_name}"'
+                    fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
             else:
                 # field "as is"
-                sql_expr += f'"{column_name}" as "{column_name}"'
+                fields.append(f'"{column_name}" as "{column_name}"')
 
-            if cnt != len(fields_list) - 1:
-                sql_expr += ",\n"
-
-        query = f"SELECT {sql_expr}\nFROM {table_name_full}"
+        query = f"SELECT {',\n'.join(fields)}\nFROM {table_name_full}"
         if sql_condition := table_rule and table_rule.get('sql_condition'):
             condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
             query += f"\nWHERE {condition}"
