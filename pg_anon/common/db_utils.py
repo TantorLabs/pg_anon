@@ -497,7 +497,8 @@ async def get_dump_query(
                 # field "as is"
                 fields.append(f'"{column_name}" as "{column_name}"')
 
-        query = f"SELECT {',\n'.join(fields)}\nFROM {table_name_full}"
+        fields_expr = ',\n'.join(fields)
+        query = f"SELECT {fields_expr}\nFROM {table_name_full}"
         if sql_condition := table_rule and table_rule.get('sql_condition'):
             condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
             query += f"\nWHERE {condition}"

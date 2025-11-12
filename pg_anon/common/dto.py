@@ -1,7 +1,7 @@
 import json
 import time
 from dataclasses import dataclass, asdict
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Callable, Dict, List, Union
@@ -124,7 +124,7 @@ class PgAnonResult:
     @property
     def start_date(self) -> datetime:
         if not self._start_date:
-            self._start_date = datetime.fromtimestamp(self.start_time, tz=UTC)
+            self._start_date = datetime.fromtimestamp(self.start_time, tz=timezone.utc)
         return self._start_date
     
     @property
@@ -132,7 +132,7 @@ class PgAnonResult:
         if not self._end_date:
             if self.end_time is None:
                 return None
-            self._end_date = datetime.fromtimestamp(self.end_time, tz=UTC)
+            self._end_date = datetime.fromtimestamp(self.end_time, tz=timezone.utc)
         return self._end_date
 
     @property
