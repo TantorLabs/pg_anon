@@ -132,7 +132,7 @@ def get_sequences_query():
         WHERE
             t.relkind IN ('r', 'p')
             AND s.relkind = 'S'
-            AND d.deptype = 'a'
+            AND d.deptype in ('a', 'i')
             AND d.classid = 'pg_catalog.pg_class'::regclass
             AND d.refclassid = 'pg_catalog.pg_class'::regclass
             """
