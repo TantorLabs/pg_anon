@@ -86,8 +86,8 @@ For example, you can specify a configuration for postgres 15 and 17:
 ```yaml
 pg-utils-versions:
   15:
-    pg_dump: "/usr/lib/postgresql/14/bin/pg_dump"
-    pg_restore: "/usr/lib/postgresql/14/bin/pg_restore"
+    pg_dump: "/usr/lib/postgresql/15/bin/pg_dump"
+    pg_restore: "/usr/lib/postgresql/15/bin/pg_restore"
   17:
     pg_dump: "/usr/lib/postgresql/17/bin/pg_dump"
     pg_restore: "/usr/lib/postgresql/17/bin/pg_restore"
