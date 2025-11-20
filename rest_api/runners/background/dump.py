@@ -2,13 +2,12 @@ from pg_anon.common.enums import AnonMode
 from rest_api.enums import DumpMode
 from rest_api.pydantic_models import DumpRequest
 from rest_api.runners.background import BaseRunner
-from rest_api.utils import write_dictionary_contents, get_full_dump_path
+from rest_api.utils import write_dictionary_contents
 
 
 class DumpRunner(BaseRunner):
     mode: str = AnonMode.DUMP.value
     request: DumpRequest
-    short_dump_path: str
     full_dump_path: str
 
     def __init__(self, request: DumpRequest):
@@ -46,8 +45,7 @@ class DumpRunner(BaseRunner):
             )
 
     def _prepare_dump_path_cli_params(self):
-        self.short_dump_path = self.request.output_path.lstrip("/")
-        self.full_dump_path = get_full_dump_path(self.short_dump_path)
+        self.full_dump_path = self.request.validated_output_path
         self.cli_params.extend([
             f'--output-dir={self.full_dump_path}',
             '--clear-output-dir',

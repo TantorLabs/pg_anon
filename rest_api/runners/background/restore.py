@@ -2,13 +2,12 @@ from pg_anon.common.enums import AnonMode
 from rest_api.enums import RestoreMode
 from rest_api.pydantic_models import RestoreRequest
 from rest_api.runners.background import BaseRunner
-from rest_api.utils import get_full_dump_path, write_dictionary_contents
+from rest_api.utils import write_dictionary_contents
 
 
 class RestoreRunner(BaseRunner):
     mode: str = AnonMode.RESTORE.value
     request: RestoreRequest
-    short_dump_path: str
     full_input_path: str
 
     def __init__(self, request: RestoreRequest):
@@ -41,8 +40,7 @@ class RestoreRunner(BaseRunner):
             )
 
     def _prepare_input_dump_path_cli_params(self):
-        self.short_input_path = self.request.input_path.lstrip("/")
-        self.full_input_path = get_full_dump_path(self.short_input_path)
+        self.full_input_path = self.request.validated_input_path
         self.cli_params.extend([
             f'--input-dir={self.full_input_path}',
         ])

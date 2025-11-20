@@ -388,10 +388,20 @@ class DumpRequest(StatelessRunnerRequest):
     partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
     partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
     output_path: str
+    validated_output_path: Optional[str] = Field(default=None, exclude=True)
+
     pg_dump_path: Optional[str] = None
 
     proc_count: Optional[int] = None
     proc_conn_count: Optional[int] = None
+
+    @model_validator(mode="after")
+    def validate_model(self):
+        from rest_api.utils import get_full_dump_path
+
+        if self.output_path:
+            self.validated_output_path = get_full_dump_path(self.output_path)
+        return self
 
 
 class DumpStatusResponse(StatelessRunnerResponse):
@@ -400,6 +410,15 @@ class DumpStatusResponse(StatelessRunnerResponse):
 
 class DumpDeleteRequest(BaseModel):
     path: str
+    validated_path: Optional[str] = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def validate_model(self):
+        from rest_api.utils import get_full_dump_path
+
+        if self.path:
+            self.validated_path = get_full_dump_path(self.path)
+        return self
 
 
 #############################################
@@ -408,6 +427,7 @@ class DumpDeleteRequest(BaseModel):
 class RestoreRequest(StatelessRunnerRequest):
     type: RestoreMode
     input_path: str
+    validated_input_path: Optional[str] = Field(default=None, exclude=True)
     partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
     partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
     pg_restore_path: Optional[str] = None
@@ -417,9 +437,15 @@ class RestoreRequest(StatelessRunnerRequest):
     drop_db: bool = False
 
     @model_validator(mode="after")
-    def check_mutually_exclusive(self):
+    def validate_model(self):
+        from rest_api.utils import get_full_dump_path
+
         if self.clean_db and self.drop_db:
             raise ValueError("Only one of `clean_db` or `drop_db` can be set.")
+
+        if self.input_path:
+            self.validated_input_path = get_full_dump_path(self.input_path)
+
         return self
 
 

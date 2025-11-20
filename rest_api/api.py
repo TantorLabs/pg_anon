@@ -22,7 +22,7 @@ from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, Db
     OperationDataResponse
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
-from rest_api.utils import get_full_dump_path, delete_folder, read_json_file, read_logs_from_tail
+from rest_api.utils import delete_folder, read_json_file, read_logs_from_tail
 
 app = FastAPI(
     title='Stateless web service for pg_anon'
@@ -152,8 +152,7 @@ async def stateless_dump_start(request: DumpRequest, background_tasks: Backgroun
     }
 )
 async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
-    dump_path = get_full_dump_path(request.path)
-    background_tasks.add_task(delete_folder, dump_path)
+    background_tasks.add_task(delete_folder, request.validated_path)
 
 
 @app.post(
@@ -167,7 +166,7 @@ async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: Ba
         "500": {"model": ErrorResponse},
     }
 )
-async def stateless_dump_start(request: RestoreRequest, background_tasks: BackgroundTasks):
+async def stateless_restore_start(request: RestoreRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(restore_callback, request)
 
 
