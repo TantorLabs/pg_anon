@@ -61,6 +61,8 @@ RETURNS boolean AS $$
 ...
 ```
 
+---
+
 ### 6. Is the scanning stage required?
 
 **No**. You can create all required dictionaries manually or reuse previously generated dictionaries.
@@ -117,3 +119,42 @@ When using the `--drop-db` option, the target database will be recreated using `
 If there are active connections, the `DROP DATABASE` command cannot be executed.
 
 You must terminate all active sessions and run the restore operation again.
+
+---
+
+### 12. Difference between options `--drop-db` and `--clean-db` for restore mode
+
+- `--drop-db` - recreate target database using commands `DROP DATABASE` and `CREATE DATABASE`. After that running restore process on empty db.
+- `--clean-db` - Performs a restore similar to pg_restore --clean --if-exists. It creates missing tables from the backup in the target database. It also preserves extra tables that exist in the target DB and are not contained in the restoring backup. This option does not require an empty target database.  
+
+---
+
+### 13. Determining Optimal Process and Connection Counts
+
+To configure optimal values, first identify these system parameters:
+  - max_connections - maximum connections allowed by your PostgreSQL database
+  - CPU core count
+  - Reserved connections (typically 3-10 for maintenance/admin connections)
+
+Important Considerations:
+  - Exceeding max_connections may cause pg_anon failures and affect other database applications
+  - Ensure sufficient connection headroom for other services
+
+#### Recommended Configuration:
+
+Process Count
+```bash
+--processes = CPU cores
+```
+Database Connections per Process
+```bash
+--db-connections-per-process ≤ (max_connections - reserved_connections) / --processes
+```
+
+#### Example Calculation:
+  - CPU cores: 4
+  - max_connections: 100
+  - reserved_connections: 5
+  - --processes: 4
+  - --db-connections-per-process: (100 - 5) / 4 ≈ 23.75 → 23
+  - **Verification:** 4 processes × 23 connections = 92 total connections (within 100 limit)
