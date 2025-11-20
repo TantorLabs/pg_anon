@@ -15,7 +15,11 @@ from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 
 def get_full_dump_path(dump_path: str) -> str:
-    return str(DUMP_STORAGE_BASE_DIR / dump_path.lstrip("/"))
+    full_dump_path = Path(DUMP_STORAGE_BASE_DIR / dump_path.lstrip("/")).resolve()
+    if not str(full_dump_path).startswith(str(DUMP_STORAGE_BASE_DIR)) or full_dump_path == DUMP_STORAGE_BASE_DIR:
+        raise ValueError(f"Invalid path: {dump_path}")
+
+    return str(full_dump_path)
 
 
 def write_dictionary_contents(dictionary_contents: List[DictionaryContent], base_dir: Path) -> Dict[str, DictionaryMetadata]:
