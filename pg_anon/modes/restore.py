@@ -479,7 +479,9 @@ class RestoreMode:
             transaction_snapshot_id = await connection.fetchval("select pg_export_snapshot()")
             await self._process_restore_data(transaction_snapshot_id)
 
-    def compare_rows_count(self):
+        self._compare_rows_count()
+
+    def _compare_rows_count(self):
         if self.context.black_listed_tables or self.context.white_listed_tables:
             dumped_rows = 0
 
