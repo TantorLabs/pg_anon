@@ -237,7 +237,7 @@ def normalize_field_type(field_info: FieldInfo) -> str:
 
 
 def normalize_data_type(data_type: str) -> str:
-    key = data_type.lower()
+    key = PARENS_PATTERN.sub('', data_type.lower())
     return TYPE_ALIASES.get(key, key)
 
 

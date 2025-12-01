@@ -158,7 +158,8 @@ class Context:
             )
 
         if meta_dict["data_func"]:
-            self.meta_dictionary_obj["data_func"].update(meta_dict["data_func"])
+            normalized_data_func_rules = {normalize_data_type(field_type): rules for field_type, rules in meta_dict["data_func"].items()}
+            self.meta_dictionary_obj["data_func"].update(normalized_data_func_rules)
 
         if meta_dict["data_sql_condition"]:
             self.meta_dictionary_obj["data_sql_condition"].extend(meta_dict["data_sql_condition"])
