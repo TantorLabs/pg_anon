@@ -102,6 +102,10 @@ For example, `pg_anon` can be run with this config on Postgres 16. In this case,
 ---
 
 ## Running REST API
-1. Run service - `python -m uvicorn rest_api.api:app --host 0.0.0.0 --port 8000 --workers=3`
-   - Recommended worker count = `2 * CPU_CORES + 1`
-2. OpenAPI documentation - http://0.0.0.0:8000/docs#/
+Run service command
+```sh
+python -m uvicorn rest_api.api:app --host 0.0.0.0 --port 8000 --workers=3
+```
+- Recommended worker count = `2 * CPU_CORES + 1`
+- Service OpenAPI documentation will be able by address - http://0.0.0.0:8000/docs#/
+- Also you can see [API documentation](api.md) 

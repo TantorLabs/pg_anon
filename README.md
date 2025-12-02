@@ -189,14 +189,15 @@ python3 -m pg_anon --mode=restore \
 ---
 
 ## 📘 Documentation Index
-| Section                                                                 | Description                                      |
-|-------------------------------------------------------------------------|--------------------------------------------------|
-| [💽 Installation & Configuration](docs/installation-and-configuring.md) | How to install and configure `pg_anon`           |
-| [⚙️ How It Works](docs/how-it-works.md)                                 | Describing anonymizations process into `pg_anon` |
-| [🛠️ Debugging](docs/debugging.md)                                      | How to debug anonymizations process              |
-| [💬 FAQ](docs/faq.md)                                                   | Common questions and troubleshooting tips        |
-| [📚 SQL Functions Library](docs/sql-functions-library.md)               | Built-in SQL functions for anonymization         |
-| [💡 Contributing](docs/contributing.md)                                 | Info about contributing                          |
+| Section                                                                 | Description                                                       |
+|-------------------------------------------------------------------------|-------------------------------------------------------------------|
+| [💽 Installation & Configuration](docs/installation-and-configuring.md) | How to install and configure `pg_anon`                            |
+| [⚙️ How It Works](docs/how-it-works.md)                                 | Describing anonymizations process into `pg_anon`                  |
+| [🛠️ Debugging](docs/debugging.md)                                      | How to debug anonymizations process                               |
+| [💬 FAQ](docs/faq.md)                                                   | Common questions and troubleshooting tips                         |
+| [📚 SQL Functions Library](docs/sql-functions-library.md)               | Built-in SQL functions for anonymization                          |
+| [🔌 API](docs/api.md)                                                   | Available endpoints, request/response formats, and usage examples |
+| [💡 Contributing](docs/contributing.md)                                 | Info about contributing                                           |
 
 ### 📘 Operations
 | Operation                                         | Description                                                                            |

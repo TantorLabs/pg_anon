@@ -100,6 +100,7 @@ async def stateless_view_fields(request: ViewFieldsRequest):
 
     return ViewFieldsResponse(
         status_id=ResponseStatus.SUCCESS.value,
+        status=ResponseStatus.SUCCESS.name.lower(),
         content=data
     )
 
@@ -121,6 +122,7 @@ async def stateless_view_data(request: ViewDataRequest):
 
     return ViewDataResponse(
         status_id=ResponseStatus.SUCCESS.value,
+        status=ResponseStatus.SUCCESS.name.lower(),
         content=data
     )
 

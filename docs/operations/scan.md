@@ -72,4 +72,4 @@ python pg_anon.py --mode=create-dict \
 | `--output-no-sens-dict-file`   | Output file with not sensitive fields will be saved to this value                                                                                 |
 | `--scan-mode`                  | defines whether to scan all data or only part of it ["full", "partial"] (default "partial")                                                       |
 | `--scan-partial-rows`          | In `--scan-mode partial` defines amount of rows to scan (default 10000). Actual rows count can be smaller after getting unique values             |
-| `--save-dicts`                 | Duplicate all input and output dictionaries to dir `runs`                                                                                         |
+| `--save-dicts`                 | Duplicate all input and output dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                |

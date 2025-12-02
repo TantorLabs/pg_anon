@@ -476,6 +476,7 @@ class ViewFieldsContent(BaseModel):
 
 class ViewFieldsResponse(BaseModel):
     status_id: int
+    status: str
     content: Optional[List[ViewFieldsContent]] = None
 
 
@@ -504,6 +505,7 @@ class ViewDataContent(BaseModel):
 
 class ViewDataResponse(BaseModel):
     status_id: int
+    status: str
     content: Optional[ViewDataContent] = None
 
 
