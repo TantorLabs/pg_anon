@@ -7,7 +7,7 @@ import sys
 import unittest
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Set, Union
 
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
@@ -1836,7 +1836,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.target_no_sens_dict = self.get_test_dict_path("test_prepared_no_sens_dict_result.py", output=True)
         self.target_no_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_no_sens_dict_result_expected.py")
 
-    def assert_sens_dicts(self, prepared_sens_dict: str | Path, prepared_sens_dict_expected: str | Path):
+    def assert_sens_dicts(self, prepared_sens_dict: Union[str, Path], prepared_sens_dict_expected: Union[str, Path]):
         """
         Comparing sens dicts
         :param prepared_sens_dict: output prepared sens dict
@@ -1884,7 +1884,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         self.assertTrue(flag_of_identity)
 
-    def assert_no_sens_dicts(self, prepared_no_sens_dict: str | Path, prepared_no_sens_dict_expected: str | Path) -> bool:
+    def assert_no_sens_dicts(self, prepared_no_sens_dict: Union[str, Path], prepared_no_sens_dict_expected: Union[str, Path]) -> bool:
         """
         Comparing no sens dicts
         :param prepared_no_sens_dict: output prepared no sens dict
@@ -1914,7 +1914,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
 
-    def assert_meta_dicts(self, meta_dict: str | Path, meta_dict_expected: str | Path) -> bool:
+    def assert_meta_dicts(self, meta_dict: Union[str, Path], meta_dict_expected: Union[str, Path]) -> bool:
         """
         Comparing meta dicts
         :param meta_dict: input prepared meta dict

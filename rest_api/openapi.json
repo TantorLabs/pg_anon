@@ -369,7 +369,7 @@
         ],
         "summary": "Run restore operation",
         "description": "Run restore operation",
-        "operationId": "stateless_dump_start_api_stateless_restore_post",
+        "operationId": "stateless_restore_start_api_stateless_restore_post",
         "requestBody": {
           "content": {
             "application/json": {
