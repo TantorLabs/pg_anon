@@ -1,9 +1,28 @@
 # 🔌 API
 > [🏠 Home](../README.md#-documentation-index) | [💽 Installation & Configuration](installation-and-configuring.md) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
 
-## Stateless
+### 📘 API Overview
+| Operation Endpoints                                                                                   |
+|-------------------------------------------------------------------------------------------------------|
+| [Check DB connection](#check-db-connection)                                                           |
+| [Run create-dict (scan) operation](#run-create-dict-scan-operation)                                   | 
+| [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) | 
+| [Display table with anonymization data](#display-table-with-anonymization-data)                       | 
+| [Run dump operation](#run-dump-operation)                                                             | 
+| [Delete dump operation](#delete-dump-operation)                                                       | 
+| [Run restore operation](#run-restore-operation)                                                       | 
 
-### 1. Check DB connection
+| Integration Endpoints                   |
+|-----------------------------------------| 
+| [Operations list](#operations-list)     | 
+| [Operation details](#operation-details) | 
+| [Operation logs](#operation-logs)       | 
+
+---
+
+## Operation Endpoints
+
+### Check DB connection
 ```http request
 POST /api/stateless/check_db_connection
 ```
@@ -45,7 +64,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/check_db_connection \
 
 ---
 
-### 2. Run create-dict (scan) operation
+### Run create-dict (scan) operation
 ```http request
 POST /api/stateless/scan
 ```
@@ -145,7 +164,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
 
 ---
 
-### 3. Display database fields with their anonymization rules
+### Display database fields with anonymization rules
 ```http request
 POST /api/stateless/view-fields
 ```
@@ -198,7 +217,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
 
 ---
 
-### 4. Display table with anonymization data
+### Display table with anonymization data
 ```http request
 POST /api/stateless/view-data
 ```
@@ -250,7 +269,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
 
 ---
 
-### 5. Run dump operation
+### Run dump operation
 ```http request
 POST /api/stateless/dump
 ```
@@ -349,7 +368,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
 
 ---
 
-### 6. Delete dump operation
+### Delete dump operation
 ```http request
 DELETE /api/stateless/dump
 ```
@@ -381,7 +400,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
 
 ---
 
-### 7. Run restore operation
+### Run restore operation
 ```http request
 POST /api/stateless/restore
 ```
@@ -478,7 +497,9 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
 | `500`       | Internal Server Error          | [ErrorResponse](#errorresponse)             |
 | `422`       | Validation Error               | [HTTPValidationError](#httpvalidationerror) |
 
-## Operations
+---
+
+## Integration Endpoints
 
 ### Operations list
 ```http request
@@ -532,7 +553,7 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | `404`       | Operation directory not found | [HTTPValidationError](#httpvalidationerror)     |
 | `422`       | Validation Error              | [HTTPValidationError](#httpvalidationerror)     |
 
-### Logs of operation
+### Operation logs
 ```http request
 GET /operation/{internal_operation_id}/logs
 ```
