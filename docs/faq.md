@@ -30,20 +30,9 @@ The only thing pg_anon adds is the `anon_funcs` schema, which is required for it
 
 ---
 
-### 4. Can I use custom functions for anonymization?
+### 4. Can I use custom functions for scanning?
 
-**Yes.** You can use any functions and values available in the source database.
-
-You must ensure that anonymized values match the field format.  
-For example, if the field type is `varchar(15)`, you must **manually** ensure the generated value does not exceed 15 characters.
-
-If the format is violated, the dump may be created successfully, but restoring it may fail.
-
----
-
-### 5. Can I use custom functions for scanning?
-
-**Yes.** The meta-dictionary has a `data_func` section.  
+**Yes.** The meta-dictionary has a [`data_func`](dicts/meta-dict-schema.md#6-section-data_func) section.  
 In this section, you can use any custom SQL function for sensitivity validation.
 
 This allows you to implement checks using full-text search or any other SQL capabilities.
@@ -58,7 +47,74 @@ CREATE OR REPLACE FUNCTION <schema>.<function_name>(
   field_name TEXT
 )
 RETURNS boolean AS $$
-...
+BEGIN
+  <function_logic>;
+END;
+$$ LANGUAGE plpgsql; 
+```
+
+---
+
+### 5. Can I use custom functions for anonymization?
+
+**Yes.** You can use any functions and values available in the source database.
+
+You must ensure that anonymized values match the field format.  
+For example, if the field type is `varchar(15)`, you must **manually** ensure the generated value does not exceed 15 characters.
+
+If the format is violated, the dump may be created successfully, but restoring it may fail.
+
+Also for this cases can be used [`data_func`](dicts/meta-dict-schema.md#6-section-data_func) section with scan_func for field length comparison and specific anon_function for specific length.
+
+For example, scan function bellow getting only fields with length less than 20 symbols and containing emails:
+```sql
+CREATE OR REPLACE FUNCTION my_scan_funcs.is_email_field_with_len_20_chars(
+  value TEXT,
+  schema_name TEXT,
+  table_name TEXT,
+  field_name TEXT
+)
+RETURNS boolean AS $$
+DECLARE
+    max_len integer;
+    is_email boolean;
+BEGIN
+    SELECT c.character_maximum_length
+    INTO max_len
+    FROM information_schema.columns c
+    WHERE c.table_schema = $2
+      AND c.table_name = $3
+      AND c.column_name = $4;
+
+    -- field length must be 20 characters
+    if max_len != 20 then
+        return false;
+    end if;  	
+   
+   -- value must be not null for comparison
+    if $1 is null then
+    	return false;
+    end if;  	
+   
+    -- check email format by regexp
+    return $1 ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$';
+END;
+$$ LANGUAGE plpgsql;
+```
+
+The meta-dict rule below can be used to detect email fields with a length of 20 characters and anonymize them while preserving both format and length.
+```python
+{
+    "data_func": {
+        "varchar": [
+            {
+                "scan_func": "my_scan_funcs.is_email_field_with_len_20_chars",
+                "anon_func": "lower(anon_funcs.random_string(9)) || '@secret.com'",
+                "n_count": 10
+            }
+        ]
+    }
+}
 ```
 
 ---

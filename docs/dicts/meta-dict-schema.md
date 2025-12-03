@@ -27,73 +27,22 @@ At the end, a complete combined schema is shown.
 
 ---
 
-## 1. Section: `field`
-### Purpose
-Detect sensitive fields based solely on field name, without scanning the data inside.
+## Scan priority
 
-Useful when already known fields contains sensitive data (e.g., email, password)
-
-### Schema
-```python
-{
-    "field": {
-        "rules": [
-            "<field_name_regex: string>",
-        ],
-        "constants": [
-            "<field_name: string>",
-        ]
-    }
-}
-```
-| Key          | Meaning                                                                                      |
-|--------------|----------------------------------------------------------------------------------------------|
-| `rules`      | List of regex patterns. Field names matching these patterns are always considered sensitive. |
-| `constants`  | Exact field names to be treated as sensitive.                                                |
-
-
-### ⚙️ Using this section
-
-**📘 Example meta-dictionary**
-```python
-{
-    "field": {
-        "rules": [
-            "^client_",
-            ".*phone.*"
-        ],
-        "constants": [
-            "password",
-            "email"
-        ]
-    }
-}
-```
-
-**🏛️ Example Tables Structure with following dictionary matches**
-
-| Schema       | Table     | Field                   | Is sensitive | Rule         |
-|--------------|-----------|-------------------------|--------------|--------------|
-| public       | employees | id                      | No           | -            |
-| public       | employees | full_name               | No           | -            |
-| public       | employees | email                   | Yes          | email        |
-| public       | employees | password                | Yes          | password     |
-| public       | employees | phone                   | Yes          | .\*phone.\*  |
-| public       | employees | hire_date               | No           | -            |
-| public       | salaries  | employee_id             | No           | -            |
-| public       | salaries  | monthly_salary          | No           | -            |
-| public       | salaries  | currency                | No           | -            |
-| ecommerce    | orders    | product_id              | No           | -            |
-| ecommerce    | orders    | client_name             | Yes          | ^client_     |
-| ecommerce    | orders    | client_phone            | Yes          | .\*phone.\*  |
-| ecommerce    | orders    | client_delivery_address | Yes          | ^client_     |
-| ecommerce    | orders    | count                   | No           | -            |
-| ecommerce    | orders    | created                 | No           | -            |
-| ecommerce    | orders    | status                  | No           | -            |
+| Priority | Meta-dictionary section                                                                                                                               | Required | Description                                                               |
+|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------------------------------------------------------|
+| 1        | [skip_rules](#1-section-skip_rules) + [include_rules](#2-section-include_rules)                                                                       | No       | Narrow the set of fields to be scanned                                    |
+| 2        | Fields from [sensitive dictionary](sens-dict-schema.md) + [field](#3-section-field) + fields from [non-sensitive Dictionary](non-sens-dict-schema.md) | No       | Match by field names. Does not inspect data inside tables                 |
+| 3        | [sens_pg_types](#4-section-sens_pg_types)                                                                                                             | No       | Match by field type. Types not included in this section are ignored       |
+| 4        | [data_sql_condition](#5-section-data_sql_condition)                                                                                                   | No       | Narrow the dataset to be scanned for specific tables using SQL conditions |
+| 5        | [data_func](#6-section-data_func)                                                                                                                     | No       | Match data by custom data-scanning functions                              |
+| 6        | [data_const](#7-section-data_const)                                                                                                                   | No       | Match data by constant values                                             |
+| 7        | [data_regex](#8-section-data_regex)                                                                                                                   | No       | Match data by regular expressions                                         |
+| 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign anonymization functions according to detected data type            |
 
 ---
 
-## 2. Section: `skip_rules`
+## 1. Section: `skip_rules`
 ### Purpose
 Defines what parts of the database should be excluded from scanning.
 You can skip entire schemas, specific tables, or individual fields.
@@ -180,7 +129,7 @@ Useful for large schemas without sensitive data or for reducing processing time.
 
 ---
 
-## 3. Section: `include_rules`
+## 2. Section: `include_rules`
 ### Purpose
 Restrict scanning to specific schemas/tables/fields.
 Useful when:
@@ -270,18 +219,84 @@ Useful when:
 
 ---
 
-## 4. Section: `data_regex`
+## 3. Section: `field`
 ### Purpose
-Detect sensitive data by scanning field values using regular expressions.
+Detect sensitive fields based solely on field name, without scanning the data inside.
+
+Useful when already known fields contains sensitive data (e.g., email, password)
 
 ### Schema
 ```python
 {
-    "data_regex": {
+    "field": {
         "rules": [
-            "<regex_rule: string>",
+            "<field_name_regex: string>",
+        ],
+        "constants": [
+            "<field_name: string>",
         ]
     }
+}
+```
+| Key          | Meaning                                                                                      |
+|--------------|----------------------------------------------------------------------------------------------|
+| `rules`      | List of regex patterns. Field names matching these patterns are always considered sensitive. |
+| `constants`  | Exact field names to be treated as sensitive.                                                |
+
+
+### ⚙️ Using this section
+
+**📘 Example meta-dictionary**
+```python
+{
+    "field": {
+        "rules": [
+            "^client_",
+            ".*phone.*"
+        ],
+        "constants": [
+            "password",
+            "email"
+        ]
+    }
+}
+```
+
+**🏛️ Example Tables Structure with following dictionary matches**
+
+| Schema       | Table     | Field                   | Is sensitive | Rule         |
+|--------------|-----------|-------------------------|--------------|--------------|
+| public       | employees | id                      | No           | -            |
+| public       | employees | full_name               | No           | -            |
+| public       | employees | email                   | Yes          | email        |
+| public       | employees | password                | Yes          | password     |
+| public       | employees | phone                   | Yes          | .\*phone.\*  |
+| public       | employees | hire_date               | No           | -            |
+| public       | salaries  | employee_id             | No           | -            |
+| public       | salaries  | monthly_salary          | No           | -            |
+| public       | salaries  | currency                | No           | -            |
+| ecommerce    | orders    | product_id              | No           | -            |
+| ecommerce    | orders    | client_name             | Yes          | ^client_     |
+| ecommerce    | orders    | client_phone            | Yes          | .\*phone.\*  |
+| ecommerce    | orders    | client_delivery_address | Yes          | ^client_     |
+| ecommerce    | orders    | count                   | No           | -            |
+| ecommerce    | orders    | created                 | No           | -            |
+| ecommerce    | orders    | status                  | No           | -            |
+
+---
+
+## 4. Section: `sens_pg_types`
+### Purpose
+Define which PostgreSQL types are scanned. Field types not included in this list are **not scanned**.
+
+If omitted or empty → default types are used: `text`, `integer`, `bigint`, `character`, `json`
+
+### Schema
+```python
+{
+    "sens_pg_types": [
+        "<field_type: string>",
+    ]
 }
 ```
 
@@ -290,10 +305,129 @@ Detect sensitive data by scanning field values using regular expressions.
 **📘 Example meta-dictionary**
 ```python
 {
-    "data_regex": {
-        "rules": [
-            """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
-            "^(7?\d{10})$",				# phone 7XXXXXXXXXX
+    "sens_pg_types": [
+        "text",
+        "integer",
+        "bigint",
+        "varchar",
+        "mchar",
+        "json"
+    ]
+}
+```
+
+Fields with another types are not scanned.
+
+---
+
+## 5. Section: `data_sql_condition`
+### Purpose
+Specify custom SQL WHERE conditions to sample the data instead of scanning the whole table.
+
+### Schema
+```python
+{
+    "data_sql_condition": [
+        {
+            "schema": "<schema_name: string>",             # Check only this schema
+            "schema_mask": "<schema_regex_mask: string>",  # Or check schemas matching regex pattern
+            "table": "<table_name: string>",               # Check only this table
+            "table_mask": "<table_regex_mask: string>",    # Or check tables matching regex pattern
+            "sql_condition": # Condition in raw SQL format for filtering the data to scan
+                """
+                <raw_SQL_WHERE_condition: string>
+                """
+        }
+    ]
+}
+```
+### Rules
+1. `schema` or `schema_mask` — required
+   - You must specify one of `schema` or `schema_mask`
+2. `table` or `table_mask` — optional
+   - You must specify one of `table` or `table_mask`
+3. `sql_condition` — required
+   - Must specify SQL condition for `WHERE` section
+   - Keyword `WHERE` into `sql_condition` is not required
+
+### ⚙️ Using this section
+
+**📘 Example meta-dictionary**
+```python
+{
+    "data_sql_condition": [
+        {
+            "schema": "public",
+            "table": "salaries",
+            "sql_condition": """
+                WHERE hire_date >= '2024-01-01' and hire_date <= '2024-02-01'
+            """
+        }
+    ]
+}
+```
+
+**Result**
+
+For data scan of table `public.salaries` will be used only data by January 2024.
+
+---
+
+## 6. Section: `data_func`
+### Purpose
+Using custom SQL functions to detect sensitive fields and apply the appropriate anonymization function. 
+
+### Schema
+```python
+{
+    "data_func": {  
+        "<field_type: string>": [ 
+            {
+                "scan_func": "<scan_function_for_field: string>",  
+                "anon_func": "<anonymization_rule_template_for_field: string>", 
+                "n_count": "<how_many_checks_must_be_passed: integer>", 
+            },
+        ],
+    }
+}
+```
+
+| Key          | Meaning                                                                                                     |
+|--------------|-------------------------------------------------------------------------------------------------------------|
+| `field_type` | PostgreSQL type (or custom type). `"anyelement"` applies to all types.                                      |
+| `scan_func`  | Python function called for each field value. Must return Boolean.                                           |
+| `anon_func`  | Template anonymization rule. **Must contain `%s` placeholder** for the field name.                          |
+| `n_count`    | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. |
+
+
+> ⚠️ **Note**
+> 
+> Functions for `scan_func` must follow this template:
+> ```sql
+> CREATE OR REPLACE FUNCTION <schema>.<function_name>(
+>   value TEXT,
+>   schema_name TEXT,
+>   table_name TEXT,
+>   field_name TEXT
+> )
+> RETURNS boolean AS $$
+> BEGIN
+>   <function_logic>;
+> END;
+> $$ LANGUAGE plpgsql; 
+
+### ⚙️ Using this section
+
+**📘 Example meta-dictionary**
+```python
+{
+    "data_func": {
+        "anyelement": [
+            {
+                "scan_func": "custom_funcs.is_employee_email",
+                "anon_func": "anon_funcs.digest(\"%s\", 'salt', 'md5')",
+                "n_count": 5
+            }
         ]
     }
 }
@@ -301,28 +435,28 @@ Detect sensitive data by scanning field values using regular expressions.
 
 **🏛️ Example Tables Structure with following dictionary matches**
 
-| Schema       | Table     | Field                   | Is sensitive | Rule                                                            |
-|--------------|-----------|-------------------------|--------------|-----------------------------------------------------------------|
-| public       | employees | id                      | No           | -                                                               |
-| public       | employees | full_name               | No           | -                                                               |
-| public       | employees | email                   | Yes          | [A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+ |
-| public       | employees | password                | No           | -                                                               |
-| public       | employees | phone                   | Yes          | ^(7?\d{10})$                                                    |
-| public       | employees | hire_date               | No           | -                                                               |
-| public       | salaries  | employee_id             | No           | -                                                               |
-| public       | salaries  | monthly_salary          | No           | -                                                               |
-| public       | salaries  | currency                | No           | -                                                               |
-| ecommerce    | orders    | product_id              | No           | -                                                               |
-| ecommerce    | orders    | client_name             | No           | -                                                               |
-| ecommerce    | orders    | client_phone            | Yes          | ^(7?\d{10})$                                                    |
-| ecommerce    | orders    | client_delivery_address | No           | -                                                               |
-| ecommerce    | orders    | count                   | No           | -                                                               |
-| ecommerce    | orders    | created                 | No           | -                                                               |
-| ecommerce    | orders    | status                  | No           | -                                                               |
+| Schema       | Table     | Field                   | Is sensitive | Rule                           |
+|--------------|-----------|-------------------------|--------------|--------------------------------|
+| public       | employees | id                      | No           | -                              |
+| public       | employees | full_name               | No           | -                              |
+| public       | employees | email                   | Yes          | custom_funcs.is_employee_email |
+| public       | employees | password                | No           | -                              |
+| public       | employees | phone                   | No           | -                              |
+| public       | employees | hire_date               | No           | -                              |
+| public       | salaries  | employee_id             | No           | -                              |
+| public       | salaries  | monthly_salary          | No           | -                              |
+| public       | salaries  | currency                | No           | -                              |
+| ecommerce    | orders    | product_id              | No           | -                              |
+| ecommerce    | orders    | client_name             | No           | -                              |
+| ecommerce    | orders    | client_phone            | No           | -                              |
+| ecommerce    | orders    | client_delivery_address | No           | -                              |
+| ecommerce    | orders    | count                   | No           | -                              |
+| ecommerce    | orders    | created                 | No           | -                              |
+| ecommerce    | orders    | status                  | No           | -                              |
 
 ---
 
-## 5. Section: `data_const`
+## 7. Section: `data_const`
 ### Purpose
 Detect sensitive fields by matching full or partial constants.
 
@@ -387,58 +521,30 @@ Detect sensitive fields by matching full or partial constants.
 
 ---
 
-## 6. Section: `data_func`
+## 8. Section: `data_regex`
 ### Purpose
-Using custom Python functions for detecting and anonymizing sensitive data by type.
+Detect sensitive data by scanning field values using regular expressions.
 
 ### Schema
 ```python
 {
-    "data_func": {  
-        "<field_type: string>": [ 
-            {
-                "scan_func": "<scan_function_for_field: string>",  
-                "anon_func": "<anonymization_rule_template_for_field: string>", 
-                "n_count": "<how_many_checks_must_be_passed: integer>", 
-            },
-        ],
+    "data_regex": {
+        "rules": [
+            "<regex_rule: string>",
+        ]
     }
 }
 ```
-
-| Key          | Meaning                                                                                                     |
-|--------------|-------------------------------------------------------------------------------------------------------------|
-| `field_type` | PostgreSQL type (or custom type). `"anyelement"` applies to all types.                                      |
-| `scan_func`  | Python function called for each field value. Must return Boolean.                                           |
-| `anon_func`  | Template anonymization rule. **Must contain `%s` placeholder** for the field name.                          |
-| `n_count`    | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. |
-
-
-> ⚠️ **Note**
-> 
-> Functions for `scan_func` must follow this template:
-> ```sql
-> CREATE OR REPLACE FUNCTION <schema>.<function_name>(
->   value TEXT,
->   schema_name TEXT,
->   table_name TEXT,
->   field_name TEXT
-> )
-> RETURNS boolean AS $$
-> ... 
 
 ### ⚙️ Using this section
 
 **📘 Example meta-dictionary**
 ```python
 {
-    "data_func": {
-        "anyelement": [
-            {
-                "scan_func": "custom_funcs.is_employee_email",
-                "anon_func": "anon_funcs.digest(\"%s\", 'salt', 'md5')",
-                "n_count": 5
-            }
+    "data_regex": {
+        "rules": [
+            """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
+            "^(7?\d{10})$",				# phone 7XXXXXXXXXX
         ]
     }
 }
@@ -446,112 +552,24 @@ Using custom Python functions for detecting and anonymizing sensitive data by ty
 
 **🏛️ Example Tables Structure with following dictionary matches**
 
-| Schema       | Table     | Field                   | Is sensitive | Rule                           |
-|--------------|-----------|-------------------------|--------------|--------------------------------|
-| public       | employees | id                      | No           | -                              |
-| public       | employees | full_name               | No           | -                              |
-| public       | employees | email                   | Yes          | custom_funcs.is_employee_email |
-| public       | employees | password                | No           | -                              |
-| public       | employees | phone                   | No           | -                              |
-| public       | employees | hire_date               | No           | -                              |
-| public       | salaries  | employee_id             | No           | -                              |
-| public       | salaries  | monthly_salary          | No           | -                              |
-| public       | salaries  | currency                | No           | -                              |
-| ecommerce    | orders    | product_id              | No           | -                              |
-| ecommerce    | orders    | client_name             | No           | -                              |
-| ecommerce    | orders    | client_phone            | No           | -                              |
-| ecommerce    | orders    | client_delivery_address | No           | -                              |
-| ecommerce    | orders    | count                   | No           | -                              |
-| ecommerce    | orders    | created                 | No           | -                              |
-| ecommerce    | orders    | status                  | No           | -                              |
-
----
-
-## 7. Section: `data_sql_condition`
-### Purpose
-Specify custom SQL WHERE conditions to sample the data instead of scanning the whole table.
-
-### Schema
-```python
-{
-    "data_sql_condition": [
-        {
-            "schema": "<schema_name: string>",             # Check only this schema
-            "schema_mask": "<schema_regex_mask: string>",  # Or check schemas matching regex pattern
-            "table": "<table_name: string>",               # Check only this table
-            "table_mask": "<table_regex_mask: string>",    # Or check tables matching regex pattern
-            "sql_condition": # Condition in raw SQL format for filtering the data to scan
-                """
-                <raw_SQL_WHERE_condition: string>
-                """
-        }
-    ]
-}
-```
-### Rules
-1. `schema` or `schema_mask` — required
-   - You must specify one of `schema` or `schema_mask`
-2. `table` or `table_mask` — optional
-   - You must specify one of `table` or `table_mask`
-3. `sql_condition` — required
-   - Must specify SQL condition for `WHERE` section
-   - Keyword `WHERE` into `sql_condition` is not required
-
-### ⚙️ Using this section
-
-**📘 Example meta-dictionary**
-```python
-{
-    "data_sql_condition": [
-        {
-            "schema": "public",
-            "table": "salaries",
-            "sql_condition": """
-                WHERE hire_date >= '2024-01-01' and hire_date <= '2024-02-01'
-            """
-        }
-    ]
-}
-```
-
-**Result**
-
-For data scan of table `public.salaries` will be used only data by January 2024.
-
----
-
-## 8. Section: `sens_pg_types`
-### Purpose
-Define which PostgreSQL types are scanned. Field types not included in this list are **not scanned**.
-
-If omitted or empty → default types are used: `text`, `integer`, `bigint`, `character`, `json`
-
-### Schema
-```python
-{
-    "sens_pg_types": [
-        "<field_type: string>",
-    ]
-}
-```
-
-### ⚙️ Using this section
-
-**📘 Example meta-dictionary**
-```python
-{
-    "sens_pg_types": [
-        "text",
-        "integer",
-        "bigint",
-        "varchar",
-        "mchar",
-        "json"
-    ]
-}
-```
-
-Fields with another types are not scanned.
+| Schema       | Table     | Field                   | Is sensitive | Rule                                                            |
+|--------------|-----------|-------------------------|--------------|-----------------------------------------------------------------|
+| public       | employees | id                      | No           | -                                                               |
+| public       | employees | full_name               | No           | -                                                               |
+| public       | employees | email                   | Yes          | [A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+ |
+| public       | employees | password                | No           | -                                                               |
+| public       | employees | phone                   | Yes          | ^(7?\d{10})$                                                    |
+| public       | employees | hire_date               | No           | -                                                               |
+| public       | salaries  | employee_id             | No           | -                                                               |
+| public       | salaries  | monthly_salary          | No           | -                                                               |
+| public       | salaries  | currency                | No           | -                                                               |
+| ecommerce    | orders    | product_id              | No           | -                                                               |
+| ecommerce    | orders    | client_name             | No           | -                                                               |
+| ecommerce    | orders    | client_phone            | Yes          | ^(7?\d{10})$                                                    |
+| ecommerce    | orders    | client_delivery_address | No           | -                                                               |
+| ecommerce    | orders    | count                   | No           | -                                                               |
+| ecommerce    | orders    | created                 | No           | -                                                               |
+| ecommerce    | orders    | status                  | No           | -                                                               |
 
 ---
 
@@ -590,14 +608,6 @@ Configure anonymization functions per PostgreSQL type.
 ## General meta-dict schema
 ```python
 {
-    "field": {
-        "rules": [
-            "<field_name_regex: string>",
-        ],
-        "constants": [
-            "<field_name: string>",
-        ]
-    },
     "skip_rules": [
         {
             "schema": "<schema_name: string>",             # Skip this schema from scanning
@@ -620,28 +630,17 @@ Configure anonymization functions per PostgreSQL type.
             ]
         }
     ],
-    "data_regex": {
+    "field": {
         "rules": [
-            "<regex_rule: string>",
-        ]
-    },
-    "data_const": {
+            "<field_name_regex: string>",
+        ],
         "constants": [
-            "<field_value_full: string>",
-        ],
-        "partial_constants": [
-            "<field_value_partial: string>",
+            "<field_name: string>",
         ]
     },
-    "data_func": {  
-        "<field_type: string>": [ 
-            {
-                "scan_func": "<scan_function_for_field: string>",  
-                "anon_func": "<anonymization_rule_template_for_field: string>", 
-                "n_count": "<how_many_checks_must_be_passed: integer>", 
-            },
-        ],
-    },
+    "sens_pg_types": [
+        "<field_type: string>",
+    ],
     "data_sql_condition": [
         {
             "schema": "<schema_name: string>",             # Check only this schema
@@ -654,9 +653,28 @@ Configure anonymization functions per PostgreSQL type.
                 """
         }
     ],
-    "sens_pg_types": [
-        "<field_type: string>",
-    ],
+    "data_func": {  
+        "<field_type: string>": [ 
+            {
+                "scan_func": "<scan_function_for_field: string>",  
+                "anon_func": "<anonymization_rule_template_for_field: string>", 
+                "n_count": "<how_many_checks_must_be_passed: integer>", 
+            },
+        ],
+    },
+    "data_const": {
+        "constants": [
+            "<field_value_full: string>",
+        ],
+        "partial_constants": [
+            "<field_value_partial: string>",
+        ]
+    },
+    "data_regex": {
+        "rules": [
+            "<regex_rule: string>",
+        ]
+    },
     "funcs": {
         "<field_type: string>": "<anonymization_function_for_field_type: string>", 
         "default": "<universal_anonymization_function_for_all_field_types: string>"
