@@ -577,10 +577,11 @@ $$
 --------------------------------------------------------------
 
 CREATE SCHEMA IF NOT EXISTS schm_other_3;
-DROP TABLE IF EXISTS schm_other_3.some_tbl;
-CREATE TABLE schm_other_3.some_tbl
+DROP TABLE IF EXISTS schm_other_3.data_types_test;
+CREATE TABLE schm_other_3.data_types_test
 (
-    field_type_varbit          varbit(5),
+	field_type_bit             bit(5),
+	field_type_varbit          varbit(5),
     field_type_bool            bool,
     field_type_char            char(5),
     field_type_varchar         varchar(20),
@@ -597,22 +598,23 @@ CREATE TABLE schm_other_3.some_tbl
     field_type_serial8         serial8,
 
     -- TIME
-    field_type_time            time,            -- alias = time without time zone
-    field_type_time_p          time(3),         -- alias + precision
-    field_type_timetz          timetz,          -- alias = time with time zone
-    field_type_timetz_p        timetz(3),       -- alias + precision
+    field_type_time            time,
+    field_type_time_p          time(3),
+    field_type_timetz          timetz,
+    field_type_timetz_p        timetz(3),
 
     -- TIMESTAMP
-    field_type_timestamp       timestamp,       -- alias = timestamp without time zone
-    field_type_timestamp_p     timestamp(3),    -- alias + precision
-    field_type_timestamptz     timestamptz,     -- alias = timestamp with time zone
-    field_type_timestamptz_p   timestamptz(3)   -- alias + precision
+    field_type_timestamp       timestamp,
+    field_type_timestamp_p     timestamp(3),
+    field_type_timestamptz     timestamptz,
+    field_type_timestamptz_p   timestamptz(3)
 );
 
 -- вставляем тестовые данные
-INSERT INTO schm_other_3.some_tbl
+INSERT INTO schm_other_3.data_types_test
 (
-    field_type_varbit,
+	field_type_bit,
+	field_type_varbit,
     field_type_bool,
     field_type_char,
     field_type_varchar,
@@ -635,6 +637,8 @@ INSERT INTO schm_other_3.some_tbl
     field_type_timestamptz_p
 )
 SELECT
+    -- bit(5)
+    (lpad((v % 32)::bit(5)::text, 5, '0'))::bit(5),
     -- varbit(5)
     (lpad((v % 32)::bit(5)::text, 5, '0'))::bit(5),
 
@@ -644,10 +648,10 @@ SELECT
     -- char(5)
     rpad('c' || v::text, 5, 'x'),
 
-    -- varchar
+    -- varchar(20)
     'varchar_' || v,
 
-    -- numbers
+    -- Numbers
     v,               -- int
     v,               -- int4
     v % 32767,       -- int2
@@ -658,20 +662,18 @@ SELECT
     (v * 0.01)::numeric(10,2), -- decimal(10,2)
 
     -- TIME
-    make_time((v % 24), (v % 60), (v % 60)),                      -- time
-    make_time((v % 24), (v % 60), (v % 60) + 0.123),              -- time(3)
-
-    -- TIMETZ
-    make_time((v % 24), (v % 60), (v % 60))::timetz,              -- timetz
-    make_time((v % 24), (v % 60), (v % 60) + 0.456)::timetz,      -- timetz(3)
+    make_time((v % 24), (v % 60), (v % 60)),                 -- time
+    make_time((v % 24), (v % 60), (v % 60) + 0.123),         -- time(3)
+    make_time((v % 24), (v % 60), (v % 60))::timetz,         -- timetz
+    make_time((v % 24), (v % 60), (v % 60) + 0.456)::timetz, -- timetz(3)
 
     -- TIMESTAMP
-    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)),               -- timestamp
-    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.789),       -- timestamp(3)
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)),              -- timestamp
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.789),      -- timestamp(3)
 
     -- TIMESTAMPTZ
-    (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow',
-    (make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.987) AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow'
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60)) AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow', -- timestamptz
+    make_timestamp(2024, 1, (v % 28)+1, (v % 24), (v % 60), (v % 60) + 0.987) AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Moscow' -- timestamptz(3)
 FROM generate_series(1, 100) AS v;
 
 ----------

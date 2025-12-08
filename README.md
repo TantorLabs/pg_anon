@@ -19,7 +19,7 @@ keeping your data structure intact and your privacy protected.
 - **PostgreSQL:** 9.6+
 - **PostgreSQL client utilities (must match the server’s major version):**
   - `pg_dump` – uses for export the database schema  
-  - `pg_restore` – uses for restore the anonymized dump schema into the target database
+  - `pg_restore` – uses for restore the database schema into the target database
 
 For details, see: [Installation and configuring](docs/installation-and-configuring.md#configuring-pg_anon)
 

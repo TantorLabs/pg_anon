@@ -29,7 +29,7 @@ DEFAULT_EXCLUDED_SCHEMAS = [
     "information_schema"
 ]
 
-TYPE_ALIASES = {
+BASE_TYPE_ALIASES = {
     "varbit": "bit varying",
     "bool": "boolean",
 
@@ -45,17 +45,20 @@ TYPE_ALIASES = {
     "float8": "double precision",
     "float4": "real",
     "decimal": "numeric",
+    "dec": "numeric",
 
     "serial2": "smallserial",
     "serial4": "serial",
     "serial8": "bigserial",
 
-    "time": "time without time zone",
+    "time": "time",
     "timetz": "time with time zone",
 
-    "timestamp": "timestamp without time zone",
+    "timestamp": "timestamp",
     "timestamptz": "timestamp with time zone",
 }
+
+SENS_PG_TYPES = ["text", "character", "varchar", "mvarchar", "json", "integer", "bigint"]
 
 SECRET_RUN_OPTIONS = [
     "db_user_password"

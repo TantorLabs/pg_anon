@@ -30,7 +30,7 @@ def get_scan_fields_query(limit: int = None, count_only: bool = False):
             n.nspname,
             c.relname,
             a.attname AS column_name,
-            format_type(a.atttypid, a.atttypmod) as type,
+            lower(format_type(a.atttypid, a.atttypmod)) as type,
             c.oid, a.attnum,
             {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
             {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id

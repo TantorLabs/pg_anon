@@ -11,14 +11,22 @@ from typing import List, Optional, Dict, Union, Tuple, Set, Any
 
 import yaml
 
-from pg_anon.common.constants import TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.constants import BASE_TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.dto import FieldInfo, RunOptions
 from pg_anon.logger import get_logger
 
 logger = get_logger()
 
 PARENS_PATTERN = re.compile(r'\([^\)]*\)')
-
+TYPE_PATTERN = re.compile(
+        r"""
+        ^\s*
+        (?P<base>[a-z][a-z0-9_]*)
+        (?P<parens>\s*\([^)]*\))?
+        (?P<suffix>.*)$          
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
 
 def get_pg_util_version(util_name):
     command = [util_name, "--version"]
@@ -232,13 +240,56 @@ def read_yaml(file_path: Union[str, Path]) -> Dict:
     return data
 
 
-def normalize_field_type(field_info: FieldInfo) -> str:
-    return PARENS_PATTERN.sub('', field_info.type.lower())
+def get_base_field_type(field_info: FieldInfo) -> str:
+    return PARENS_PATTERN.sub('', field_info.type)
 
 
 def normalize_data_type(data_type: str) -> str:
-    key = PARENS_PATTERN.sub('', data_type.lower())
-    return TYPE_ALIASES.get(key, key)
+    clean_field_type = data_type.strip().lower()
+    pattern_match = TYPE_PATTERN.match(clean_field_type)
+    if not pattern_match:
+        return clean_field_type  # fallback
+
+    # parse type parts
+    base = pattern_match.group("base")
+    parens = (pattern_match.group("parens") or "").strip()
+    suffix = (pattern_match.group("suffix") or "").strip()
+
+    # normalize base type
+    normalized_base_type = BASE_TYPE_ALIASES.get(base, base)
+
+    # remove TZ info from type
+    tz_piece = ""
+    if normalized_base_type.endswith(" with time zone"):
+        normalized_base_type = normalized_base_type[: -len(" with time zone")]
+        tz_piece = "with time zone"
+    elif normalized_base_type.endswith(" without time zone"):
+        normalized_base_type = normalized_base_type[: -len(" without time zone")]
+        tz_piece = "without time zone"
+
+    tz_in_suffix = ("with time zone" in suffix) or ("without time zone" in suffix)
+
+    if tz_piece:
+        if tz_in_suffix:
+            suffix = re.sub(r'\s*(?:with|without)\s+time\s+zone', '', suffix, flags=re.I).strip()
+    elif normalized_base_type in ("time", "timestamp") and not tz_in_suffix:
+        tz_piece = "without time zone"
+
+    # Compose type name by parts
+    result = normalized_base_type
+
+    if parens:
+        result += parens.strip()
+
+    if tz_piece:
+        result += " " + tz_piece
+
+    if suffix:
+        result += " " + suffix
+
+    result = re.sub(r"\s+", " ", result).strip()
+
+    return result.lower()
 
 
 def split_constants_to_words_and_phrases(constants: List[str]) -> Tuple[set, set]:

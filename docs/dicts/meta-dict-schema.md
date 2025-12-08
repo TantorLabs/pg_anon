@@ -23,7 +23,7 @@ The meta-dictionary allows you to:
 
 To make it easier to navigate, each section of the meta-dictionary is described separately below, with purpose, schema, and example.
 
-At the end, a complete combined schema is shown.
+[At the end](#general-meta-dict-schema), a complete combined schema is shown.
 
 ---
 
@@ -39,6 +39,8 @@ At the end, a complete combined schema is shown.
 | 6        | [data_const](#7-section-data_const)                                                                                                                   | No       | Match data by constant values                                             |
 | 7        | [data_regex](#8-section-data_regex)                                                                                                                   | No       | Match data by regular expressions                                         |
 | 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign anonymization functions according to detected data type            |
+
+![scan_workflow.png](../../images/scan_workflow.png)
 
 ---
 
@@ -289,7 +291,7 @@ Useful when already known fields contains sensitive data (e.g., email, password)
 ### Purpose
 Define which PostgreSQL types are scanned. Field types not included in this list are **not scanned**.
 
-If omitted or empty → default types are used: `text`, `integer`, `bigint`, `character`, `json`
+If omitted or empty → default types are used: `text`, `character`, `varchar`, `mvarchar`, `json`, `integer`, `bigint`
 
 ### Schema
 ```python
@@ -309,6 +311,7 @@ If omitted or empty → default types are used: `text`, `integer`, `bigint`, `ch
         "text",
         "integer",
         "bigint",
+        "numeric(10,2)",
         "varchar",
         "mchar",
         "json"
@@ -316,7 +319,11 @@ If omitted or empty → default types are used: `text`, `integer`, `bigint`, `ch
 }
 ```
 
-Fields with another types are not scanned.
+**Field Type Resolution Priorities:**
+
+- Exact type match (`varchar(20)`, `numeric(10,2)`)
+- Base type match (`varchar`, `numeric`)
+- Fields with another types are not scanned.
 
 ---
 
@@ -414,7 +421,7 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 > BEGIN
 >   <function_logic>;
 > END;
-> $$ LANGUAGE plpgsql; 
+> $$ LANGUAGE plpgsql;
 
 ### ⚙️ Using this section
 
@@ -432,6 +439,12 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
     }
 }
 ```
+
+**Field Type Resolution Priorities:**
+
+- Exact type match (`varchar(20)`, `numeric(10,2)`)
+- Base type match (`varchar`, `numeric`)
+- `anyelement`
 
 **🏛️ Example Tables Structure with following dictionary matches**
 
@@ -576,8 +589,6 @@ Detect sensitive data by scanning field values using regular expressions.
 ## 9. Section: `funcs`
 ### Purpose
 Configure anonymization functions per PostgreSQL type.
-- If no specific function is defined, the default is used.
-- If no default is set, the following is used automatically: `anon_funcs.digest("%s", 'salt_word', 'md5')`
 
 ### Schema
 ```python
@@ -596,12 +607,23 @@ Configure anonymization functions per PostgreSQL type.
 {
     "funcs": {
         "text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
-        "numeric": "anon_funcs.noise(\"%s\", 10)",
+        "numeric(10,2)": "anon_funcs.noise(\"%s\", 10)",
+        "numeric": "anon_funcs.noise(\"%s\", 30)",
+        "varchar(10)": "anon_funcs.random_string(10)",
+        "varchar(20)": "anon_funcs.random_string(20)",
+        "varchar": "anon_funcs.digest(\"%s\", 'varchar_salt_word', 'sha256')",
         "timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
         "default": "anon_funcs.digest(\"%s\", 'MySecretSaltWord', 'sha256')"
     }
 }
 ```
+
+**Field Type Resolution Priorities:**
+
+- Exact type match (`varchar(20)`, `numeric(10,2)`)
+- Base type match (`varchar`, `numeric`)
+- Function from `default`
+- Built-in fallback function: `anon_funcs.digest("%s", 'salt_word', 'md5')`
 
 ---
 

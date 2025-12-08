@@ -68,7 +68,7 @@
         },
         {
             "schema": "schm_other_3",
-            "table": "some_tbl",
+            "table": "data_types_test",
             "fields": {
                 "field_type_int8": "anon_funcs.digest(\"field_type_int8\", 'by_default_func', 'sha256')"
             }

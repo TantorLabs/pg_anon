@@ -15,16 +15,9 @@ from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_qu
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
 from pg_anon.common.multiprocessing_utils import init_process
-from pg_anon.common.utils import (
-    chunkify,
-    exception_helper,
-    setof_to_list,
-    get_dict_rule_for_table,
-    normalize_field_type, save_dicts_info_file, safe_compile,
-)
+from pg_anon.common.utils import (chunkify, exception_helper, setof_to_list, get_dict_rule_for_table,
+                                  save_dicts_info_file, safe_compile, get_base_field_type)
 from pg_anon.context import Context
-
-SENS_PG_TYPES = ["text", "integer", "bigint", "character", "json", "mvarchar"]
 
 
 class CreateDictMode:
@@ -71,7 +64,7 @@ class CreateDictMode:
     def _check_not_skip_fields(self, field: Dict) -> bool:
         for rule in self.context.meta_dictionary_obj["skip_rules"]:
             if self._check_field_match_by_rule(field=field, rule=rule):
-                self.context.logger.debug(f"!!! ------> Field {field['nspname']}.{field['relname']}.{field['column_name']} skipped by rule {rule}")
+                self.context.logger.debug(f"------> Field {field['nspname']}.{field['relname']}.{field['column_name']} skipped by rule {rule}")
                 return False
 
         return True
@@ -82,7 +75,7 @@ class CreateDictMode:
 
         for rule in self.context.meta_dictionary_obj["include_rules"]:
             if self._check_field_match_by_rule(field=field, rule=rule):
-                self.context.logger.debug(f"!!! ------> Field {field['nspname']}.{field['relname']}.{field['column_name']} included by rule {rule}")
+                self.context.logger.debug(f"------> Field {field['nspname']}.{field['relname']}.{field['column_name']} included by rule {rule}")
                 return True
 
         return False
@@ -133,7 +126,7 @@ class CreateDictMode:
             # not include_rule + not exclude_rule => unknown. Go to next rules priority -> check by meta-dict
             if include_rule and field_info.column_name in include_rule['fields']:
                 self.context.logger.debug(
-                    f'!!! ------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{include_rule}"'
+                    f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{include_rule}"'
                 )
                 del fields_info[obj_id]
                 field_info.rule = include_rule['fields'][field_info.column_name]
@@ -142,7 +135,7 @@ class CreateDictMode:
 
             elif exclude_rule:
                 self.context.logger.debug(
-                    f'!!! ------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{exclude_rule}"'
+                    f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{exclude_rule}"'
                 )
                 del fields_info[obj_id]
                 self.context.create_dict_no_sens_matches[obj_id] = field_info
@@ -155,7 +148,7 @@ class CreateDictMode:
                 if rule == field_info.column_name:
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'!!! ------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
+                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_sens_matches[obj_id] = field_info
@@ -169,7 +162,7 @@ class CreateDictMode:
                 if re.search(rule, field_info.column_name) is not None:
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'!!! ------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
+                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_sens_matches[obj_id] = field_info
@@ -186,7 +179,7 @@ class CreateDictMode:
                 ):
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'!!! ------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{rule}"'
+                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{rule}"'
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_no_sens_matches[obj_id] = field_info
@@ -277,8 +270,9 @@ class CreateDictMode:
             f'========> Process[{name}]: checking by functions data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name} (type = {field_info.type})'
         )
 
-        field_type = normalize_field_type(field_info)
-        rules_by_type = dictionary_obj["data_func"].get(field_type, [])
+        rules_by_type = dictionary_obj["data_func"].get(field_info.type, [])
+        if not rules_by_type:
+            rules_by_type = dictionary_obj["data_func"].get(get_base_field_type(field_info), [])
         rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
         data_func_rules = [rules_by_type, rules_for_anyelements]
 
@@ -407,10 +401,15 @@ class CreateDictMode:
         self.context.logger.debug(f"<--- Process[{name}]: Finished check sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name} - is INSENSITIVE")
         return {}
 
-    def _check_sens_pg_types(self, dictionary_obj, field_type: str):
-        """Check if actual field type is sens."""
-        sens_types = dictionary_obj.get("sens_pg_types", []) or SENS_PG_TYPES
-        return any(pg_type in field_type for pg_type in sens_types)
+    def _field_can_be_sensitive_by_type(self, dictionary_obj, field_info: FieldInfo):
+        if field_info.type in dictionary_obj["sens_pg_types"]:
+            return True
+
+        base_field_type = get_base_field_type(field_info)
+        if base_field_type in dictionary_obj["sens_pg_types"]:
+            return True
+
+        return False
 
     async def _scan_obj_func(
         self,
@@ -425,11 +424,9 @@ class CreateDictMode:
         self.context.logger.debug(f"====>>> Process[{name}]: Started scan task for field {field_info.nspname}.{field_info.relname}.{field_info.column_name} ({field_info})")
 
         start_t = time.time()
-        field_type = normalize_field_type(field_info)
-        if not self._check_sens_pg_types(dictionary_obj, field_type):
+        if not self._field_can_be_sensitive_by_type(dictionary_obj, field_info):
             self.context.logger.debug(
-                f"========> Process[%s]: scan_obj_func: task %s skipped by field type %s"
-                % (name, str(field_info), "[integer, text, bigint, character varying(x)]")
+                f"Process[%s]: Field {field_info.nspname}.{field_info.nspname}.{field_info.column_name} is INSENSITIVE by type {field_info.type}"
             )
             return None
 
@@ -489,7 +486,7 @@ class CreateDictMode:
         end_t = time.time()
         if end_t - start_t > 10:
             self.context.logger.debug(
-                "!!! Process[%s]: scan_obj_func took %s sec. Task %s"
+                "Process[%s]: scan_obj_func took %s sec. Task %s"
                 % (name, str(round(end_t - start_t, 2)), str(field_info))
             )
 
@@ -580,9 +577,11 @@ class CreateDictMode:
         hash_func = field_info.rule
 
         if hash_func is None:
-            field_type = normalize_field_type(field_info)
-            if field_type in meta_dictionary_obj["funcs"]:
-                hash_func = meta_dictionary_obj["funcs"][field_type]
+            base_field_type = get_base_field_type(field_info)
+            if field_info.type in meta_dictionary_obj["funcs"]:
+                hash_func = meta_dictionary_obj["funcs"][field_info.type]
+            elif base_field_type in meta_dictionary_obj["funcs"]:
+                hash_func = meta_dictionary_obj["funcs"][base_field_type]
             else:
                 hash_func = meta_dictionary_obj["funcs"].get('default', DEFAULT_HASH_FUNC)
 

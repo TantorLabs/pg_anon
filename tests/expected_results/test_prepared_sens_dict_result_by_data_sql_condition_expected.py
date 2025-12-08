@@ -21,7 +21,7 @@
             "table": "tbl_100",
             "fields": {
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
-                "amount": "anon_funcs.noise(\"amount\", 10)",
+                "amount": "anon_funcs.noise(\"amount\", 30)",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },
@@ -54,7 +54,7 @@
             "fields": {
                 "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
-                "usd": "anon_funcs.noise(\"usd\", 10)",
+                "usd": "anon_funcs.noise(\"usd\", 30)",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },

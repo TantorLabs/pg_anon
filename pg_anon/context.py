@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Optional, List, Set, Tuple
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, TRANSACTIONS_SERVER_SETTINGS, \
-    LOGS_FILE_NAME, LOGS_DIR_NAME
+    LOGS_FILE_NAME, LOGS_DIR_NAME, SENS_PG_TYPES
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
@@ -106,7 +106,7 @@ class Context:
           },
           "data_func": (meta_dict_data or {}).get('data_func', {}),
           "data_sql_condition": (meta_dict_data or {}).get('data_sql_condition', []),
-          "sens_pg_types": (meta_dict_data or {}).get('sens_pg_types', []),
+          "sens_pg_types": (meta_dict_data or {}).get('sens_pg_types', SENS_PG_TYPES),
           "funcs": (meta_dict_data or {}).get('funcs', {}),
           "no_sens_dictionary": (meta_dict_data or {}).get('no_sens_dictionary', []),
         }
