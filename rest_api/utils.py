@@ -96,7 +96,7 @@ def read_logs_from_tail(logs_path: Union[str, Path], lines_count: int) -> List[s
     return list(result_lines)
 
 
-def delete_folder(folder_path: str):
+def delete_folder(folder_path: Path):
     try:
         shutil.rmtree(folder_path)
         print(f"Folder {folder_path} deleted successfully.")

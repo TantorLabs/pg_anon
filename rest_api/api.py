@@ -18,7 +18,7 @@ from rest_api.dependencies import date_range_filter, get_operation_run_dir
 from rest_api.enums import ResponseStatus, DumpMode, RestoreMode, ScanMode
 from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, \
     ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
+    ViewDataRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
     OperationDataResponse
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
@@ -142,21 +142,6 @@ async def stateless_dump_start(request: DumpRequest, background_tasks: Backgroun
     background_tasks.add_task(dump_callback, request)
 
 
-@app.delete(
-    '/api/stateless/dump',
-    tags=['Stateless'],
-    summary='Delete dump',
-    description='Delete dump',
-    status_code=204,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(delete_folder, request.validated_path)
-
-
 @app.post(
     '/api/stateless/restore',
     tags=['Stateless'],
@@ -277,6 +262,29 @@ async def stateless_operation_logs(
 ):
     logs_file_path = operation_run_dir / LOGS_DIR_NAME
     return read_logs_from_tail(logs_file_path, tail_lines)
+
+
+@app.delete(
+    '/operation/{internal_operation_id}',
+    tags=['Operations'],
+    summary='Delete operation data',
+    description='Delete operation data',
+    status_code=204,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def remove_operation(background_tasks: BackgroundTasks, operation_run_dir: Path = Depends(get_operation_run_dir)):
+    run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
+    run_options_data = read_json_file(run_options_file_path)
+
+    if run_options_data['mode'] in (
+        AnonMode.DUMP.value, AnonMode.SYNC_DATA_DUMP.value, AnonMode.SYNC_STRUCT_DUMP.value
+    ):
+        dump_path = Path(run_options_data['output_dir'])
+        background_tasks.add_task(delete_folder, dump_path)
+    background_tasks.add_task(delete_folder, operation_run_dir)
 
 
 #############################################

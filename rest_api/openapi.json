@@ -307,59 +307,6 @@
             }
           }
         }
-      },
-      "delete": {
-        "tags": [
-          "Stateless"
-        ],
-        "summary": "Delete dump",
-        "description": "Delete dump",
-        "operationId": "dump_operation_delete_api_stateless_dump_delete",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DumpDeleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/stateless/restore": {
@@ -528,6 +475,60 @@
           },
           "404": {
             "description": "Operation run directory not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Delete operation data",
+        "description": "Delete operation data",
+        "operationId": "remove_operation_operation__internal_operation_id__delete",
+        "parameters": [
+          {
+            "name": "internal_operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Internal Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           },
           "422": {
             "description": "Validation Error",
@@ -790,19 +791,6 @@
         ],
         "title": "DictionaryMetadata"
       },
-      "DumpDeleteRequest": {
-        "properties": {
-          "path": {
-            "type": "string",
-            "title": "Path"
-          }
-        },
-        "type": "object",
-        "required": [
-          "path"
-        ],
-        "title": "DumpDeleteRequest"
-      },
       "DumpMode": {
         "type": "string",
         "enum": [
@@ -913,6 +901,17 @@
           "output_path": {
             "type": "string",
             "title": "Output Path"
+          },
+          "validated_output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Output Path"
           },
           "pg_dump_path": {
             "anyOf": [
@@ -1112,6 +1111,17 @@
           "input_path": {
             "type": "string",
             "title": "Input Path"
+          },
+          "validated_input_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Input Path"
           },
           "partial_tables_dict_contents": {
             "anyOf": [
@@ -1521,6 +1531,10 @@
             "type": "integer",
             "title": "Status Id"
           },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
           "content": {
             "anyOf": [
               {
@@ -1534,7 +1548,8 @@
         },
         "type": "object",
         "required": [
-          "status_id"
+          "status_id",
+          "status"
         ],
         "title": "ViewDataResponse"
       },
@@ -1673,6 +1688,10 @@
             "type": "integer",
             "title": "Status Id"
           },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
           "content": {
             "anyOf": [
               {
@@ -1690,7 +1709,8 @@
         },
         "type": "object",
         "required": [
-          "status_id"
+          "status_id",
+          "status"
         ],
         "title": "ViewFieldsResponse"
       }
