@@ -9,14 +9,14 @@
 | [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) | 
 | [Display table with anonymization data](#display-table-with-anonymization-data)                       | 
 | [Run dump operation](#run-dump-operation)                                                             | 
-| [Delete dump operation](#delete-dump-operation)                                                       | 
 | [Run restore operation](#run-restore-operation)                                                       | 
 
-| Integration Endpoints                   |
-|-----------------------------------------| 
-| [Operations list](#operations-list)     | 
-| [Operation details](#operation-details) | 
-| [Operation logs](#operation-logs)       | 
+| Integration Endpoints                           |
+|-------------------------------------------------| 
+| [Operations list](#operations-list)             | 
+| [Operation details](#operation-details)         | 
+| [Delete operation data](#delete-operation-data) | 
+| [Operation logs](#operation-logs)               | 
 
 ---
 
@@ -368,38 +368,6 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
 
 ---
 
-### Delete dump operation
-```http request
-DELETE /api/stateless/dump
-```
-
-#### Description
-Deletes a dump folder from the output directory.
-
-#### Example
-```shell
-curl -X POST http://127.0.0.1:8000/api/stateless/dump \
--H "Content-Type: application/json" \
--d '{
-  "path": "my_dump"
-}'
-```
-
-#### 📦 Request body schema
-| Field  | Type   | Required | Description                                                              |
-|--------|--------|----------|--------------------------------------------------------------------------|
-| path   | string | Yes      | Path to the dump folder to be deleted, relative to the output directory. |
-
-### ✅ Responses
-| Status Code    | Description               | Component                                   |
-|----------------|---------------------------|---------------------------------------------|
-| `204`          | Dump successfully deleted | -                                           |
-| `400`          | Bad Request               | [ErrorResponse](#errorresponse)             |
-| `500`          | Internal Server Error     | [ErrorResponse](#errorresponse)             |
-| `422`          | Validation Error          | [HTTPValidationError](#httpvalidationerror) |
-
----
-
 ### Run restore operation
 ```http request
 POST /api/stateless/restore
@@ -509,7 +477,7 @@ GET /operation
 #### Description
 Returns a list of background operation directories (scan, dump, restore). Only operations executed with `save_dicts` enabled are included. Useful for integration purposes.
 
-#### 📦 Operations list request body schema
+#### 📦 Operations list request params
 | Field        | Type | Required | Description                                               |
 |--------------|------|----------|-----------------------------------------------------------|
 | date_before  | date | No       | Filter: operations before this date. Date format ISO 8601 |
@@ -536,7 +504,7 @@ GET /operation/{internal_operation_id}
 #### Description
 Returns detailed information about a background operation (scan, dump, restore). Only operations executed with `save_dicts` enabled are included. Useful for integration purposes.
 
-#### 📦 Operations details request body schema
+#### 📦 Operations details request params
 | Field                 | Type   | Required | Description                    |
 |-----------------------|--------|----------|--------------------------------|
 | internal_operation_id | string | Yes      | Internal pg_anon operation ID. |
@@ -553,6 +521,38 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | `404`       | Operation directory not found | [HTTPValidationError](#httpvalidationerror)     |
 | `422`       | Validation Error              | [HTTPValidationError](#httpvalidationerror)     |
 
+
+---
+
+### Delete operation data
+```http request
+DELETE /operation/{internal_operation_id}
+```
+
+#### Description
+Deletes the operation data directory in `/runs`.
+Also removes the dump directory from the output path if the operation type is `dump`.
+
+#### Example
+```shell
+curl -X DELETE http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
+```
+
+#### 📦 Delete operation data request params
+| Field                 | Type   | Required | Description                    |
+|-----------------------|--------|----------|--------------------------------|
+| internal_operation_id | string | Yes      | Internal pg_anon operation ID. |
+
+### ✅ Responses
+| Status Code    | Description                         | Component                                   |
+|----------------|-------------------------------------|---------------------------------------------|
+| `204`          | Operation data successfully deleted | -                                           |
+| `400`          | Bad Request                         | [ErrorResponse](#errorresponse)             |
+| `500`          | Internal Server Error               | [ErrorResponse](#errorresponse)             |
+| `422`          | Validation Error                    | [HTTPValidationError](#httpvalidationerror) |
+
+---
+
 ### Operation logs
 ```http request
 GET /operation/{internal_operation_id}/logs
@@ -561,7 +561,7 @@ GET /operation/{internal_operation_id}/logs
 #### Description
 Returns log output for a background operation (scan, dump, restore). Only operations executed with `save_dicts` enabled are included. Useful for integration purposes.
 
-#### 📦 Operations logs request body schema
+#### 📦 Operations logs request params
 | Name                  | Type    | Required | Description                                                           |
 |-----------------------|---------|----------|-----------------------------------------------------------------------|
 | internal_operation_id | string  | Yes      | Internal pg_anon operation ID.                                        | 
