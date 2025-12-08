@@ -19,7 +19,7 @@
             "table": "card_numbers",
             "fields": {
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
-                "usd": "anon_funcs.noise(\"usd\", 10)",
+                "usd": "anon_funcs.noise(\"usd\", 30)",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
         },

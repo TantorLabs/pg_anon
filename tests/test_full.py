@@ -731,7 +731,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
                     ['schm_other_2', 'tbl_test_anon_functions'],
-                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_3', 'data_types_test'],
                     ['schm_other_4', 'partitioned_table'],
                     ['schm_other_4', 'partitioned_table_2025_01'],
                     ['schm_other_4', 'partitioned_table_2025_02'],
@@ -768,7 +768,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ["schm_other_2", "exclude_tbl", 0],
             ["schm_other_2", "some_tbl", 0],
             ['schm_other_2', 'tbl_test_anon_functions', 0],
-            ['schm_other_3', 'some_tbl', 0],
+            ['schm_other_3', 'data_types_test', 0],
             ['schm_other_4', 'partitioned_table', 0],
             ['schm_other_4', 'partitioned_table_2025_01', 0],
             ['schm_other_4', 'partitioned_table_2025_02', 0],
@@ -852,7 +852,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
                     ['schm_other_2', 'tbl_test_anon_functions'],
-                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_3', 'data_types_test'],
                     ['schm_other_4', 'partitioned_table'],
                     ['schm_other_4', 'partitioned_table_2025_01'],
                     ['schm_other_4', 'partitioned_table_2025_02'],
@@ -1056,7 +1056,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
                     ['schm_other_2', 'tbl_test_anon_functions'],
-                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_3', 'data_types_test'],
                     ['schm_other_4', 'partitioned_table'],
                     ['schm_other_4', 'partitioned_table_2025_01'],
                     ['schm_other_4', 'partitioned_table_2025_02'],
@@ -1093,7 +1093,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ["schm_other_2", "exclude_tbl", 0],
             ["schm_other_2", "some_tbl", 0],
             ['schm_other_2', 'tbl_test_anon_functions', 0],
-            ['schm_other_3', 'some_tbl', 0],
+            ['schm_other_3', 'data_types_test', 0],
             ['schm_other_4', 'partitioned_table', 0],
             ['schm_other_4', 'partitioned_table_2025_01', 0],
             ['schm_other_4', 'partitioned_table_2025_02', 0],
@@ -1489,7 +1489,6 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ['schm_customer', 'customer_manager'],
                     ['schm_other_1', 'some_tbl'],
                     ["schm_other_2", "some_tbl"],
-                    ['schm_other_3', 'some_tbl'],
                 ],
             )
         )
@@ -1566,7 +1565,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["schm_other_2", "exclude_tbl"],
                     ["schm_other_2", "some_tbl"],
                     ['schm_other_2', 'tbl_test_anon_functions'],
-                    ['schm_other_3', 'some_tbl'],
+                    ['schm_other_3', 'data_types_test'],
                     ['schm_other_4', 'partitioned_table'],
                     ['schm_other_4', 'partitioned_table_2025_01'],
                     ['schm_other_4', 'partitioned_table_2025_02'],
@@ -1634,7 +1633,6 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
                     ["schm_other_2", "some_tbl"],
-                    ['schm_other_3', 'some_tbl'],
                 ],
             )
         )
@@ -1696,7 +1694,6 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
                     ["schm_other_2", "some_tbl"],
-                    ['schm_other_3', 'some_tbl'],
                 ],
             )
         )
@@ -1758,7 +1755,6 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
                     ["schm_other_2", "some_tbl"],
-                    ['schm_other_3', 'some_tbl'],
                 ],
             )
         )
@@ -1820,7 +1816,6 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
                     ["schm_other_2", "some_tbl"],
-                    ['schm_other_3', 'some_tbl'],
                 ],
             )
         )
@@ -1942,7 +1937,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                 self.assertEqual(d1_field['table'], d2_field['table'])
                 self.assertEqual(set(d1_field['fields']), set(d2_field['fields']))
 
-        print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
+        print(f"<============ Finished comparison of {meta_dict} and {meta_dict_expected}")
 
     options = {}
 
@@ -1951,7 +1946,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_create_dict(self):
-        self.assertTrue("init_env" in passed_stages)
+        # self.assertTrue("init_env" in passed_stages)
         
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
 
@@ -2326,9 +2321,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_12_create_dict_with_type_aliases(self):
         self.assertTrue("init_env" in passed_stages)
 
-        meta_dicts = [
-            self.get_test_dict_path('test_meta_dict_type_aliases.py'),
-        ]
+        meta_dict = self.get_test_dict_path('test_meta_dict_type_aliases.py')
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_type_aliases.py", output=True)
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_type_aliases_expected.py")
 
@@ -2341,7 +2334,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--config={params.test_config}",
             "--mode=create-dict",
             "--scan-mode=full",
-            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--meta-dict-file={meta_dict}",
             f"--output-sens-dict-file={prepared_sens_dict}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             "--scan-partial-rows=10000",

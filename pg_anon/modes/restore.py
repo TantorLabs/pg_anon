@@ -485,9 +485,16 @@ class RestoreMode:
         if self.context.black_listed_tables or self.context.white_listed_tables:
             dumped_rows = 0
 
-            for table_data in self.context.metadata.files.values():
-                if (table_data['schema'], table_data['name']) in self.context.black_listed_tables:
-                    dumped_rows += int(table_data['rows'])
+            for table_data in self.metadata.files.values():
+                table_name = (table_data['schema'], table_data['table'])
+
+                if self.context.black_listed_tables and table_name in self.context.black_listed_tables:
+                    continue
+
+                if self.context.white_listed_tables and table_name not in self.context.white_listed_tables:
+                    continue
+
+                dumped_rows += int(table_data['rows'])
         else:
             dumped_rows = int(self.metadata.total_rows)
 

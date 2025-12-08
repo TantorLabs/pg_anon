@@ -52,7 +52,7 @@
             "schema": "public",
             "table": "tbl_100",
             "fields": {
-                "amount": "anon_funcs.noise(\"amount\", 10)",
+                "amount": "anon_funcs.noise(\"amount\", 30)",
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
             }
@@ -76,7 +76,7 @@
             "schema": "schm_mask_ext_exclude_2",
             "table": "card_numbers",
             "fields": {
-                "usd": "anon_funcs.noise(\"usd\", 10)",
+                "usd": "anon_funcs.noise(\"usd\", 30)",
                 "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
