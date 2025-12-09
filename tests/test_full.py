@@ -2350,7 +2350,39 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_12_create_dict_with_type_aliases")
 
-    async def test_13_create_dict_with_default_anonymization_function(self):
+    async def test_13_create_dict_with_type_aliases_complex(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dict = self.get_test_dict_path('test_meta_dict_type_aliases_complex.py')
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_type_aliases_complex.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_type_aliases_complex_expected.py")
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={meta_dict}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_13_create_dict_with_type_aliases_complex")
+
+    async def test_14_create_dict_with_default_anonymization_function(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2382,9 +2414,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_13_create_dict_with_default_anonymization_function")
+        passed_stages.append("test_14_create_dict_with_default_anonymization_function")
 
-    async def test_14_create_dict_using_words_and_phrases_constants(self):
+    async def test_15_create_dict_using_words_and_phrases_constants(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2417,9 +2449,9 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_14_create_dict_using_words_and_phrases_constants")
+        passed_stages.append("test_15_create_dict_using_words_and_phrases_constants")
 
-    async def test_15_create_dict_save_dicts(self):
+    async def test_16_create_dict_save_dicts(self):
         self.assertTrue("init_env" in passed_stages)
 
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
@@ -2472,12 +2504,12 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         filecmp.cmp(saved_target_no_sens_dict, self.target_no_sens_dict_expected, shallow=False)
 
         self.assertEqual(res.result_code, ResultCode.DONE)
-        passed_stages.append("test_15_create_dict_save_dicts")
+        passed_stages.append("test_16_create_dict_save_dicts")
 
-    async def test_16_dump_save_dicts(self):
+    async def test_17_dump_save_dicts(self):
         self.assertTrue("init_env" in passed_stages)
 
-        output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_16_dump_save_dicts")
+        output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_17_dump_save_dicts")
         partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
         partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
 
@@ -2518,12 +2550,12 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         filecmp.cmp(partial_tables_dict, partial_tables_dict_file, shallow=False)
         filecmp.cmp(partial_tables_exclude_dict, partial_tables_exclude_dict_file, shallow=False)
 
-        passed_stages.append("test_16_dump_save_dicts")
+        passed_stages.append("test_17_dump_save_dicts")
 
-    async def test_17_restore_save_dicts(self):
-        self.assertTrue("test_16_dump_save_dicts" in passed_stages)
+    async def test_18_restore_save_dicts(self):
+        self.assertTrue("test_17_dump_save_dicts" in passed_stages)
 
-        input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_16_dump_save_dicts")
+        input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_17_dump_save_dicts")
         partial_tables_dict_file = self.get_test_dict_path("test_partial_tables_dict.py")
         partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
 
@@ -2559,7 +2591,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         filecmp.cmp(partial_tables_dict, partial_tables_dict_file, shallow=False)
         filecmp.cmp(partial_tables_exclude_dict, partial_tables_exclude_dict_file, shallow=False)
 
-        passed_stages.append("test_17_restore_save_dicts")
+        passed_stages.append("test_18_restore_save_dicts")
 
 
 class TmpResults:
