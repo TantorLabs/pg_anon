@@ -18,7 +18,7 @@ from rest_api.dependencies import date_range_filter, get_operation_run_dir
 from rest_api.enums import ResponseStatus, DumpMode, RestoreMode, ScanMode
 from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, \
     ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
+    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
     OperationDataResponse
 from rest_api.runners.direct import ViewFieldsRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
@@ -140,6 +140,21 @@ async def stateless_view_data(request: ViewDataRequest):
 )
 async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(dump_callback, request)
+
+
+@app.delete(
+    '/api/stateless/dump',
+    tags=['Stateless'],
+    summary='[DEPRICATED] Delete dump',
+    description='Delete dump. Will be removed in pg_anon 1.9',
+    status_code=204,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(delete_folder, Path(request.validated_path))
 
 
 @app.post(

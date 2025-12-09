@@ -408,6 +408,19 @@ class DumpStatusResponse(StatelessRunnerResponse):
     size: Optional[int] = None
 
 
+class DumpDeleteRequest(BaseModel):
+    path: str
+    validated_path: Optional[str] = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def validate_model(self):
+        from rest_api.utils import get_full_dump_path
+
+        if self.path:
+            self.validated_path = get_full_dump_path(self.path)
+        return self
+
+
 #############################################
 # Stateless | Restore
 #############################################
