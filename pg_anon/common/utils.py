@@ -287,6 +287,7 @@ def normalize_data_type(data_type: str) -> str:
     if suffix:
         result += " " + suffix
 
+    result = re.sub(r"\s+\(", "(", result)
     result = re.sub(r"\s+", " ", result).strip()
 
     return result.lower()
