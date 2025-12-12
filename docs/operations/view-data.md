@@ -30,37 +30,37 @@ This mode displays anonymized table data without creating a dump.
 
 ### Common pg_anon options:
 
-| Option                         | Description                                                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `--config`                     | **Optional.** Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
-| `--processes`                  | **Optional.** Number of processes used for multiprocessing operations. (default: 4)                            |
-| `--db-connections-per-process` | **Optional.** Number of database connections per process for I/O operations. (default: 4)                      |
-| `--verbose`                    | **Optional.** Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
-| `--debug`                      | **Optional.** Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| Option                         | Required | Description                                                                                      |
+|--------------------------------|----------|--------------------------------------------------------------------------------------------------|
+| `--config`                     | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
+| `--processes`                  | No       | Number of processes used for multiprocessing operations. (default: 4)                            |
+| `--db-connections-per-process` | No       | Number of database connections per process for I/O operations. (default: 4)                      |
+| `--verbose`                    | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
+| `--debug`                      | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
 
 
 ### Database configuration options:
 
-| Option               | Description                                                                       |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `--db-host`          | **Required.** Database host.                                                      |
-| `--db-port`          | **Required.** Database port.                                                      |
-| `--db-name`          | **Required.** Database name.                                                      |
-| `--db-user`          | **Required.** Database user.                                                      |
-| `--db-user-password` | **Optional.** Database user password.                                             |
-| `--db-passfile`      | **Optional.** Path to a file containing the password used for authentication.     |
-| `--db-ssl-key-file`  | **Optional.** Path to the client SSL key file for secure connections.             |
-| `--db-ssl-cert-file` | **Optional.** Path to the client SSL certificate file.                            |
-| `--db-ssl-ca-file`   | **Optional.** Path to the CA certificate used to verify the server’s certificate. |
+| Option               | Required | Description                                                         |
+|----------------------|----------|---------------------------------------------------------------------|
+| `--db-host`          | Yes      | Database host.                                                      |
+| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-name`          | Yes      | Database name.                                                      |
+| `--db-user`          | Yes      | Database user.                                                      |
+| `--db-user-password` | No       | Database user password.                                             |
+| `--db-passfile`      | No       | Path to a file containing the password used for authentication.     |
+| `--db-ssl-key-file`  | No       | Path to the client SSL key file for secure connections.             |
+| `--db-ssl-cert-file` | No       | Path to the client SSL certificate file.                            |
+| `--db-ssl-ca-file`   | No       | Path to the CA certificate used to verify the server’s certificate. |
 
 
 ### View-data mode options:
 
-| Option                      | Description                                                                                                                                              |
-| --------------------------- |----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file` | **Required.** Path to a sensitive dictionary file (or list of files) previously generated by the [create-dict (scan) mode](scan.md) or created manually. |
-| `--schema-name`             | **Required.** Schema name.                                                                                                                               |
-| `--table-name`              | **Required.** Table name.                                                                                                                                |
-| `--limit`                   | **Optional.** Number of rows to display. (default: 100)                                                                                                  |
-| `--offset`                  | **Optional.** Row offset for pagination. (default: 0)                                                                                                    |
-| `--json`                    | **Optional.** Outputs results in JSON format instead of a table.                                                                                         |
+| Option                      | Required | Description                                                                                                                                                                                                                                       |
+|-----------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file` | Yes      | Input file or file list contains [sensitive dictionary](../dicts/sens-dict-schema.md), which was generated by the [create-dict (scan) mode](scan.md) or created manually. In rules collision case, priority has rules in last file from the list. |
+| `--schema-name`             | Yes      | Schema name.                                                                                                                                                                                                                                      |
+| `--table-name`              | Yes      | Table name.                                                                                                                                                                                                                                       |
+| `--limit`                   | No       | Number of rows to display. (default: 100)                                                                                                                                                                                                         |
+| `--offset`                  | No       | Row offset for pagination. (default: 0)                                                                                                                                                                                                           |
+| `--json`                    | No       | Outputs results in JSON format instead of a table.                                                                                                                                                                                                |

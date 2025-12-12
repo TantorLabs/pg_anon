@@ -136,41 +136,41 @@ python pg_anon.py --mode=dump \
 
 ### Common pg_anon options:
 
-| Option                         | Description                                                                                                    |
-|--------------------------------|----------------------------------------------------------------------------------------------------------------|
-| `--config`                     | **Optional.** Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
-| `--processes`                  | **Optional.** Number of processes used for multiprocessing operations. (default: 4)                            |
-| `--db-connections-per-process` | **Optional.** Number of database connections per process for I/O operations. (default: 4)                      |
-| `--verbose`                    | **Optional.** Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
-| `--debug`                      | **Optional.** Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| Option                         | Required | Description                                                                                      |
+|--------------------------------|----------|--------------------------------------------------------------------------------------------------|
+| `--config`                     | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
+| `--processes`                  | No       | Number of processes used for multiprocessing operations. (default: 4)                            |
+| `--db-connections-per-process` | No       | Number of database connections per process for I/O operations. (default: 4)                      |
+| `--verbose`                    | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
+| `--debug`                      | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
 
 
 ### Database configuration options:
 
-| Option               | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `--db-host`          | **Required.** Database host.                                                      |
-| `--db-port`          | **Required.** Database port.                                                      |
-| `--db-name`          | **Required.** Database name.                                                      |
-| `--db-user`          | **Required.** Database user.                                                      |
-| `--db-user-password` | **Optional.** Database user password.                                             |
-| `--db-passfile`      | **Optional.** Path to a file containing the password used for authentication.     |
-| `--db-ssl-key-file`  | **Optional.** Path to the client SSL key file for secure connections.             |
-| `--db-ssl-cert-file` | **Optional.** Path to the client SSL certificate file.                            |
-| `--db-ssl-ca-file`   | **Optional.** Path to the CA certificate used to verify the server’s certificate. |
+| Option               | Required | Description                                                         |
+|----------------------|----------|---------------------------------------------------------------------|
+| `--db-host`          | Yes      | Database host.                                                      |
+| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-name`          | Yes      | Database name.                                                      |
+| `--db-user`          | Yes      | Database user.                                                      |
+| `--db-user-password` | No       | Database user password.                                             |
+| `--db-passfile`      | No       | Path to a file containing the password used for authentication.     |
+| `--db-ssl-key-file`  | No       | Path to the client SSL key file for secure connections.             |
+| `--db-ssl-cert-file` | No       | Path to the client SSL certificate file.                            |
+| `--db-ssl-ca-file`   | No       | Path to the CA certificate used to verify the server’s certificate. |
 
 
 ### Dump mode options:
 
-| Option                               | Description                                                                                                                                                                                                           |
-|--------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `--prepared-sens-dict-file`          | **Required.** Input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually                                                              |
-| `--partial-tables-dict-file`         | **Optional.** Input file or file list containing a dict of tables to be included in the dump. All tables **not listed** in these files will be excluded. These files must be prepared manually (acts as a whitelist). |
-| `--partial-tables-exclude-dict-file` | **Optional.** Input file or file list containing a dict of tables to be excluded from the dump. All tables **listed** in these files will be excluded. These files must be prepared manually (acts as a blacklist).   |
-| `--dbg-stage-1-validate-dict`        | **Optional.** Validate dictionary, show the tables and run SQL queries without data export (default: false)                                                                                                           |
-| `--dbg-stage-2-validate-data`        | **Optional.** Validate data, show the tables and run SQL queries with data export in prepared database (default: false)                                                                                               |
-| `--dbg-stage-3-validate-full`        | **Optional.** Makes all logic with "limit" in SQL queries (default: false)                                                                                                                                            |
-| `--clear-output-dir`                 | **Optional.** Clears the output directory from previous dumps or other files. (default: false)                                                                                                                        |
-| `--pg-dump`                          | **Optional.** Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                       |
-| `--output-dir`                       | **Optional.** Output directory for dump files. (default "")                                                                                                                                                           |
-| `--save-dicts`                       | **Optional.** Duplicate all input dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                                                                                 |
+| Option                               | Required | Description                                                                                                                                                                                                                                          |
+|--------------------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--prepared-sens-dict-file`          | Yes      | Input file or file list contains [sensitive dictionary](../dicts/sens-dict-schema.md), which was generated by the [create-dict (scan) mode](scan.md) or created manually. In rules collision case, priority has rules in last file from the list.    |
+| `--partial-tables-dict-file`         | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for include specific tables in the dump. All tables **not listed** in these files will be excluded. These files must be prepared manually (acts as a whitelist). |
+| `--partial-tables-exclude-dict-file` | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for exclude specific tables from the dump. All tables **listed** in these files will be excluded. These files must be prepared manually (acts as a blacklist).   |
+| `--dbg-stage-1-validate-dict`        | No       | Validate dictionary, show the tables and run SQL queries without data export. (default: false)                                                                                                                                                       |
+| `--dbg-stage-2-validate-data`        | No       | Validate data, show the tables and run SQL queries with data export in prepared database. (default: false)                                                                                                                                           |
+| `--dbg-stage-3-validate-full`        | No       | Makes all logic with "limit" in SQL queries. (default: false)                                                                                                                                                                                        |
+| `--clear-output-dir`                 | No       | Clears the output directory from previous dumps or other files. (default: false)                                                                                                                                                                     |
+| `--pg-dump`                          | No       | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                                                                    |
+| `--output-dir`                       | No       | Output directory for dump files. (default "")                                                                                                                                                                                                        |
+| `--save-dicts`                       | No       | Duplicate all input dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                                                                                                                              |
