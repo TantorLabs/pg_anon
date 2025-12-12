@@ -79,8 +79,8 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [scan webhook request](#scan-webhook-request-schema) schema
 4. The operation executes in the background.
-5. If an error occurs during processing, the service sends a webhook request with status `error` (see: [Scan request body schema](#-scan-request-body-schema)).
-6. If the operation completes successfully, the service sends a webhook request with status `success` (see: [Scan request body schema](#-scan-request-body-schema)).
+5. If an error occurs during processing, the service sends a webhook request with status `error`.
+6. If the operation completes successfully, the service sends a webhook request with status `success`.
 
 #### 📦 Scan request body schema
 | Field                 | Type                                              | Required | Description                                                                                                                                                  |
@@ -284,8 +284,8 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [dump webhook request](#dump-webhook-request-schema) schema.
 4. The operation executes in the background.
-5. If an error occurs during processing, the service sends a webhook request with status `error` (see: [Dump request body schema](#-dump-request-body-schema)).
-6. If the operation completes successfully, the service sends a webhook request with status `success` (see: [Dump request body schema](#-dump-request-body-schema)).
+5. If an error occurs during processing, the service sends a webhook request with status `error`.
+6. If the operation completes successfully, the service sends a webhook request with status `success`.
 
 #### 📦 Dump request body schema
 | Field                                | Type                                              | Required | Description                                                                                                                                                                                                                                                                                       |
@@ -383,8 +383,8 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [restore webhook request](#restore-webhook-request-schema) schema.
 4. The operation executes in the background.
-5. If an error occurs during processing, the service sends a webhook request with status `error` (see: [Restore request body schema](#-restore-request-body-schema)).
-6. If the operation completes successfully, the service sends a webhook request with status `success` (see: [Restore request body schema](#-restore-request-body-schema)).
+5. If an error occurs during processing, the service sends a webhook request with status `error`.
+6. If the operation completes successfully, the service sends a webhook request with status `success`.
 
 #### 📦 Restore request body schema
 | Field                                | Type                                              | Required | Description                                                                                                                                                                                                                                                                                       |

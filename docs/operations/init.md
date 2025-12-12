@@ -22,21 +22,21 @@ python -m pg_anon --mode=init \
 
 ### Common pg_anon options:
 
-| Option                         | Description                                                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `--verbose`                    | **Optional.** Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
-| `--debug`                      | **Optional.** Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| Option      | Required | Description                                                                                      |
+|-------------|----------|--------------------------------------------------------------------------------------------------|
+| `--verbose` | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
+| `--debug`   | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
 
 ### Database configuration options:
 
-| Option               | Description                                                                       |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `--db-host`          | **Required.** Database host.                                                      |
-| `--db-port`          | **Required.** Database port.                                                      |
-| `--db-name`          | **Required.** Database name.                                                      |
-| `--db-user`          | **Required.** Database user.                                                      |
-| `--db-user-password` | **Optional.** Database user password.                                             |
-| `--db-passfile`      | **Optional.** Path to a file containing the password used for authentication.     |
-| `--db-ssl-key-file`  | **Optional.** Path to the client SSL key file for secure connections.             |
-| `--db-ssl-cert-file` | **Optional.** Path to the client SSL certificate file.                            |
-| `--db-ssl-ca-file`   | **Optional.** Path to the CA certificate used to verify the server’s certificate. |
+| Option               | Required | Description                                                         |
+|----------------------|----------|---------------------------------------------------------------------|
+| `--db-host`          | Yes      | Database host.                                                      |
+| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-name`          | Yes      | Database name.                                                      |
+| `--db-user`          | Yes      | Database user.                                                      |
+| `--db-user-password` | No       | Database user password.                                             |
+| `--db-passfile`      | No       | Path to a file containing the password used for authentication.     |
+| `--db-ssl-key-file`  | No       | Path to the client SSL key file for secure connections.             |
+| `--db-ssl-cert-file` | No       | Path to the client SSL certificate file.                            |
+| `--db-ssl-ca-file`   | No       | Path to the CA certificate used to verify the server’s certificate. |
