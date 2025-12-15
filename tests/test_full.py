@@ -1946,7 +1946,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
     async def test_02_create_dict(self):
-        # self.assertTrue("init_env" in passed_stages)
+        self.assertTrue("init_env" in passed_stages)
         
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
 

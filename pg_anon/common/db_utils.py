@@ -510,7 +510,7 @@ async def get_dump_query(
 
         if nulls_last:
             ordering = ", ".join([
-                field["column_name"] + ' NULLS LAST' for field in fields_list
+                f'"{field["column_name"]}"' + ' NULLS LAST' for field in fields_list
                 if field["is_nullable"].lower() == "yes"
             ])
             query += f" ORDER BY {ordering}"
