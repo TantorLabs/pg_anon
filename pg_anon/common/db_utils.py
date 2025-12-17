@@ -192,7 +192,7 @@ async def get_schemas(connection: Connection) -> List[str]:
     query = f"""
     SELECT nspname AS schema_name
     FROM pg_namespace
-    WHERE nspname NOT LIKE 'pg_%' AND nspname NOT IN ('information_schema')
+    WHERE nspname NOT LIKE 'pg_%' AND nspname NOT IN ('information_schema', '{ANON_UTILS_DB_SCHEMA_NAME}')
     ORDER BY nspname;
     """
 
@@ -205,7 +205,7 @@ async def get_custom_functions_ddl(connection: Connection) -> List[str]:
     SELECT pg_get_functiondef(p.oid) AS ddl
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'anon_funcs')
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', '{ANON_UTILS_DB_SCHEMA_NAME}')
     """
 
     result = await connection.fetch(query)
