@@ -167,10 +167,7 @@ async def get_db_tables(
 ) -> List[Tuple[str, str]]:
     if not excluded_schemas:
         excluded_schemas = []
-
-    excluded_schemas_str = ", ".join(
-        [f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]]
-    )
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
 
     query = f"""
             SELECT t.table_schema, t.table_name
@@ -200,19 +197,27 @@ async def get_schemas(connection: Connection) -> List[str]:
     return [row[0] for row in result]
 
 
-async def get_custom_functions_ddl(connection: Connection) -> List[str]:
+async def get_custom_functions_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
+
     query = f"""
     SELECT pg_get_functiondef(p.oid) AS ddl
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', '{ANON_UTILS_DB_SCHEMA_NAME}')
+    WHERE n.nspname NOT IN ({excluded_schemas_str})
     """
 
     result = await connection.fetch(query)
     return [row[0] for row in result]
 
 
-async def get_custom_domains_ddl(connection: Connection) -> List[str]:
+async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+
     query = f"""
     SELECT
         'CREATE DOMAIN ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
@@ -222,7 +227,7 @@ async def get_custom_domains_ddl(connection: Connection) -> List[str]:
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
     LEFT JOIN pg_constraint c ON c.contypid = t.oid
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+    WHERE n.nspname NOT IN ({excluded_schemas_str})
       AND t.typtype = 'd'
     ORDER BY n.nspname, t.typname;
     """
@@ -231,7 +236,11 @@ async def get_custom_domains_ddl(connection: Connection) -> List[str]:
     return [row[0] for row in result]
 
 
-async def get_custom_types_ddl(connection: Connection) -> List[str]:
+async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+
     query = f"""
     WITH user_types AS (
         SELECT
@@ -243,7 +252,7 @@ async def get_custom_types_ddl(connection: Connection) -> List[str]:
             t.typbasetype
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+        WHERE n.nspname NOT IN ({excluded_schemas_str})
           AND t.typtype IN ('c', 'e') -- composite, enum
           -- excluding row-types
           AND (t.typtype != 'c' OR t.typrelid = 0)
