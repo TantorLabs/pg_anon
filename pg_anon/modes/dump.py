@@ -16,12 +16,12 @@ from asyncpg import Connection, Pool
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
 from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
     get_custom_functions_ddl, get_custom_domains_ddl, get_indexes_data, get_views_related_to_tables, get_schemas, \
-    get_constraints_to_excluded_tables
+    get_constraints_to_excluded_tables, get_custom_types_ddl
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
-    exception_helper, get_dict_rule_for_table, chunkify, get_pg_util_version, save_dicts_info_file
+    exception_helper, get_dict_rule_for_table, chunkify, get_pg_util_version, save_dicts_info_file, safe_compile
 )
 from pg_anon.context import Context
 
@@ -140,7 +140,7 @@ class DumpMode:
     async def _prepare_sequences_last_values(self, connection: Connection):
         self._sequences_last_values = {}
 
-        query = get_sequences_query()
+        query = get_sequences_query(self.context.exclude_schemas)
         self.context.logger.debug(str(query))
         sequences_data = await connection.fetch(query)
 
@@ -576,7 +576,6 @@ class DumpMode:
                 await self._prepare_indexes(connection=connection)
                 await self._prepare_constraints(connection=connection)
                 await self._prepare_objects_ddl_to_metadata(connection)
-                self._schemas = await get_schemas(connection)
         finally:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
@@ -603,11 +602,35 @@ class DumpMode:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
 
+    async def _prepare_schemas_lists(self, connection):
+        self._all_db_schemas = await get_schemas(connection)
+        excluded_schemas = []
+
+        for rule in self.context.prepared_dictionary_obj.get('dictionary_exclude', []):
+            table_mask = rule.get('table_mask')
+            if table_mask != '*':
+                continue
+
+            schema_mask_pattern = None
+            if schema_mask := rule.get("schema_mask"):
+                schema_mask_pattern = safe_compile(schema_mask)
+
+            for schema in self._all_db_schemas:
+                if rule.get("schema") == schema:
+                    excluded_schemas.append(schema)
+                    break
+                elif schema_mask_pattern and schema_mask_pattern.search(schema):
+                    excluded_schemas.append(schema)
+                    continue
+
+        self._schemas = list(set(self._all_db_schemas) - set(excluded_schemas))
+        self.context.exclude_schemas.extend(excluded_schemas)
+
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection):
         if self.context.white_listed_tables:
-            self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection)
-            self.metadata.partial_dump_types = await get_custom_functions_ddl(connection)
-            self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection)
+            self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
 
     def _save_input_dicts_to_run_dir(self):
         if not self.context.options.save_dicts:
@@ -641,6 +664,7 @@ class DumpMode:
             self.context.read_partial_tables_dicts()
             self._prepare_output_dir()
 
+            await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
             await self._dump_pre_data()
             await self._dump_post_data()

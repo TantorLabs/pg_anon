@@ -1,4 +1,5 @@
 import re
+from typing import List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import FieldInfo
@@ -115,8 +116,13 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int = None, conditio
     return query
 
 
-def get_sequences_query():
-    return """
+def get_sequences_query(excluded_schemas: List[str] = None):
+    excluded_schemas_filter = ''
+    if excluded_schemas:
+        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str});'
+
+    return f"""
         SELECT
             pn_t.nspname AS table_schema,
             t.relname AS table_name,
@@ -135,6 +141,7 @@ def get_sequences_query():
             AND d.deptype in ('a', 'i')
             AND d.classid = 'pg_catalog.pg_class'::regclass
             AND d.refclassid = 'pg_catalog.pg_class'::regclass
+            {excluded_schemas_filter}
             """
 
 

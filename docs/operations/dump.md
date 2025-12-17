@@ -56,7 +56,7 @@ python pg_anon.py --mode=sync-struct-dump \
 
 ---
 
-### Data dump (`sync-data-dump`) mode
+## Data dump (`sync-data-dump`) mode
 Create backup contains only anonymized data without database structure.
 
 This backup can be restored in this mode:

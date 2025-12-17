@@ -113,7 +113,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
      "db_name":  "source_db",
      "user_login": "postgres",
      "user_password":  "postgres"
-  }
+  },
   "webhook_status_url": "https://my-service/pg-anon-result-processor",
   "webhook_metadata": {"extra_field_1": "extra_data", "extra_field_2": {"fld1": [1,2,3], "fld2": 123}},
   "webhook_extra_headers": {"Authorization": "Api-key my_super_secret_api_key", "X-my-service-extra-header": "header value"},
@@ -195,7 +195,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
      "db_name":  "source_db",
      "user_login": "postgres",
      "user_password":  "postgres"
-  }
+  },
   "sens_dict_contents": [{
     "name": "sens dict for email anonymization",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
@@ -203,7 +203,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
   "schema_name": "public",
   "table_mask": "^client",
   "view_only_sensitive_fields": true,
-  "fields_limit_count": 1000,
+  "fields_limit_count": 1000
 }'
 ```
 
@@ -247,7 +247,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
      "db_name":  "source_db",
      "user_login": "postgres",
      "user_password":  "postgres"
-  }
+  },
   "sens_dict_contents": [{
     "name": "sens dict for email anonymization",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
@@ -255,7 +255,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
   "schema_name": "public",
   "table_name": "clients",
   "limit": 10,
-  "offset": 20,
+  "offset": 20
 }'
 ```
 
@@ -318,7 +318,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
      "db_name":  "source_db",
      "user_login": "postgres",
      "user_password":  "postgres"
-  }
+  },
   "webhook_status_url": "https://my-service/pg-anon-result-processor",
   "webhook_metadata": {"extra_field_1": "extra_data", "extra_field_2": {"fld1": [1,2,3], "fld2": 123}},
   "webhook_extra_headers": {"Authorization": "Api-key my_super_secret_api_key", "X-my-service-extra-header": "header value"},
@@ -338,7 +338,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "output_path": "my_dump",
-  "pg_dump_path": "/usr/lib/postgresql/17/bin/pg_dump"
+  "pg_dump_path": "/usr/lib/postgresql/17/bin/pg_dump",
   "proc_count": 4,
   "proc_conn_count": 4
 }'
@@ -419,7 +419,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
      "db_name":  "source_db",
      "user_login": "postgres",
      "user_password":  "postgres"
-  }
+  },
   "webhook_status_url": "https://my-service/pg-anon-result-processor",
   "webhook_metadata": {"extra_field_1": "extra_data", "extra_field_2": {"fld1": [1,2,3], "fld2": 123}},
   "webhook_extra_headers": {"Authorization": "Api-key my_super_secret_api_key", "X-my-service-extra-header": "header value"},
@@ -435,7 +435,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
     "name": "sens dict for email anonymization",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
-  "pg_restore_path": "/usr/lib/postgresql/17/bin/pg_restore"
+  "pg_restore_path": "/usr/lib/postgresql/17/bin/pg_restore",
   "drop_custom_check_constr": false,
   "clean_db": false,
   "drop_db": false,
