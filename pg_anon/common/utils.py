@@ -349,6 +349,25 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
+def resolve_dependencies(extension_name, extensions_map: Dict[str, List[Dict[str, Any]]], seen=None):
+    if seen is None:
+        seen = set()
+
+    if extension_name in seen:
+        return
+
+    seen.add(extension_name)
+
+    for extension_data in extensions_map.get(extension_name, []):
+        if not extension_data['requires']:
+            continue
+
+        for dependency in extension_data['requires']:
+            resolve_dependencies(dependency, extensions_map, seen)
+
+    return seen
+
+
 def safe_compile(pattern: str, flags=0):
     try:
         return re.compile(pattern, flags)

@@ -120,7 +120,7 @@ def get_sequences_query(excluded_schemas: List[str] = None):
     excluded_schemas_filter = ''
     if excluded_schemas:
         excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str});'
+        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str})'
 
     return f"""
         SELECT
@@ -147,29 +147,27 @@ def get_sequences_query(excluded_schemas: List[str] = None):
 
 def get_check_constraint_query():
     return """
-        SELECT nsp.nspname,  cl.relname, pc.conname, pg_get_constraintdef(pc.oid)
-        FROM (
-            SELECT substring(T.v FROM position(' ' in T.v) + 1 for length(T.v) )::bigint as func_oid, t.conoid
-            from (
-                SELECT T.v as v, t.conoid
-                FROM (
-                        SELECT ((SELECT regexp_matches(t.v, '(:funcid\s\d+)', 'g'))::text[])[1] as v, t.conoid
-                        FROM (
-                            SELECT conbin::text as v, oid as conoid
-                            FROM pg_constraint
-                            WHERE contype = 'c'
-                        ) T
-                ) T WHERE length(T.v) > 0
-            ) T
-        ) T
-        INNER JOIN pg_constraint pc on T.conoid = pc.oid
-        INNER JOIN pg_class cl on cl.oid = pc.conrelid
-        INNER JOIN pg_namespace nsp on cl.relnamespace = nsp.oid
-        WHERE T.func_oid in (
-            SELECT  p.oid
-            FROM    pg_namespace n
-            INNER JOIN pg_proc p ON p.pronamespace = n.oid
-            WHERE   n.nspname not in ( 'pg_catalog', 'information_schema' )
+    SELECT DISTINCT
+        nsp.nspname,
+        cl.relname,
+        pc.conname,
+        pg_get_constraintdef(pc.oid)
+    FROM pg_constraint pc
+    JOIN pg_class cl
+        ON cl.oid = pc.conrelid
+    JOIN pg_namespace nsp
+        ON nsp.oid = cl.relnamespace
+    JOIN LATERAL (
+        SELECT
+            substring(m[1] FROM '\d+$')::oid AS func_oid
+        FROM regexp_matches(pc.conbin::text, ':funcid\s+\d+', 'g') AS m
+    ) f ON true
+    WHERE pc.contype = 'c'
+        AND f.func_oid IN (
+            SELECT p.oid
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
         )
     """
 

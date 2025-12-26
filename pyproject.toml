@@ -1,6 +1,6 @@
 [project]
 name = "pg_anon"
-version = "1.8.5"
+version = "1.8.6"
 description = "PostgreSQL anonymization tool."
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}
@@ -29,7 +29,7 @@ packages.find.exclude = ["tests", "dict"]
 
 [tool.poetry]
 name = "pg_anon"
-version = "1.8.5"
+version = "1.8.6"
 description = ""
 authors = ["Tantor Labs <tantor@tantorlabs.ru>"]
 readme = "README.md"

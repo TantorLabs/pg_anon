@@ -4,7 +4,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable, Dict, List, Union
+from typing import Optional, Callable, Dict, List, Union, Any
 
 from pg_anon.common.constants import SECRET_RUN_OPTIONS
 from pg_anon.common.enums import ResultCode, AnonMode, VerboseOptions, ScanMode
@@ -230,9 +230,13 @@ class Metadata:
 
     # only in black and white lists cases
     partial_dump_schemas: Optional[List[str]] = None
-    partial_dump_functions: Optional[List[str]] = None
+    extensions: Optional[Dict[str, Dict[str, Any]]] = None
     partial_dump_types: Optional[List[str]] = None
     partial_dump_domains: Optional[List[str]] = None
+    partial_dump_functions: Optional[List[str]] = None
+    partial_dump_casts: Optional[List[str]] = None
+    partial_dump_operators: Optional[List[str]] = None
+    partial_dump_aggregates: Optional[List[str]] = None
 
     def _serialize_data(self) -> Dict:
         data = {
@@ -255,9 +259,13 @@ class Metadata:
             'db_size': self.db_size,
 
             'partial_dump_schemas': self.partial_dump_schemas,
-            'partial_dump_functions': self.partial_dump_functions,
+            'extensions': self.extensions,
             'partial_dump_types': self.partial_dump_types,
             'partial_dump_domains': self.partial_dump_domains,
+            'partial_dump_functions': self.partial_dump_functions,
+            'partial_dump_casts': self.partial_dump_casts,
+            'partial_dump_operators': self.partial_dump_operators,
+            'partial_dump_aggregates': self.partial_dump_aggregates,
         }
 
         if self.sequences_last_values is None:
@@ -280,12 +288,20 @@ class Metadata:
 
         if self.partial_dump_schemas is None:
             del data['partial_dump_schemas']    
-        if self.partial_dump_functions is None:
-            del data['partial_dump_functions']
+        if self.extensions is None:
+            del data['extensions']    
         if self.partial_dump_types is None:
             del data['partial_dump_types']
         if self.partial_dump_domains is None:
             del data['partial_dump_domains']
+        if self.partial_dump_functions is None:
+            del data['partial_dump_functions']
+        if self.partial_dump_casts is None:
+            del data['partial_dump_casts']
+        if self.partial_dump_operators is None:
+            del data['partial_dump_operators']
+        if self.partial_dump_aggregates is None:
+            del data['partial_dump_aggregates']
 
         return data
 
@@ -312,10 +328,14 @@ class Metadata:
         self.total_tables_size = data.get('total_tables_size')
         self.total_rows = data.get('total_rows')
 
+        self.extensions = data.get('extensions')
         self.partial_dump_schemas = data.get('partial_dump_schemas')
-        self.partial_dump_functions = data.get('partial_dump_functions')
         self.partial_dump_types = data.get('partial_dump_types')
         self.partial_dump_domains = data.get('partial_dump_domains')
+        self.partial_dump_functions = data.get('partial_dump_functions')
+        self.partial_dump_casts = data.get('partial_dump_casts')
+        self.partial_dump_operators = data.get('partial_dump_operators')
+        self.partial_dump_aggregates = data.get('partial_dump_aggregates')
 
     def save_into_file(self, file_path: Path):
         from pg_anon.common.utils import save_json_file

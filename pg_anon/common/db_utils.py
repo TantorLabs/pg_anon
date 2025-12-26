@@ -1,6 +1,7 @@
 import hashlib
 import re
-from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Any
 
 import asyncpg
 from asyncpg import Connection, Pool
@@ -197,6 +198,43 @@ async def get_schemas(connection: Connection) -> List[str]:
     return [row[0] for row in result]
 
 
+async def get_extensions(connection: Connection) -> List[str]:
+    query = f"""
+    SELECT
+        n.nspname as "schema"
+        , e.extname as "name"
+        , e.extversion "version"
+        , e.extrelocatable as "relocatable"
+    FROM pg_extension e
+    JOIN pg_namespace n ON n.oid = e.extnamespace
+    ORDER BY extname;
+    """
+
+    return await connection.fetch(query)
+
+
+async def get_available_extensions_map(connection: Connection) -> Dict[str, List[Dict[str, Any]]]:
+    query = """   
+    SELECT ev.name, ev.version, ev.installed, ev.requires, e.default_version
+    FROM pg_available_extension_versions as ev
+    LEFT JOIN pg_available_extensions as e on e."name" = ev."name"
+    ORDER BY name, installed DESC, version DESC; 
+    """
+    rows = await connection.fetch(query)
+
+    extensions_map = defaultdict(list)
+
+    for row in rows:
+        extensions_map[row['name']].append({
+            'version': row['version'],
+            'installed': row['installed'],
+            'requires': row['requires'],
+            'default_version': row['default_version'],
+        })
+
+    return dict(extensions_map)
+
+
 async def get_custom_functions_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
     if not excluded_schemas:
         excluded_schemas = []
@@ -207,6 +245,13 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: Lis
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname NOT IN ({excluded_schemas_str})
+    AND p.prokind != 'a'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pg_depend d
+        WHERE d.objid = p.oid
+          AND d.deptype = 'e'
+    );
     """
 
     result = await connection.fetch(query)
@@ -228,7 +273,14 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[
     JOIN pg_namespace n ON n.oid = t.typnamespace
     LEFT JOIN pg_constraint c ON c.contypid = t.oid
     WHERE n.nspname NOT IN ({excluded_schemas_str})
-      AND t.typtype = 'd'
+        AND t.typtype = 'd'
+        AND NOT EXISTS (
+            SELECT 1
+            FROM pg_depend d
+            WHERE d.classid = 'pg_type'::regclass
+            AND d.objid = t.oid
+            AND d.deptype = 'e'
+        )
     ORDER BY n.nspname, t.typname;
     """
 
@@ -252,10 +304,16 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[st
             t.typbasetype
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE n.nspname NOT IN ({excluded_schemas_str})
-          AND t.typtype IN ('c', 'e') -- composite, enum
-          -- excluding row-types
-          AND (t.typtype != 'c' OR t.typrelid = 0)
+            WHERE n.nspname NOT IN ({excluded_schemas_str})
+            AND t.typtype IN ('c', 'e') -- composite, enum
+            -- excluding row-types
+            AND (t.typtype != 'c' OR t.typrelid = 0)
+            AND NOT EXISTS (
+                SELECT 1
+                FROM pg_depend d
+                WHERE d.objid = t.oid
+                  AND d.deptype = 'e'
+            )
     )
     SELECT
         'DO $$' || E'\n' ||
@@ -282,6 +340,146 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[st
     LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0
     GROUP BY schema_name, type_name, typtype, t.oid, t.typbasetype
     ORDER BY schema_name, type_name;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['information_schema', *excluded_schemas]])
+
+    query = f"""
+    SELECT
+        'CREATE CAST (' ||
+        format_type(c.castsource, NULL) ||
+        ' AS ' ||
+        format_type(c.casttarget, NULL) ||
+        ') ' ||
+        CASE
+            WHEN c.castmethod = 'i' THEN 'WITH INOUT'
+            WHEN c.castfunc = 0 THEN 'WITHOUT FUNCTION'
+            ELSE 'WITH FUNCTION ' || c.castfunc::regprocedure
+        END ||
+        CASE
+            WHEN c.castcontext = 'i' THEN ' AS IMPLICIT'
+            WHEN c.castcontext = 'a' THEN ' AS ASSIGNMENT'
+            ELSE ''
+        END || ';' AS ddl
+    FROM pg_cast c
+    JOIN pg_type ts ON ts.oid = c.castsource
+    JOIN pg_type tt ON tt.oid = c.casttarget
+    JOIN pg_namespace ns ON ns.oid = ts.typnamespace
+    JOIN pg_namespace nt ON nt.oid = tt.typnamespace
+    LEFT JOIN pg_proc f ON f.oid = c.castfunc
+    LEFT JOIN pg_namespace nf ON nf.oid = f.pronamespace
+    WHERE
+        -- Exclude built-in casts
+        (ns.nspname != 'pg_catalog' or nt.nspname != 'pg_catalog')
+        -- Exclude user-defined types by excluded schemas
+        and ns.nspname NOT IN ({excluded_schemas_str}) and nt.nspname NOT IN ({excluded_schemas_str})
+        -- Exclude user-defined function by excluded schemas
+        and (c.castfunc = 0 OR nf.nspname NOT IN ({excluded_schemas_str}))
+        -- CAST not owned by extension
+        AND NOT EXISTS (
+        --NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_cast'::regclass
+              AND d.objid = c.oid
+              AND d.deptype = 'e'
+        )
+        -- source type not owned by extension
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_type'::regclass
+              AND d.objid = ts.oid
+              AND d.deptype = 'e'
+        )
+        -- target type not owned by extension
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_type'::regclass
+              AND d.objid = tt.oid
+              AND d.deptype = 'e'
+        )
+        -- function not owned by extension
+        AND (
+            c.castfunc = 0
+            OR NOT EXISTS (
+                SELECT 1 FROM pg_depend d
+                WHERE d.classid = 'pg_proc'::regclass
+                  AND d.objid = c.castfunc
+                  AND d.deptype = 'e'
+            )
+        );
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_operators_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    excluded_schemas_filter = ''
+    excluded_schemas_str = ''
+    if excluded_schemas:
+        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_filter = f'AND nf.nspname not in ({excluded_schemas_str})'
+
+    query = f"""
+    SELECT
+        'CREATE OPERATOR ' || o.oid::regoperator || ' (' ||
+        'PROCEDURE = ' || o.oprcode::regprocedure ||
+        COALESCE(', LEFTARG = ' || format_type(o.oprleft, NULL), '') ||
+        COALESCE(', RIGHTARG = ' || format_type(o.oprright, NULL), '') ||
+        COALESCE(', COMMUTATOR = ' || o.oprcom::regoperator, '') ||
+        COALESCE(', NEGATOR = ' || o.oprnegate::regoperator, '') ||
+        COALESCE(', RESTRICT = ' || o.oprrest::regprocedure, '') ||
+        COALESCE(', JOIN = ' || o.oprjoin::regprocedure, '') ||
+        ');' AS ddl
+    FROM pg_operator o
+    JOIN pg_namespace n ON n.oid = o.oprnamespace
+    JOIN pg_proc f ON f.oid = o.oprcode
+    JOIN pg_namespace nf ON nf.oid = f.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+        {excluded_schemas_filter}
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.objid = o.oid AND d.deptype = 'e'
+        );
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+    excluded_schemas_filter = ''
+    excluded_schemas_str = ''
+    if excluded_schemas:
+        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_filter = f'AND ns.nspname not in ({excluded_schemas_str})'
+
+    query = f"""
+    SELECT
+        'CREATE AGGREGATE ' || p.oid::regprocedure || ' (' ||
+        'SFUNC = ' || a.aggtransfn::regprocedure ||
+        ', STYPE = ' || format_type(a.aggtranstype, NULL) ||
+        COALESCE(', FINALFUNC = ' || a.aggfinalfn::regprocedure, '') ||
+        COALESCE(', INITCOND = ' || quote_literal(a.agginitval), '') ||
+        ');' AS ddl
+    FROM pg_aggregate a
+    JOIN pg_proc p ON p.oid = a.aggfnoid
+    JOIN pg_proc sf ON sf.oid = a.aggtransfn
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_namespace ns ON ns.oid = sf.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+        {excluded_schemas_filter}
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.objid = p.oid AND d.deptype = 'e'
+        );
     """
 
     result = await connection.fetch(query)
