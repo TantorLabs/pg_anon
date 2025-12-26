@@ -7,20 +7,21 @@ import shutil
 import subprocess
 from copy import copy
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import asyncpg
 from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
-from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool
+from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool, \
+    get_available_extensions_map
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
     get_pg_util_version,
-    pretty_size, save_dicts_info_file,
+    pretty_size, save_dicts_info_file, resolve_dependencies
 )
 from pg_anon.context import Context
 
@@ -41,6 +42,8 @@ class RestoreMode:
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
     _skip_post_data_restore: bool = False
+
+    _restored_schemas: List[str]
 
     def __init__(self, context: Context):
         self.context = context
@@ -328,29 +331,99 @@ class RestoreMode:
                 await connection.execute(query)
 
     async def _create_schemas_for_partial_mode(self, connection: Connection):
-        schemas = None
+        self._restored_schemas = list()
         if self.context.black_listed_tables or self.context.white_listed_tables:
-            schemas = list({schema for schema, _ in self.context.tables})
+            self._restored_schemas = list({schema for schema, _ in self.context.tables})
 
         if self.metadata.partial_dump_schemas:
-            schemas = copy(self.metadata.partial_dump_schemas)
+            self._restored_schemas = copy(self.metadata.partial_dump_schemas)
 
-        if not schemas:
+        if not self._restored_schemas:
             return
 
-        for schema in schemas:
+        for schema in self._restored_schemas:
             query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
             self.context.logger.info("PARTIAL RESTORE MODE: " + query)
             await connection.execute(query)
 
+    async def _create_extensions_for_partial_mode(self, connection: Connection):
+        # Manual extension creating only in case of whitelist using
+        if not self.metadata.extensions or not self._restored_schemas:
+            return
+
+        available_extensions = await get_available_extensions_map(connection)
+        available_schemas = ['pg_catalog', *self._restored_schemas]
+        for extension_name, extension_data in self.metadata.extensions.items():
+            query_parts = [f'CREATE EXTENSION IF NOT EXISTS {extension_name}']
+
+            # Check necessary schemas exists or extension can be relocatable
+            if extension_data['schema'] not in available_schemas or extension_data['is_excluded_by_schema']:
+                if not extension_data['relocatable']:
+                    raise RuntimeError(f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists')
+                self.context.logger.warn(f'EXTENSION "{extension_name}" will restored into default schema, cause SCHEMA "{extension_data["schema"]}" is not exists')
+            else:
+                query_parts.append(f'SCHEMA {extension_data["schema"]}')
+
+            # Check extension exists in system
+            available_extension_versions = available_extensions.get(extension_name)
+            if not available_extension_versions:
+                raise RuntimeError(f'Required EXTENSION "{extension_name}" is not available for creating')
+
+            extension_already_installed = False
+            version_specified = None
+            for available_extension_version in available_extension_versions:
+                if available_extension_version['installed']:
+                    extension_already_installed = True
+                    break
+
+                if available_extension_version['version'] == extension_data['version']:
+                    version_specified = available_extension_version
+                    break
+
+            if extension_already_installed:
+                continue
+
+            if not version_specified:
+                version_specified = available_extension_versions[0]
+                self.context.logger.warn(
+                    f'EXTENSION "{extension_name}" will restored by default version "{version_specified["default_version"]}", cause target version "{extension_data["version"]}" is not exists'
+                )
+
+            query_parts.append(f"VERSION '{version_specified['default_version']}'")
+
+            queries = []
+            if version_specified['requires']:
+                for dependencies_extension in version_specified['requires']:
+                    queries.extend([
+                        f'CREATE EXTENSION IF NOT EXISTS {extension}'
+                        for extension in resolve_dependencies(dependencies_extension, available_extensions)
+                    ])
+
+            queries.append(' '.join(query_parts))
+            for extension_dependency_query in queries:
+                self.context.logger.info("PARTIAL RESTORE MODE: " + extension_dependency_query)
+                await connection.execute(extension_dependency_query)
+
     async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection):
         ddl_list = []
+
+        if self.metadata.partial_dump_types:
+            ddl_list.extend(self.metadata.partial_dump_types)
+
+        if self.metadata.partial_dump_domains:
+            ddl_list.extend(self.metadata.partial_dump_domains)
+
         if self.metadata.partial_dump_functions:
             ddl_list.extend(self.metadata.partial_dump_functions)
-        if self.metadata.partial_dump_functions:
-            ddl_list.extend(self.metadata.partial_dump_types)
-        if self.metadata.partial_dump_functions:
-            ddl_list.extend(self.metadata.partial_dump_domains)
+
+        if self.metadata.partial_dump_casts:
+            ddl_list.extend(self.metadata.partial_dump_casts)
+
+        if self.metadata.partial_dump_operators:
+            ddl_list.extend(self.metadata.partial_dump_operators)
+
+        if self.metadata.partial_dump_aggregates:
+            ddl_list.extend(self.metadata.partial_dump_aggregates)
 
         for query in ddl_list:
             self.context.logger.info("PARTIAL RESTORE MODE: " + query)
@@ -690,6 +763,7 @@ class RestoreMode:
             self._prepare_tables_lists()
 
             await self._create_schemas_for_partial_mode(connection)
+            await self._create_extensions_for_partial_mode(connection)
             await self._create_objects_from_ddl_for_partial_mode(connection)
             self._make_filtered_toc_list()
 

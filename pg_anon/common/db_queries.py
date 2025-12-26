@@ -120,7 +120,7 @@ def get_sequences_query(excluded_schemas: List[str] = None):
     excluded_schemas_filter = ''
     if excluded_schemas:
         excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str});'
+        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str})'
 
     return f"""
         SELECT

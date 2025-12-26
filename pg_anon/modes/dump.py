@@ -16,7 +16,8 @@ from asyncpg import Connection, Pool
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
 from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
     get_custom_functions_ddl, get_custom_domains_ddl, get_indexes_data, get_views_related_to_tables, get_schemas, \
-    get_constraints_to_excluded_tables, get_custom_types_ddl
+    get_constraints_to_excluded_tables, get_custom_types_ddl, get_custom_casts_ddl, get_custom_operators_ddl, \
+    get_custom_aggregates_ddl, get_extensions
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -46,6 +47,7 @@ class DumpMode:
     _indexes: Dict = None
     _views: Dict = None
     _constraints: Dict = None
+    _extensions: Dict = None
 
     _views_for_including: List[str] = None
     _views_for_excluding: List[str] = None
@@ -205,6 +207,18 @@ class DumpMode:
                 "is_excluded": is_excluded,
             }
 
+    async def _prepare_extensions(self, connection: Connection):
+        self._extensions = {}
+        extensions_data = await get_extensions(connection)
+        for schema, name, version, relocatable in extensions_data:
+            self._extensions[name] = {
+                'schema': schema,
+                'name': name,
+                'version': version,
+                'relocatable': relocatable,
+                'is_excluded_by_schema': schema in self.context.exclude_schemas,
+            }
+
     async def _prepare_and_save_metadata(self):
         if self.context.options.dbg_stage_1_validate_dict:
             return
@@ -222,6 +236,8 @@ class DumpMode:
         self.metadata.prepared_sens_dict_files = ','.join(self.context.options.prepared_sens_dict_files)
 
         # Schemas and functions used in constraints need to be preserved only when a table whitelist is applied.
+        self.metadata.extensions = self._extensions
+
         if self.context.white_listed_tables:
             self.metadata.partial_dump_schemas = self._schemas
 
@@ -575,6 +591,7 @@ class DumpMode:
                 await self._prepare_views(connection=connection)
                 await self._prepare_indexes(connection=connection)
                 await self._prepare_constraints(connection=connection)
+                await self._prepare_extensions(connection=connection)
                 await self._prepare_objects_ddl_to_metadata(connection)
         finally:
             await connection.close()
@@ -628,9 +645,12 @@ class DumpMode:
 
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection):
         if self.context.white_listed_tables:
-            self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_casts = await get_custom_casts_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_operators = await get_custom_operators_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_aggregates = await get_custom_aggregates_ddl(connection, self.context.exclude_schemas)
 
     def _save_input_dicts_to_run_dir(self):
         if not self.context.options.save_dicts:
