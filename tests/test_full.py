@@ -2593,6 +2593,34 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_18_restore_save_dicts")
 
+    async def test_19_create_dict_using_not_existing_functions(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_not_existing_functions_in_datafunc.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_not_existing_functions_in_datafunc.py", output=True)
+
+        options = build_run_options([
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--mode=create-dict",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+        passed_stages.append("test_19_create_dict_using_not_existing_functions")
+
 
 class TmpResults:
     res_test_02 = None

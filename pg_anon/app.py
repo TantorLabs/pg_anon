@@ -111,7 +111,7 @@ class PgAnonApp:
             self.result.result_data = await mode.run()
             self.result.complete()
         except Exception as exc:
-            self.context.logger.error(exception_helper(show_traceback=True))
+            self.context.logger.error(f"<============ {self.context.options.mode.value} failed\n{exception_helper(show_traceback=True)}")
             self.result.fail(exc)
         finally:
             self.context.logger.info(

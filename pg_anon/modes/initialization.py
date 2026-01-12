@@ -28,7 +28,6 @@ class InitMode:
 
             self.context.logger.info("<------------- Finished init mode")
         except Exception as ex:
-            self.context.logger.error("<------------- Init failed\n" + exception_helper())
             await tr.rollback()
             raise ex
         finally:

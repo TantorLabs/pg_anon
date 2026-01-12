@@ -480,8 +480,8 @@ class CreateDictMode:
                                 break
 
         except Exception as e:
-            self.context.logger.error("Exception in scan_obj_func:\n" + exception_helper())
-            raise Exception("Can't execute task: %s" % field_info)
+            self.context.logger.error(f"Exception in scan_obj_func:\n{field_info}\n" + exception_helper())
+            raise Exception("Can't execute task for field: %s" % field_info)
 
         end_t = time.time()
         if end_t - start_t > 10:
@@ -561,11 +561,12 @@ class CreateDictMode:
                     tasks_res_final.append(task.result())
 
             queue.put(tasks_res_final)
-        except asyncio.exceptions.TimeoutError:
+        except asyncio.exceptions.TimeoutError as ex:
             self.context.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
+            queue.put([ex])
         except Exception as ex:
             self.context.logger.error(f"================> Process [{name}]: {ex}")
-            raise ex
+            queue.put([ex])
         finally:
             self.context.logger.debug(f"================> Process [{name}] closing")
             loop.close()
@@ -739,7 +740,6 @@ class CreateDictMode:
             self._save_output_dicts_to_run_dir()
             self.context.logger.info("<------------- Finished create_dict mode")
         except Exception as ex:
-            self.context.logger.error("<------------- create_dict failed\n" + exception_helper())
             raise ex
         finally:
             if self.context.options.save_dicts:
