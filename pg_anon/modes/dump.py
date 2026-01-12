@@ -693,7 +693,6 @@ class DumpMode:
 
             self.context.logger.info("<------------- Finished dump")
         except Exception as ex:
-            self.context.logger.error("<------------- Dump failed\n" + exception_helper())
             raise ex
         finally:
             if connection:

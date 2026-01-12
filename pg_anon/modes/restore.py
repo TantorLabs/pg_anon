@@ -780,7 +780,6 @@ class RestoreMode:
 
             self.context.logger.info("<------------- Finished restore")
         except Exception as ex:
-            self.context.logger.error("<------------- Restore failed\n" + exception_helper())
             raise ex
         finally:
             if connection:

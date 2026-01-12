@@ -183,5 +183,4 @@ class ViewFieldsMode:
 
             self.context.logger.info("<------------- Finished view_fields mode")
         except Exception as ex:
-            self.context.logger.error("<------------- view_fields failed\n" + exception_helper())
             raise ex
