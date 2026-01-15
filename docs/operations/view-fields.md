@@ -12,7 +12,7 @@ This mode displays how database fields match the anonymization rules.
 ## Run example
 
 ```commandline
-   python pg_anon.py --mode=view-fields \
+   python pg_anon.py view-fields \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -44,17 +44,17 @@ This mode displays how database fields match the anonymization rules.
 
 ### Database configuration options:
 
-| Option               | Required | Description                                                                       |
-|----------------------|----------|-----------------------------------------------------------------------------------|
-| `--db-host`          | Yes      | **Required.** Database host.                                                      |
-| `--db-port`          | Yes      | **Required.** Database port.                                                      |
-| `--db-name`          | Yes      | **Required.** Database name.                                                      |
-| `--db-user`          | Yes      | **Required.** Database user.                                                      |
-| `--db-user-password` | No       | **Optional.** Database user password.                                             |
-| `--db-passfile`      | No       | **Optional.** Path to a file containing the password used for authentication.     |
-| `--db-ssl-key-file`  | No       | **Optional.** Path to the client SSL key file for secure connections.             |
-| `--db-ssl-cert-file` | No       | **Optional.** Path to the client SSL certificate file.                            |
-| `--db-ssl-ca-file`   | No       | **Optional.** Path to the CA certificate used to verify the server’s certificate. |
+| Option               | Required | Description                                                         |
+|----------------------|----------|---------------------------------------------------------------------|
+| `--db-host`          | Yes      | Database host.                                                      |
+| `--db-port`          | No       | Database port.                                                      |
+| `--db-name`          | Yes      | Database name.                                                      |
+| `--db-user`          | Yes      | Database user.                                                      |
+| `--db-user-password` | No       | Database user password.                                             |
+| `--db-passfile`      | No       | Path to a file containing the password used for authentication.     |
+| `--db-ssl-key-file`  | No       | Path to the client SSL key file for secure connections.             |
+| `--db-ssl-cert-file` | No       | Path to the client SSL certificate file.                            |
+| `--db-ssl-ca-file`   | No       | Path to the CA certificate used to verify the server’s certificate. |
 
 
 ### View-fields mode options:

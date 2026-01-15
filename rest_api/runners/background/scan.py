@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pg_anon.common.enums import AnonMode, ScanMode
+from pg_anon.common.enums import AnonMode
 from rest_api.enums import ScanMode
 from rest_api.pydantic_models import ScanRequest
 from rest_api.runners.background import BaseRunner

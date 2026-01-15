@@ -12,7 +12,7 @@ This mode displays anonymized table data without creating a dump.
 ## Run example
 
 ```commandline
-   python pg_anon.py --mode=view-data \
+   python pg_anon.py view-data \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -44,7 +44,7 @@ This mode displays anonymized table data without creating a dump.
 | Option               | Required | Description                                                         |
 |----------------------|----------|---------------------------------------------------------------------|
 | `--db-host`          | Yes      | Database host.                                                      |
-| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-port`          | No       | Database port.                                                      |
 | `--db-name`          | Yes      | Database name.                                                      |
 | `--db-user`          | Yes      | Database user.                                                      |
 | `--db-user-password` | No       | Database user password.                                             |

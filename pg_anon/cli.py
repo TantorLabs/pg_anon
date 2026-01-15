@@ -13,259 +13,524 @@ from pg_anon.common.utils import parse_comma_separated_list
 from pg_anon.version import __version__
 
 
-def get_arg_parser():
-    parser = argparse.ArgumentParser()
-    clean_db_args_group = parser.add_mutually_exclusive_group()
-
+def common_parser():
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
-        "--version",
-        help="Show the version number and exit",
-        action="store_true",
-        default=False,
+        "--db-host",
+        type=str,
+        required=True,
+        help="""Database host""",
     )
     parser.add_argument(
-        "--debug",
-        help="Enable debug mode, (default: %(default)s)",
-        action="store_true",
-        default=False,
+        "--db-port",
+        type=int,
+        default=5432,
+        help="""Database port""",
+    )
+    parser.add_argument(
+        "--db-name",
+        type=str,
+        required=True,
+        help="""Database name""",
+    )
+    parser.add_argument(
+        "--db-user",
+        type=str,
+        required=True,
+        help="""Database user""",
+    )
+    parser.add_argument(
+        "--db-user-password",
+        type=str,
+        default="",
+        help="""Database user password""",
+    )
+    parser.add_argument(
+        "--db-passfile",
+        type=str,
+        default="",
+        help="""Path to a file containing the password used for authentication""",
+    )
+    parser.add_argument(
+        "--db-ssl-key-file",
+        type=str,
+        default="",
+        help="""Path to the client SSL key file for secure connections""",
+    )
+    parser.add_argument(
+        "--db-ssl-cert-file",
+        type=str,
+        default="",
+        help="""Path to the client SSL certificate file""",
+    )
+    parser.add_argument(
+        "--db-ssl-ca-file",
+        type=str,
+        default="",
+        help="""Path to the CA certificate used to verify the server’s certificate""",
     )
     parser.add_argument(
         "--config",
-        help="Path to configuration file of pg_anon in YAML",
-        default=None,
+        help="""Path to configuration file of pg_anon in YAML""",
+        type=str,
+        default="",
     )
-    parser.add_argument("--db-host", type=str)
-    parser.add_argument("--db-port", type=int, default=5432)
-    parser.add_argument("--db-name", type=str, default="default")
-    parser.add_argument("--db-user", type=str, default="default")
-    parser.add_argument("--db-user-password", type=str, default="")
-    parser.add_argument("--db-passfile", type=str, default="")
-    parser.add_argument("--db-ssl-key-file", type=str, default="")
-    parser.add_argument("--db-ssl-cert-file", type=str, default="")
-    parser.add_argument("--db-ssl-ca-file", type=str, default="")
     parser.add_argument(
-        "--mode", type=AnonMode, choices=list(AnonMode), default=AnonMode.INIT
+        "--version",
+        help="""Show the version number and exit""",
+        action="store_true",
     )
     parser.add_argument(
         "--verbose",
         dest="verbose",
-        type=VerboseOptions,
-        choices=list(VerboseOptions),
-        default=VerboseOptions.INFO,
-        help="Enable verbose output",
+        choices=list(v.value for v in VerboseOptions),
+        default=VerboseOptions.INFO.value,
+        help="""Sets the log verbosity level: "info", "debug", "error". (default: %(default)s)""",
     )
     parser.add_argument(
-        "--meta-dict-file",
-        dest='meta_dict_files',
-        type=parse_comma_separated_list,
-        default=None,
-        help="In 'create-dict' mode input file or file list with scan rules of sensitive and not sensitive fields"
+        "--debug",
+        help="""Enables debug mode (equivalent to "--verbose=debug") and adds extra debug logs.""",
+        action="store_true",
     )
     parser.add_argument(
+        "--application-name-suffix",
+        type=str,
+        default="",
+        help="""Appends suffix for connection name. Just for comfortable automation.""",
+    )
+    return parser
+
+
+# Scan, Dump, Restore, View-data, View-fields
+def io_common_parser():
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument(
         "--db-connections-per-process",
         type=int,
         default=4,
-        help="Amount of db connections for each process for IO operations.",
+        help="""Number of database connections per process for I/O operations. (default: %(default)s)""",
     )
-    parser.add_argument(
+    p.add_argument(
         "--processes",
         type=int,
         default=4,
-        help="Amount of processes for multiprocessing operations.",
+        help="""Number of processes used for multiprocessing operations. (default: %(default)s)""",
     )
-    parser.add_argument(
+
+    return p
+
+
+def scan_parser():
+    p = argparse.ArgumentParser(add_help=False)
+
+    p.add_argument(
+        "--meta-dict-file",
+        dest="meta_dict_files",
+        type=parse_comma_separated_list,
+        required=True,
+        help="Input file or file list contains meta-dictionary, which was prepared manually. In rules collision case, priority has rules in last file from the list."
+    )
+    p.add_argument(
+        "--prepared-sens-dict-file",
+        dest="prepared_sens_dict_files",
+        type=parse_comma_separated_list,
+        help="""Input file or file list contains sensitive dictionary, which was obtained in previous use by option "--output-sens-dict-file" or prepared manually. In rules collision case, priority has rules in last file from the list.""",
+    )
+    p.add_argument(
+        "--prepared-no-sens-dict-file",
+        dest="prepared_no_sens_dict_files",
+        type=parse_comma_separated_list,
+        help="""Input file or file list contains not sensitive dictionary, which was obtained in previous use by option "--output-no-sens-dict-file" or prepared manually. In rules collision case, priority has rules in last file from the list.""",
+    )
+
+    p.add_argument(
+        "--output-sens-dict-file",
+        type=str,
+        required=True,
+        help="""Output file path for saving sensitive dictionary.""",
+    )
+    p.add_argument(
+        "--output-no-sens-dict-file",
+        type=str,
+        default="",
+        help="""Output file path for saving not sensitive dictionary.""",
+    )
+
+    p.add_argument(
+        "--scan-mode",
+        choices=list(v.value for v in ScanMode),
+        default=ScanMode.PARTIAL.value,
+        help="""Defines whether to scan all data or only part of it ["full", "partial"] (default: %(default)s)""",
+    )
+    p.add_argument(
+        "--scan-partial-rows",
+        type=int,
+        default=10000,
+        help="""In "--scan-mode=partial" defines amount of rows to scan (default: %(default)s). Actual rows count can be smaller after getting unique values.""",
+    )
+
+    p.add_argument(
+        "--save-dicts",
+        action="store_true",
+        help="""Duplicate all input and output dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
+    )
+
+    return p
+
+
+def dump_parser():
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument(
+        "--prepared-sens-dict-file",
+        dest="prepared_sens_dict_files",
+        type=parse_comma_separated_list,
+        required=True,
+        help="""Input file or file list contains sensitive dictionary, which was generated by the create-dict (scan) mode or created manually. In rules collision case, priority has rules in last file from the list.""",
+    )
+    p.add_argument(
+        "--partial-tables-dict-file",
+        dest="partial_tables_dict_files",
+        type=parse_comma_separated_list,
+        help="""Input file or file list contains tables dictionary for include specific tables in the dump. All tables not listed in these files will be excluded. These files must be prepared manually (acts as a whitelist).""",
+    )
+    p.add_argument(
+        "--partial-tables-exclude-dict-file",
+        dest="partial_tables_exclude_dict_files",
+        type=parse_comma_separated_list,
+        help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
+    )
+    p.add_argument(
+        "--dbg-stage-1-validate-dict",
+        action="store_true",
+        help="""Validate dictionary, show the tables and run SQL queries without data export.""",
+    )
+    p.add_argument(
+        "--dbg-stage-2-validate-data",
+        action="store_true",
+        help="""Validate data, show the tables and run SQL queries with data export in prepared database.""",
+    )
+    p.add_argument(
+        "--dbg-stage-3-validate-full",
+        action="store_true",
+        help="""Makes all logic with "limit" in SQL queries.""",
+    )
+    p.add_argument(
+        "--clear-output-dir",
+        action="store_true",
+        help="""Clears the output directory from previous dumps or other files.""",
+    )
+    p.add_argument(
         "--pg-dump",
         type=str,
         default="/usr/bin/pg_dump",
-        help="Path to the `pg_dump` Postgres tool",
+        help="""Path to the pg_dump Postgres tool (default: %(default)s).""",
     )
-    parser.add_argument(
-        "--pg-restore",
+    p.add_argument(
+        "--output-dir",
         type=str,
-        default="/usr/bin/pg_restore",
-        help="Path to the `pg_dump` Postgres tool.",
+        default="",
+        help="""Output directory for dump files.""",
     )
-    parser.add_argument("--output-dir", type=str, default="")
-    parser.add_argument("--input-dir", type=str, default="")
-    parser.add_argument(
-        "--dbg-stage-1-validate-dict",
+    p.add_argument(
+        "--save-dicts",
         action="store_true",
-        default=False,
-        help="""Validate dictionary, show the tables and run SQL queries without data export""",
+        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
     )
-    parser.add_argument(
-        "--dbg-stage-2-validate-data",
-        action="store_true",
-        default=False,
-        help="""Validate data, show the tables and run SQL queries with data export in prepared database""",
-    )
-    parser.add_argument(
-        "--dbg-stage-3-validate-full",
-        action="store_true",
-        default=False,
-        help="""Makes all logic with "limit" in SQL queries""",
-    )
-    parser.add_argument("--clear-output-dir", action="store_true", default=False)
-    parser.add_argument(
-        "--drop-custom-check-constr",
-        action="store_true",
-        default=False,
-        help="Drop all CHECK constrains containing user-defined procedures to avoid performance "
-        "degradation at the data loading stage.",
-    )
-    parser.add_argument(
-        "--seq-init-by-max-value",
-        action="store_true",
-        default=False,
-        help="Initialize sequences based on maximum values. Otherwise, the sequences "
-        "will be initialized based on the values of the source database.",
-    )
-    clean_db_args_group.add_argument(
-        "--clean-db",
-        help="Clean database objects before restore (if they exist in dump). Mutually exclusive with --drop-db.",
-        action="store_true",
-        default=False,
-    )
-    clean_db_args_group.add_argument(
-        "--drop-db",
-        help="Drop target database before restore. Mutually exclusive with --clean-db.",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
+    p.add_argument(
         "--ignore-privileges",
         help="Ignore privileges from source db",
         action="store_true",
         default=False,
     )
-    parser.add_argument(
-        "--disable-checks",
-        action="store_true",
-        default=False,
-        help="Disable checks of disk space and PostgreSQL version.",
-    )
-    parser.add_argument(
-        "--scan-mode",
-        type=ScanMode,
-        choices=list(ScanMode),
-        default=ScanMode.PARTIAL.value,
-        help="In 'create-dict' mode defines whether to scan all data or only part of it",
-    )
-    parser.add_argument(
-        "--output-sens-dict-file",
+
+    return p
+
+
+def restore_parser():
+    p = argparse.ArgumentParser(add_help=False)
+
+    p.add_argument(
+        "--input-dir",
         type=str,
-        default="output-sens-dict-file.py",
-        help="In 'create-dict' mode output file with sensitive fields will be saved to this value",
+        required=True,
+        help="""Path to the directory containing dump files created in dump mode. """,
     )
-    parser.add_argument(
-        "--output-no-sens-dict-file",
-        type=str,
-        help="In 'create-dict' mode output file with not sensitive fields will be saved to this value",
-    )
-    parser.add_argument(
-        "--prepared-sens-dict-file",
-        dest='prepared_sens_dict_files',
-        type=parse_comma_separated_list,
-        help="In 'create-dict' mode input file or file list with sensitive fields, which was obtained in previous use by option `--output-sens-dict-file` or prepared manually",
-    )
-    parser.add_argument(
-        "--prepared-no-sens-dict-file",
-        dest="prepared_no_sens_dict_files",
-        type=parse_comma_separated_list,
-        help="In 'create-dict' mode input file or file list with not sensitive fields, which was obtained in previous use by option `--output-no-sens-dict-file` or prepared manually",
-    )
-    parser.add_argument(
+    p.add_argument(
         "--partial-tables-dict-file",
         dest="partial_tables_dict_files",
         type=parse_comma_separated_list,
-        help="In 'dump' or 'restore' mode input file or file list with tables. Only the tables specified in this dictionary will be included.",
+        help="""Input file or file list contains tables dictionary for include specific tables in the dump. All tables not listed in these files will be excluded. These files must be prepared manually (acts as a whitelist).""",
     )
-    parser.add_argument(
+    p.add_argument(
         "--partial-tables-exclude-dict-file",
         dest="partial_tables_exclude_dict_files",
         type=parse_comma_separated_list,
-        help="In 'dump' or 'restore' mode input file or file list with tables. Only the tables specified in this dictionary will be excluded.",
+        help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
     )
-    parser.add_argument(
-        "--scan-partial-rows",
-        type=int,
-        default=10000,
-        help="In '--scan-mode=partial' sets how much rows to scan",
-    )
-    parser.add_argument(
-        "--view-only-sensitive-fields",
+    p.add_argument(
+        "--disable-checks",
         action="store_true",
-        default=False,
-        help="In 'view-fields' mode output only sensitive fields. By default output all db fields",
+        help="""Disable checks of disk space and PostgreSQL version.""",
     )
-    parser.add_argument(
-        "--schema-name",
-        type=str,
-        help="In 'view-fields' and 'view-data' modes filter fields by schema name.",
-    )
-    parser.add_argument(
-        "--schema-mask",
-        type=str,
-        help="In 'view-fields' mode filter fields by schema mask. By default output all db fields",
-    )
-    parser.add_argument(
-        "--table-name",
-        type=str,
-        help="In 'view-fields' and 'view-data' modes filter fields by table name.",
-    )
-    parser.add_argument(
-        "--table-mask",
-        type=str,
-        help="In 'view-fields' mode filter fields by table mask. By default output all db fields",
-    )
-    parser.add_argument(
-        "--json",
+    p.add_argument(
+        "--seq-init-by-max-value",
         action="store_true",
-        default=False,
-        help="In 'view-fields' mode output in JSON format. By default using table output",
+        help="""Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database. """,
     )
-    parser.add_argument(
+    p.add_argument(
+        "--drop-custom-check-constr",
+        action="store_true",
+        help="""Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading. """,
+    )
+    p.add_argument(
+        "--pg-restore",
+        type=str,
+        default="/usr/bin/pg_restore",
+        help="""Path to the pg_restore Postgres tool. """,
+    )
+    group = p.add_mutually_exclusive_group()
+    group.add_argument(
+        "--clean-db",
+        action="store_true",
+        help="""Cleans the database objects before restoring (if they exist in the dump). Mutually exclusive with "--drop-db".""",
+    )
+    group.add_argument(
+        "--drop-db",
+        action="store_true",
+        help="""Drop target database before restore. Mutually exclusive with "--clean-db".""",
+    )
+    p.add_argument(
         "--save-dicts",
         action="store_true",
-        default=False,
-        help="Saves all input and output dictionaries to dir `runs` in modes: 'create-dict', 'dump', 'restore'",
+        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes. """,
     )
-    parser.add_argument(
+    p.add_argument(
+        "--ignore-privileges",
+        help="Ignore privileges from source db",
+        action="store_true",
+        default=False,
+    )
+
+    # Hidden param for validate_target_tables() in tests
+    p.add_argument(
+        "--prepared-sens-dict-file",
+        dest="prepared_sens_dict_files",
+        type=parse_comma_separated_list,
+        help=argparse.SUPPRESS,
+    )
+
+    return p
+
+
+def view_fields_parser():
+    p = argparse.ArgumentParser(add_help=False)
+
+    p.add_argument(
+        "--prepared-sens-dict-file",
+        dest="prepared_sens_dict_files",
+        type=parse_comma_separated_list,
+        required=True,
+        help="""Input file or file list contains sensitive dictionary, which was generated by the create-dict (scan) mode or created manually. In rules collision case, priority has rules in last file from the list.""",
+    )
+    p.add_argument(
+        "--view-only-sensitive-fields",
+        action="store_true",
+        help="""Displays only sensitive fields.""",
+    )
+    p.add_argument(
         "--fields-count",
         type=int,
         default=5000,
-        help="In 'view-fields' mode specify how many fields will be processed for output. By default = 5000",
+        help="""Maximum number of fields to process for output. (default: %(default)s)""",
     )
-    parser.add_argument(
+    p.add_argument(
+        "--schema-name",
+        type=str,
+        default="",
+        help="""Filter by schema name.""",
+    )
+    p.add_argument(
+        "--schema-mask",
+        type=str,
+        default="",
+        help="""Filter by schema name using a regular expression.""",
+    )
+    p.add_argument(
+        "--table-name",
+        type=str,
+        default="",
+        help="""Filter by table name.""",
+    )
+    p.add_argument(
+        "--table-mask",
+        type=str,
+        default="",
+        help="""Filter by table name using a regular expression.""",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="""Outputs results in JSON format instead of a table.""",
+    )
+
+    return p
+
+
+def view_data_parser():
+    p = argparse.ArgumentParser(add_help=False)
+
+    p.add_argument(
+        "--prepared-sens-dict-file",
+        dest="prepared_sens_dict_files",
+        type=parse_comma_separated_list,
+        required=True,
+        help="""Input file or file list contains sensitive dictionary, which was generated by the create-dict (scan) mode or created manually. In rules collision case, priority has rules in last file from the list.""",
+    )
+    p.add_argument(
+        "--schema-name",
+        type=str,
+        required=True,
+        help="""Schema name.""",
+    )
+    p.add_argument(
+        "--table-name",
+        type=str,
+        required=True,
+        help="""Table name.""",
+    )
+    p.add_argument(
         "--limit",
         type=int,
         default=100,
-        help="In 'view-data' mode how much rows to display. By default = 100",
+        help="""Number of rows to display. (default: %(default)s)""",
     )
-    parser.add_argument(
+    p.add_argument(
         "--offset",
         type=int,
         default=0,
-        help="In 'view-data' mode which part of --limit rows will be displayed. By default = 0",
+        help="""Row offset for pagination. (default: %(default)s)""",
     )
-    parser.add_argument(
-        "--application-name-suffix",
-        type=str,
-        default=None,
-        required=False,
-        help="Appends suffix for connection name. Just for comfortable automation",
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="""Outputs results in JSON format instead of a table.""",
     )
 
+    return p
+
+
+def get_arg_parser():
+    parser = argparse.ArgumentParser(
+        prog="pg_anon",
+        description="PostgreSQL database anonymization tool",
+    )
+
+    sub = parser.add_subparsers(dest="mode", help="Work mode", required=True)
+
+    sub.add_parser(
+        "init",
+        parents=[common_parser()],
+        help="""Creates the "anon_funcs" schema in the source database and loads the predefined SQL functions.""",
+    )
+
+    sub.add_parser(
+        "create-dict",
+        parents=[common_parser(), io_common_parser(), scan_parser()],
+        help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
+    )
+
+    # Dump modes
+    for mode_name, help_text in [
+        ("dump", "Creates an anonymized backup using rules from the sensitive dictionary."),
+        ("sync-struct-dump", "Creates a backup containing only the database structure without anonymized data."),
+        ("sync-data-dump", "Create backup contains only anonymized data without database structure."),
+    ]:
+        sub.add_parser(
+            mode_name,
+            parents=[common_parser(), io_common_parser(), dump_parser()],
+            help=help_text,
+        )
+
+    # Restore modes
+    for mode_name, help_text in [
+        ("restore", "Restores an anonymized backup created using pg_anon in the dump mode."),
+        ("sync-struct-restore", "Restores only the database structure."),
+        ("sync-data-restore", "Restores data only from anonymized backup."),
+    ]:
+        sub.add_parser(
+            mode_name,
+            parents=[common_parser(), io_common_parser(), restore_parser()],
+            help=help_text,
+        )
+
+    sub.add_parser(
+        "view-fields",
+        parents=[common_parser(), view_fields_parser()],
+        help="""Displays how database fields match the anonymization rules.""",
+    )
+
+    sub.add_parser(
+        "view-data",
+        parents=[common_parser(), view_data_parser()],
+        help="""Displays anonymized table data without creating a dump.""",
+    )
+
+    # backward compatibility
+    parser.add_argument("--mode", help=argparse.SUPPRESS)  # hidden in help
     return parser
 
 
+def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
+    if "--mode" not in argv and not any(a.startswith("--mode=") for a in argv):
+        return argv
+
+    new_argv = []
+    mode = None
+    skip_next = False
+
+    for i, arg in enumerate(argv):
+        if skip_next:
+            skip_next = False
+            continue
+
+        if arg == "--mode":
+            mode = argv[i + 1]
+            skip_next = True
+        elif arg.startswith("--mode="):
+            mode = arg.split("=", 1)[1]
+        else:
+            new_argv.append(arg)
+
+    if mode:
+        return [mode] + new_argv
+
+    return argv
+
+
 def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
-    args_parsed = get_arg_parser().parse_args(cli_run_params)
+    if cli_run_params is None:
+        cli_run_params = sys.argv[1:]
+
+    # Handle --version before subcommand parsing
+    if "--version" in cli_run_params:
+        print("Version %s" % __version__)
+        sys.exit(0)
+
+    cli_run_params = normalize_legacy_mode_args(cli_run_params)
+
+    parser = get_arg_parser()
+    args_parsed = parser.parse_args(cli_run_params)
     args_dict = vars(args_parsed)
 
-    if args_dict.get("debug") or args_dict.get("verbose") == VerboseOptions.DEBUG:
+    if args_dict.get("debug") or args_dict.get("verbose") == VerboseOptions.DEBUG.value:
         args_dict["debug"] = True
-        args_dict["verbose"] = VerboseOptions.DEBUG
+        args_dict["verbose"] = VerboseOptions.DEBUG.value
+
+    if args_dict.get('scan_mode'):
+        args_dict['scan_mode'] = ScanMode(args_dict['scan_mode'])
+
+    if args_dict.get('verbose'):
+        args_dict['verbose'] = VerboseOptions(args_dict['verbose'])
 
     internal_operation_id = str(uuid.uuid4())
     start_date = datetime.today()
@@ -281,6 +546,7 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
         'pg_anon_version': __version__,
         'internal_operation_id': internal_operation_id,
         'run_dir': run_dir,
+        'mode': AnonMode(args_dict['mode']),
     })
     return RunOptions(**args_dict)
 

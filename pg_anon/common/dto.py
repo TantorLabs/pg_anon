@@ -15,56 +15,74 @@ class RunOptions:
     pg_anon_version: str
     internal_operation_id: str
     run_dir: str
-    debug: bool
-    config: Optional[str]
+    mode: AnonMode
+
     db_host: str
     db_port: int
     db_name: str
     db_user: str
-    db_user_password: str
-    db_passfile: str
-    db_ssl_key_file: str
-    db_ssl_cert_file: str
-    db_ssl_ca_file: str
-    mode: AnonMode
-    verbose: VerboseOptions
-    meta_dict_files: Optional[List[str]]
-    db_connections_per_process: int
-    processes: int
-    pg_dump: str
-    pg_restore: str
-    output_dir: str
-    input_dir: str
-    dbg_stage_1_validate_dict: bool
-    dbg_stage_2_validate_data: bool
-    dbg_stage_3_validate_full: bool
-    clear_output_dir: bool
-    drop_custom_check_constr: bool
-    seq_init_by_max_value: bool
-    clean_db: bool
-    drop_db: bool
-    ignore_privileges: bool
-    disable_checks: bool
-    scan_mode: ScanMode
-    output_sens_dict_file: str
-    output_no_sens_dict_file: str
-    prepared_sens_dict_files: Optional[List[str]]
-    prepared_no_sens_dict_files: Optional[List[str]]
-    partial_tables_dict_files: Optional[List[str]]
-    partial_tables_exclude_dict_files: Optional[List[str]]
-    scan_partial_rows: int
-    view_only_sensitive_fields: bool
-    schema_name: Optional[str]
-    schema_mask: Optional[str]
-    table_name: Optional[str]
-    table_mask: Optional[str]
-    fields_count: int
-    limit: int
-    offset: int
-    application_name_suffix: Optional[str]
-    version: bool
-    json: bool
-    save_dicts: bool
+    db_user_password: Optional[str] = None
+    db_passfile: Optional[str] = None
+    db_ssl_key_file: Optional[str] = None
+    db_ssl_cert_file: Optional[str] = None
+    db_ssl_ca_file: Optional[str] = None
+
+    config: Optional[str] = None
+    application_name_suffix: Optional[str] = None
+    debug: bool = False
+    verbose: VerboseOptions = VerboseOptions.INFO
+    version: bool = False
+
+    # I/O options (create-dict, dump, restore)
+    db_connections_per_process: Optional[int] = None
+    processes: Optional[int] = None
+    save_dicts: bool = False
+
+    # create-dict options
+    meta_dict_files: Optional[List[str]] = None
+    prepared_no_sens_dict_files: Optional[List[str]] = None
+    output_sens_dict_file: Optional[str] = None
+    output_no_sens_dict_file: Optional[str] = None
+    scan_mode: Optional[ScanMode] = None
+    scan_partial_rows: Optional[int] = None
+
+    # dump options
+    prepared_sens_dict_files: Optional[List[str]] = None
+    pg_dump: Optional[str] = None
+    output_dir: Optional[str] = None
+    clear_output_dir: bool = False
+    dbg_stage_1_validate_dict: bool = False
+    dbg_stage_2_validate_data: bool = False
+    dbg_stage_3_validate_full: bool = False
+    partial_tables_dict_files: Optional[List[str]] = None
+    partial_tables_exclude_dict_files: Optional[List[str]] = None
+
+    # restore options
+    input_dir: Optional[str] = None
+    pg_restore: Optional[str] = None
+    drop_custom_check_constr: bool = False
+    seq_init_by_max_value: bool = False
+    disable_checks: bool = False
+    clean_db: bool = False
+    drop_db: bool = False
+
+    # dump, restore options
+    ignore_privileges: bool = False
+
+    # view-fields options
+    view_only_sensitive_fields: bool = False
+    fields_count: Optional[int] = None
+    schema_name: Optional[str] = None
+    schema_mask: Optional[str] = None
+    table_name: Optional[str] = None
+    table_mask: Optional[str] = None
+
+    # view-data options
+    limit: Optional[int] = None
+    offset: Optional[int] = None
+
+    # view-fields, view-data options
+    json: bool = False
 
     def to_dict(self):
         return {
@@ -75,7 +93,6 @@ class RunOptions:
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
-
 
 
 class PgAnonResult:
