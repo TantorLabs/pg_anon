@@ -19,7 +19,7 @@ You need:
 - **meta-dictionary** file with scan rules.
 
 ```commandline
-python pg_anon.py --mode=create-dict \
+python pg_anon.py create-dict \
                   --db-user=postgres \
                   --db-user-password=postgres \
                   --db-name=test_source_db \
@@ -51,7 +51,7 @@ python pg_anon.py --mode=create-dict \
 | Option               | Required | Description                                                         |
 |----------------------|----------|---------------------------------------------------------------------|
 | `--db-host`          | Yes      | Database host.                                                      |
-| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-port`          | No       | Database port.                                                      |
 | `--db-name`          | Yes      | Database name.                                                      |
 | `--db-user`          | Yes      | Database user.                                                      |
 | `--db-user-password` | No       | Database user password.                                             |

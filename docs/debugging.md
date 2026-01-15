@@ -32,7 +32,7 @@ So if program works without errors => the stage is passed.
 ![dbg-stage-1.png](../images/dbg-stage-1.png)
 
 ```commandline
-   python pg_anon.py --mode=dump \
+   python pg_anon.py dump \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -58,7 +58,7 @@ This stage requires database with all structure with only pre-data condition, wh
 One-time structure dump:
 
 ```commandline
-   python pg_anon.py --mode=sync-struct-dump \
+   python pg_anon.py sync-struct-dump \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -76,7 +76,7 @@ And then as many times as you want structure restore:
 ```commandline
    su - postgres -c "psql -U postgres -d postgres -c \"DROP DATABASE IF EXISTS test_target_db_7\""
    su - postgres -c "psql -U postgres -d postgres -c \"CREATE DATABASE test_target_db_7\""
-   python pg_anon.py --mode=sync-struct-restore \
+   python pg_anon.py sync-struct-restore \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -91,7 +91,7 @@ And then as many times as you want structure restore:
 ![dbg-stage-2.png](../images/dbg-stage-2.png)
 
 ```commandline
-   python pg_anon.py --mode=dump \
+   python pg_anon.py dump \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -107,7 +107,7 @@ And then as many times as you want structure restore:
 - Validate data stage in data-restore:
 
 ```commandline
-   python pg_anon.py --mode=sync-data-restore \
+   python pg_anon.py sync-data-restore \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -135,7 +135,7 @@ Makes all logic with "limit 100" in SQL queries. In this stage you don't need pr
 - Validate full stage in dump:
 
 ```commandline
-   python pg_anon.py --mode=dump \
+   python pg_anon.py dump \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \
@@ -151,7 +151,7 @@ Makes all logic with "limit 100" in SQL queries. In this stage you don't need pr
 - Validate full stage in restore:
 
 ```commandline
-   python pg_anon.py --mode=restore \
+   python pg_anon.py restore \
                      --db-host=127.0.0.1 \
                      --db-user=postgres \
                      --db-user-password=postgres \

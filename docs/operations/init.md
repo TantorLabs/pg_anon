@@ -10,7 +10,7 @@ These functions are required for processing data in the source database.
 ## Run example
 
 ```commandline
-python -m pg_anon --mode=init \
+python -m pg_anon init \
                   --db-user=postgres \
                   --db-user-password=postgres \
                   --db-name=source_db
@@ -32,7 +32,7 @@ python -m pg_anon --mode=init \
 | Option               | Required | Description                                                         |
 |----------------------|----------|---------------------------------------------------------------------|
 | `--db-host`          | Yes      | Database host.                                                      |
-| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-port`          | No       | Database port.                                                      |
 | `--db-name`          | Yes      | Database name.                                                      |
 | `--db-user`          | Yes      | Database user.                                                      |
 | `--db-user-password` | No       | Database user password.                                             |
