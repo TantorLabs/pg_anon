@@ -11,7 +11,8 @@ from asyncpg import Connection
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
-from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
+from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool, \
+    create_connection, check_required_connections
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -561,9 +562,6 @@ class CreateDictMode:
                     tasks_res_final.append(task.result())
 
             queue.put(tasks_res_final)
-        except asyncio.exceptions.TimeoutError as ex:
-            self.context.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
-            queue.put([ex])
         except Exception as ex:
             self.context.logger.error(f"================> Process [{name}]: {ex}")
             queue.put([ex])
@@ -726,11 +724,23 @@ class CreateDictMode:
                 output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
             )
 
+    async def _check_available_connections(self):
+        connection = await create_connection(
+            self.context.connection_params,
+            server_settings=self.context.server_settings
+        )
+        try:
+            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
+            await check_required_connections(connection, required_connections)
+        finally:
+            await connection.close()
+
     async def run(self) -> None:
         self.context.logger.info("-------------> Started create_dict mode")
 
         try:
             self._save_input_dicts_to_run_dir()
+            await self._check_available_connections()
 
             self.context.read_meta_dict()
             if self.context.options.prepared_sens_dict_files:

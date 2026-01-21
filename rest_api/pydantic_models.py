@@ -333,7 +333,6 @@ class StatelessRunnerRequest(BaseModel):
     webhook_metadata: Optional[Any] = None  # data what will be sent on webhook "as is"
     webhook_extra_headers: Optional[Dict[str, str]] = None
     webhook_verify_ssl: Optional[bool] = True
-    save_dicts: Optional[bool] = False
 
 
 class StatelessRunnerResponse(BaseModel):
@@ -372,6 +371,7 @@ class ScanRequest(StatelessRunnerRequest):
     depth: Optional[int] = None
     proc_count: Optional[int] = None
     proc_conn_count: Optional[int] = None
+    save_dicts: bool = False
 
 
 class ScanStatusResponse(StatelessRunnerResponse):
@@ -392,9 +392,10 @@ class DumpRequest(StatelessRunnerRequest):
 
     pg_dump_path: Optional[str] = None
 
-    ignore_privileges: bool = False
     proc_count: Optional[int] = None
     proc_conn_count: Optional[int] = None
+    save_dicts: bool = False
+    ignore_privileges: bool = False
 
     @model_validator(mode="after")
     def validate_model(self):
@@ -436,6 +437,7 @@ class RestoreRequest(StatelessRunnerRequest):
     drop_custom_check_constr: bool = False
     clean_db: bool = False
     drop_db: bool = False
+    save_dicts: bool = False
     ignore_privileges: bool = False
 
     @model_validator(mode="after")

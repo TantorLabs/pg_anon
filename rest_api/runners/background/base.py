@@ -42,17 +42,10 @@ class BaseRunner:
             "--debug",
         ])
 
-    def _prepare_other_cli_params(self):
-        if self.request.save_dicts:
-            self.cli_params.extend([
-                "--save-dicts",
-            ])
-
     def _prepare_cli_params(self):
         self.cli_params = []
         self._prepare_db_credentials_cli_params()
         self._prepare_config()
-        self._prepare_other_cli_params()
 
     async def run(self):
         if not self.mode:

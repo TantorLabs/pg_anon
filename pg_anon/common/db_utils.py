@@ -626,6 +626,48 @@ async def get_pg_version(connection_params: ConnectionParams, server_settings: D
     return re.findall(r"(\d+\.\d+)", str(pg_version))[0]
 
 
+async def get_available_connections(connection: Connection) -> int:
+    query = """
+    WITH max_conn AS (
+        SELECT setting::int AS max_connections
+        FROM pg_settings
+        WHERE name = 'max_connections'
+    ),
+    superuser_reserved_conn AS (
+        SELECT setting::int AS superuser_reserved_connections
+        FROM pg_settings
+        WHERE name = 'superuser_reserved_connections'
+    ),
+    used_conn AS (
+        SELECT COUNT(*) AS used_connections
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND datname IS NOT NULL
+    )
+    SELECT
+        max_conn.max_connections - superuser_reserved_conn.superuser_reserved_connections - used_conn.used_connections AS available_connections
+    FROM
+        max_conn,
+        superuser_reserved_conn,
+        used_conn;
+    """
+    result = await connection.fetchrow(query)
+    return result[0]
+
+
+async def check_required_connections(
+    connection: Connection,
+    required_connections: int,
+) -> None:
+    available_connections = await get_available_connections(connection)
+
+    if required_connections > available_connections:
+        raise ValueError(
+            f"Not enough database connections. "
+            f"Required: {required_connections}, available: ~{available_connections}"
+        )
+
+
 async def get_dump_query(
         ctx: Context,
         table_schema: str,

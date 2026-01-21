@@ -127,17 +127,14 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: List[
         raise ValueError(f'Invalid mode: {mode}')
 
     application_name_suffix = f'worker__{mode}__{operation_id}'
-    cli_run_params.extend([
-        f'--mode={mode}',
-        f'--application-name-suffix={application_name_suffix}',
-    ])
+    cli_run_params.append(f'--application-name-suffix={application_name_suffix}')
 
     queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(
         name=f"pg_anon_{application_name_suffix}",
         target=run_pg_anon_subprocess_wrapper,
-        args=(queue, cli_run_params),
+        args=(queue, [mode, *cli_run_params]),
     )
     p.start()
 

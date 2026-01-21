@@ -2593,6 +2593,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             "--db-connections-per-process=4",
             "--processes=2",
             "--scan-partial-rows=100",
+            "--debug"
         ])
 
         res = await PgAnonApp(options).run()
@@ -2619,6 +2620,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
             f"--output-sens-dict-file={output_sens_dict_file}",
             "--db-connections-per-process=4",
             "--processes=2",
+            "--debug"
         ])
 
         res = await PgAnonApp(options).run()

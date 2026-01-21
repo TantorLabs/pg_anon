@@ -53,6 +53,11 @@ class ScanRunner(BaseRunner):
                 f"--prepared-no-sens-dict-file={','.join(input_no_sens_dict_file_names)}"
             )
 
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
+
     def _prepare_parallelization_cli_params(self):
         if self.request.proc_count:
             self.cli_params.append(
