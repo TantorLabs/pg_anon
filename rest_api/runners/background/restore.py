@@ -39,6 +39,11 @@ class RestoreRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
+
     def _prepare_input_dump_path_cli_params(self):
         self.full_input_path = self.request.validated_input_path
         self.cli_params.extend([

@@ -17,7 +17,7 @@ from pg_anon.common.db_queries import get_relation_size_query, get_sequences_que
 from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
     get_custom_functions_ddl, get_custom_domains_ddl, get_indexes_data, get_views_related_to_tables, get_schemas, \
     get_constraints_to_excluded_tables, get_custom_types_ddl, get_custom_casts_ddl, get_custom_operators_ddl, \
-    get_custom_aggregates_ddl, get_extensions
+    get_custom_aggregates_ddl, get_extensions, check_required_connections
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -441,6 +441,7 @@ class DumpMode:
 
         async def _process_run():
             self.context.logger.debug(f"================> Process [{name}] Connection pool opening")
+
             pool = await create_pool(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
@@ -517,7 +518,7 @@ class DumpMode:
             self.context.logger.debug(f"Process [{name}] Processing results end")
         except Exception as ex:
             self.context.logger.error(f"<================ Process [{name}]: {exception_helper()}")
-            raise ex
+            queue.put([ex])  # Send exception to parent process
         finally:
             self.context.logger.debug(f"<================ Process [{name}] closing")
             loop.close()
@@ -679,6 +680,9 @@ class DumpMode:
                 self.context.connection_params,
                 server_settings=self.context.server_settings
             )
+
+            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
+            await check_required_connections(connection, required_connections)
 
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()

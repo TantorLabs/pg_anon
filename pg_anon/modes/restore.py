@@ -14,7 +14,7 @@ from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool, \
-    get_available_extensions_map
+    get_available_extensions_map, check_required_connections
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.utils import (
@@ -755,6 +755,8 @@ class RestoreMode:
                 self.context.connection_params,
                 server_settings=self.context.server_settings
             )
+
+            await check_required_connections(connection, self.context.options.db_connections_per_process)
 
             await self._check_db_is_empty(connection)
             self._check_utils_version_for_dump()

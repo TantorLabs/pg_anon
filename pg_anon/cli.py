@@ -101,8 +101,7 @@ def common_parser():
     return parser
 
 
-# Scan, Dump, Restore, View-data, View-fields
-def io_common_parser():
+def multiprocessing_common_parser():
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--db-connections-per-process",
@@ -260,6 +259,12 @@ def restore_parser():
         dest="partial_tables_exclude_dict_files",
         type=parse_comma_separated_list,
         help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
+    )
+    p.add_argument(
+        "--db-connections-per-process",
+        type=int,
+        default=4,
+        help="""Number of database connections. (default: %(default)s)""",
     )
     p.add_argument(
         "--disable-checks",
@@ -423,7 +428,7 @@ def get_arg_parser():
 
     sub.add_parser(
         "create-dict",
-        parents=[common_parser(), io_common_parser(), scan_parser()],
+        parents=[common_parser(), multiprocessing_common_parser(), scan_parser()],
         help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
     )
 
@@ -435,7 +440,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), io_common_parser(), dump_parser()],
+            parents=[common_parser(), multiprocessing_common_parser(), dump_parser()],
             help=help_text,
         )
 
@@ -447,7 +452,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), io_common_parser(), restore_parser()],
+            parents=[common_parser(), restore_parser()],
             help=help_text,
         )
 
