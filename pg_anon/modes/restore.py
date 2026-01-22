@@ -223,8 +223,9 @@ class RestoreMode:
                 self._toc_list_post_data_file_path = self.input_dir / self._toc_list_post_data_file_name
                 toc_file_path = self._toc_list_post_data_file_path
 
-            proc = subprocess.Popen(command, stdout=subprocess.PIPE, text=True)
-            toc_lines, _ = proc.communicate()
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+            toc_bytes, _ = proc.communicate()
+            toc_lines = toc_bytes.decode('utf-8', errors='replace')
             with open(toc_file_path, "w", encoding="utf-8") as f:
                 for toc_line in toc_lines.split("\n"):
                     if toc_line.startswith(';'):
@@ -286,10 +287,11 @@ class RestoreMode:
             ])
 
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
         # pg_restore put logs into stderr
-        _, pg_restore_logs = proc.communicate()
+        _, pg_restore_logs_bytes = proc.communicate()
+        pg_restore_logs = pg_restore_logs_bytes.decode('utf-8', errors='replace')
 
         for log_line in pg_restore_logs.split("\n"):
             self.context.logger.info(log_line)
