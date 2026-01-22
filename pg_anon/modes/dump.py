@@ -311,11 +311,15 @@ class DumpMode:
         if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
 
+        if self.context.options.ignore_privileges:
+            command.append("--no-privileges")
+
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
         # pg_dump put logs into stderr
-        _, pg_dump_logs = proc.communicate()
+        _, pg_dump_logs_bytes = proc.communicate()
+        pg_dump_logs = pg_dump_logs_bytes.decode('utf-8', errors='replace')
 
         for log_line in pg_dump_logs.split("\n"):
             self.context.logger.info(log_line)

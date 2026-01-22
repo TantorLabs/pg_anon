@@ -392,6 +392,7 @@ class DumpRequest(StatelessRunnerRequest):
 
     pg_dump_path: Optional[str] = None
 
+    ignore_privileges: bool = False
     proc_count: Optional[int] = None
     proc_conn_count: Optional[int] = None
 
@@ -435,6 +436,7 @@ class RestoreRequest(StatelessRunnerRequest):
     drop_custom_check_constr: bool = False
     clean_db: bool = False
     drop_db: bool = False
+    ignore_privileges: bool = False
 
     @model_validator(mode="after")
     def validate_model(self):

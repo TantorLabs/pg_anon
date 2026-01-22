@@ -303,6 +303,7 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
 | partial_tables_exclude_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **exclude** from a [partial dump](operations/dump.md#create-partial-dump).                                                                                                                                   |
 | output_path                          | string                                            | No       | Path where the dump will be created under `/path/to/pg_anon/output`. For example, `"my_dump"` will be located at `/path/to/pg_anon/output/my_dump`.                                                                                                                                               |
 | pg_dump_path                         | string                                            | No       | Path to the `pg_dump` Postgres tool. Default: `/usr/bin/pg_dump`.                                                                                                                                                                                                                                 |
+| ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
 | proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
 | proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
  
@@ -339,6 +340,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
   }],
   "output_path": "my_dump",
   "pg_dump_path": "/usr/lib/postgresql/17/bin/pg_dump",
+  "ignore_privileges": false,
   "proc_count": 4,
   "proc_conn_count": 4
 }'
@@ -404,6 +406,7 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 | drop_custom_check_constr             | boolean                                           | No       | Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading. Default: `false`.                                                                                                                                                          |
 | clean_db                             | boolean                                           | No       | Cleans existing database objects before restoring. Mutually exclusive with `drop_db`.                                                                                                                                                                                                             |
 | drop_db                              | boolean                                           | No       | Drops the target database before restoring. Mutually exclusive with `clean_db`.                                                                                                                                                                                                                   |
+| ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
 | proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
 | proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
 
@@ -439,6 +442,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
   "drop_custom_check_constr": false,
   "clean_db": false,
   "drop_db": false,
+  "ignore_privileges": false,
   "proc_count": 4,
   "proc_conn_count": 4
 }'
