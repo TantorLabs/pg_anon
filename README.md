@@ -45,13 +45,16 @@ For details, see: [Installation and configuring](docs/installation-and-configuri
 ## 🚀 Quick Start
 
 ### Before you start
-n this guide, a **privileged** user will be created and test databases with data will be set up.
+In this guide, a **privileged** user will be created and test databases with data will be set up.
 
 It is recommended to follow this quick start guide in a non-production environment.
 
 #### Prerequisites:
 - A working PostgreSQL instance
-- PostgreSQL client utilities installed 
+- PostgreSQL client utilities installed
+
+##### If running as not superuser
+- Ensure you can install **pgcrypto** extension in your quickstart source database
 
 ### 1. Preparing pg_anon 
 ```bash
@@ -100,7 +103,7 @@ sudo su - postgres -c "psql -p 5432 -U postgres -f /tmp/db_env.sql"
 
 **Load test environment into source DB**
 ```bash
-cp $(pwd)/tests/init_env.sql /tmp/init_env.sql
+cp $(pwd)/tests/sql/init_env.sql /tmp/init_env.sql
 sudo chown postgres:postgres /tmp/init_env.sql
 sudo su - postgres -c "psql -p 5432 -d pg_anon_quick_start_source_db -U postgres -f /tmp/init_env.sql"
 ```
