@@ -307,6 +307,59 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Stateless"
+        ],
+        "summary": "[DEPRICATED] Delete dump",
+        "description": "Delete dump. Will be removed in pg_anon 1.9",
+        "operationId": "dump_operation_delete_api_stateless_dump_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/stateless/restore": {
@@ -791,6 +844,30 @@
         ],
         "title": "DictionaryMetadata"
       },
+      "DumpDeleteRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "validated_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validated Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "DumpDeleteRequest"
+      },
       "DumpMode": {
         "type": "string",
         "enum": [
@@ -924,6 +1001,11 @@
             ],
             "title": "Pg Dump Path"
           },
+          "ignore_privileges": {
+            "type": "boolean",
+            "title": "Ignore Privileges",
+            "default": false
+          },
           "proc_count": {
             "anyOf": [
               {
@@ -1005,20 +1087,24 @@
       "OperationDataResponse": {
         "properties": {
           "run_status": {
+            "additionalProperties": true,
             "type": "object",
             "title": "Run Status"
           },
           "run_options": {
+            "additionalProperties": true,
             "type": "object",
             "title": "Run Options"
           },
           "dictionaries": {
+            "additionalProperties": true,
             "type": "object",
             "title": "Dictionaries"
           },
           "extra_data": {
             "anyOf": [
               {
+                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -1186,6 +1272,11 @@
           "drop_db": {
             "type": "boolean",
             "title": "Drop Db",
+            "default": false
+          },
+          "ignore_privileges": {
+            "type": "boolean",
+            "title": "Ignore Privileges",
             "default": false
           }
         },

@@ -280,6 +280,9 @@ class RestoreMode:
                 "--if-exists",
             ])
 
+        if self.context.options.ignore_privileges:
+            command.append("--no-privileges")
+
         if self._toc_list_pre_data_file_path:
             command.extend([
                 '-L',

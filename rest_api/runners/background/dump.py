@@ -68,6 +68,11 @@ class DumpRunner(BaseRunner):
                 f'--pg-dump={self.request.pg_dump_path}'
             )
 
+        if self.request.ignore_privileges:
+            self.cli_params.append(
+                f"--ignore-privileges"
+            )
+
     def _prepare_cli_params(self):
         super()._prepare_cli_params()
         self._prepare_dictionaries_cli_params()

@@ -43,6 +43,7 @@ class RunOptions:
     seq_init_by_max_value: bool
     clean_db: bool
     drop_db: bool
+    ignore_privileges: bool
     disable_checks: bool
     scan_mode: ScanMode
     output_sens_dict_file: str

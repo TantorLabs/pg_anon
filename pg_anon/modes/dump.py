@@ -311,6 +311,9 @@ class DumpMode:
         if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
 
+        if self.context.options.ignore_privileges:
+            command.append("--no-privileges")
+
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty

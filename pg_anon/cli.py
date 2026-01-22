@@ -133,6 +133,12 @@ def get_arg_parser():
         default=False,
     )
     parser.add_argument(
+        "--ignore-privileges",
+        help="Ignore privileges from source db",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
         "--disable-checks",
         action="store_true",
         default=False,
