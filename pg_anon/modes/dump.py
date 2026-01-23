@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import hashlib
+import multiprocessing
 import os
 import re
 import shutil
@@ -434,7 +435,14 @@ class DumpMode:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
-    def _process_dump_data(self, name: str, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
+    def _process_dump_data(
+        self,
+        name: str,
+        queue: AioQueue,
+        query_tasks: List[Tuple[str, str]],
+        stop_event: Optional[multiprocessing.Event] = None,
+        transaction_snapshot_id: str = None
+    ):
         tasks_res = []
 
         status_ratio = 10
@@ -442,6 +450,23 @@ class DumpMode:
             status_ratio = 100
         if len(query_tasks) > 50000:
             status_ratio = 1000
+
+        def _should_stop():
+            return stop_event is not None and stop_event.is_set()
+
+        async def _wait_and_check(tasks: set):
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            if _should_stop():
+                self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                return None
+
+            for done_task in done:
+                if exc := done_task.exception():
+                    self.context.logger.error(f"<================ Process [{name}]: {exc}")
+                    raise exc
+
+            return pending
 
         async def _process_run():
             self.context.logger.debug(f"================> Process [{name}] Connection pool opening")
@@ -457,16 +482,14 @@ class DumpMode:
             try:
                 query_tasks_count = len(query_tasks)
                 for idx, (file_name, query) in enumerate(query_tasks):
-                    if len(tasks) >= self.context.options.db_connections_per_process:
-                        self.context.logger.debug(f"================> Process [{name}] Tasks pool is full. Waiting results by already started tasks")
-                        # Wait for some dump to finish before adding a new one
-                        done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                        exception = done.pop().exception()
-                        if exception is not None:
-                            self.context.logger.error(f"<================ Process [{name}]: {exception}")
-                            raise exception
+                    if _should_stop():
+                        self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                        return
 
-                        self.context.logger.debug(f"Process [{name}] One of tasks has been completed")
+                    while len(tasks) >= self.context.options.db_connections_per_process:
+                        tasks = await _wait_and_check(tasks)
+                        if tasks is None:
+                            return
 
                     self.context.logger.debug(f"Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
                     task_res = loop.create_task(
@@ -484,15 +507,14 @@ class DumpMode:
 
                     self.context.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
 
-                    if idx % status_ratio:
-                        progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
+                    if idx % status_ratio == 0:
+                        progress_percents = round(float(idx) * 100 / query_tasks_count, 2)
                         self.context.logger.info(f"Process [{name}] Progress {progress_percents}%")
 
-                self.context.logger.debug(f"Process [{name}] All tasks was started")
-
-                if len(tasks) > 0:
-                    self.context.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
-                    await asyncio.wait(tasks)
+                while tasks:
+                    tasks = await _wait_and_check(tasks)
+                    if tasks is None:
+                        return
             finally:
                 self.context.logger.debug(f"<================ Process [{name}] Connection pool closing")
 
@@ -551,6 +573,9 @@ class DumpMode:
                     self.context.options.processes
                 )
 
+                # Shared event to signal all processes to stop on error
+                stop_event = multiprocessing.Event()
+
                 process_tasks = []
                 for idx, queries_chunk in enumerate(queries_chunks):
                     process_tasks.append(
@@ -560,26 +585,35 @@ class DumpMode:
                                 ctx=self.context,
                                 target_func=self._process_dump_data,
                                 tasks=queries_chunk,
+                                stop_event=stop_event,
                                 transaction_snapshot_id=transaction_snapshot_id,
                             )
                         )
                     )
 
-                # Wait for the remaining dumps to finish
-                task_group = asyncio.gather(*process_tasks)
+                # Wait with immediate error detection while keeping transaction alive
+                remaining = process_tasks
+                while remaining:
+                    # Use timeout to periodically run SELECT 1 for keeping transaction alive
+                    done, pending = await asyncio.wait(
+                        remaining,
+                        timeout=5,
+                        return_when=asyncio.FIRST_EXCEPTION
+                    )
 
-                while not task_group.done():
-                    """
-                    Keeps main transaction in active by using simple query `SELECT 1`
-                    It's needs for large databases, when dump can making for very long time
-            
-                    Avoids lots of queries by sleep
-                    Big value for sleeping isn't recommended, because it can freeze processing, when tasks will be done
-                    """
-                    await asyncio.sleep(5)
+                    # Keep main transaction active (needed for large databases with long dumps)
                     await connection.execute('SELECT 1')
 
-                await task_group
+                    for task in done:
+                        if task.exception():
+                            # Signal all processes to stop
+                            stop_event.set()
+                            # Wait for remaining processes to finish (with timeout)
+                            if pending:
+                                await asyncio.wait(pending, timeout=10)
+                            raise task.exception()
+
+                    remaining = list(pending)
 
                 self._data_dump_tasks_results = {}
                 for process_task in process_tasks:
