@@ -1,6 +1,6 @@
 aioprocessing==2.0.1
 async-timeout==4.0.3
-asyncpg==0.29.0
+asyncpg==0.31.0
 prettytable==3.17.0
 pyyaml==6.0.3
 wcwidth==0.2.14
