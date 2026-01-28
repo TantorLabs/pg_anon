@@ -388,9 +388,13 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 ```python
 {
     "data_func": {  
-        "<field_type: string>": [ 
+        "<field_type: string>": [
             {
-                "scan_func": "<scan_function_for_field: string>",  
+                "scan_func_per_field": "<scan_function_for_whole_field: string>",  
+                "anon_func": "<anonymization_rule_template_for_field: string>", 
+            },   
+            {
+                "scan_func": "<scan_function_for_field_per_row: string>",  
                 "anon_func": "<anonymization_rule_template_for_field: string>", 
                 "n_count": "<how_many_checks_must_be_passed: integer>", 
             },
@@ -399,15 +403,35 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 }
 ```
 
-| Key          | Meaning                                                                                                     |
-|--------------|-------------------------------------------------------------------------------------------------------------|
-| `field_type` | PostgreSQL type (or custom type). `"anyelement"` applies to all types.                                      |
-| `scan_func`  | Python function called for each field value. Must return Boolean.                                           |
-| `anon_func`  | Template anonymization rule. **Must contain `%s` placeholder** for the field name.                          |
-| `n_count`    | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. |
+| Key                   | Meaning                                                                                                                                             |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `field_type`          | PostgreSQL type (or custom type). `"anyelement"` applies to all types.                                                                              |
+| `scan_func_per_field` | Python function called once for whole field. Must return Boolean.                                                                                   |
+| `scan_func`           | Python function called for each field value. Must return Boolean.                                                                                   |
+| `anon_func`           | Template anonymization rule. **Must contain `%s` placeholder** for the field name.                                                                  |
+| `n_count`             | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. Uses only for `scan_func`. (default: 1) |
 
+### Rule Combinations
+1. `scan_func` or `scan_func_per_field` — required
+   - You must specify one of `scan_func` or `scan_func_per_field`
+   - This defines where the rule applies.
 
 > ⚠️ **Note**
+> 
+> Functions for `scan_func_per_field` must follow this template:
+> ```sql
+> CREATE OR REPLACE FUNCTION <schema>.<function_name>(
+>   schema_name TEXT,
+>   table_name TEXT,
+>   field_name TEXT
+>   field_type TEXT,
+> )
+> RETURNS boolean AS $$
+> BEGIN
+>   <function_logic>;
+> END;
+> $$ LANGUAGE plpgsql;
+> ```
 > 
 > Functions for `scan_func` must follow this template:
 > ```sql
@@ -422,6 +446,7 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 >   <function_logic>;
 > END;
 > $$ LANGUAGE plpgsql;
+> ```
 
 ### ⚙️ Using this section
 
@@ -430,6 +455,10 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 {
     "data_func": {
         "anyelement": [
+            {
+                "scan_func_per_field": "custom_funcs.fulltext_search_by_organizations",
+                "anon_func": "anon_funcs.digest(\"%s\", 'salt', 'md5')",
+            },
             {
                 "scan_func": "custom_funcs.is_employee_email",
                 "anon_func": "anon_funcs.digest(\"%s\", 'salt', 'md5')",

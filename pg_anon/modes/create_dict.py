@@ -13,7 +13,7 @@ from asyncpg import Connection
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
 from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool, \
-    create_connection, check_required_connections
+    create_connection, check_required_connections, exec_data_scan_func_per_field_query
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
 from pg_anon.common.multiprocessing_utils import init_process
@@ -276,7 +276,7 @@ class CreateDictMode:
         if not rules_by_type:
             rules_by_type = dictionary_obj["data_func"].get(get_base_field_type(field_info), [])
         rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
-        data_func_rules = [rules_by_type, rules_for_anyelements]
+        data_func_rules = [*rules_by_type, *rules_for_anyelements]
 
         if not data_func_rules:
             self.context.logger.debug(
@@ -284,29 +284,52 @@ class CreateDictMode:
             )
             return False
 
-        for rules in data_func_rules:
-            for rule in rules:
-                matched_count = 0
-                rule_expected_matches_count = rule.get("n_count", 1)
+        scan_func_per_field_rules = []
+        scan_func_rules = []
+        for rule in data_func_rules:
+            if "scan_func_per_field" in rule:
+                scan_func_per_field_rules.append(rule)
+            elif "scan_func" in rule:
+                scan_func_rules.append(rule)
+            else:
+                self.context.logger.warn(
+                    f'========> Process[{name}]: Rule SKIPPED. Wrong data func rule: {rule}'
+                )
 
-                for value in fld_data:
-                    if value is None:
-                        continue
+        for rule in scan_func_per_field_rules:
+            if await exec_data_scan_func_per_field_query(
+                    connection=connection,
+                    scan_func_per_field=rule["scan_func_per_field"],
+                    field_info=field_info
+            ):
+                field_info.rule = rule["anon_func"]
+                self.context.logger.debug(
+                    f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func per field {rule["scan_func_per_field"]}'
+                )
+                return True
 
-                    if await exec_data_scan_func_query(
-                        connection=connection,
-                        scan_func=rule["scan_func"],
-                        value=value,
-                        field_info=field_info
-                    ):
-                        matched_count += 1
+        for rule in scan_func_rules:
+            matched_count = 0
+            rule_expected_matches_count = rule.get("n_count", 1)
 
-                        if matched_count == rule_expected_matches_count:
-                            field_info.rule = rule["anon_func"]
-                            self.context.logger.debug(
-                                f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func {rule["scan_func"]}'
-                            )
-                            return True
+            for value in fld_data:
+                if value is None:
+                    continue
+
+                if await exec_data_scan_func_query(
+                    connection=connection,
+                    scan_func=rule["scan_func"],
+                    value=value,
+                    field_info=field_info
+                ):
+                    matched_count += 1
+
+                    if matched_count == rule_expected_matches_count:
+                        field_info.rule = rule["anon_func"]
+                        self.context.logger.debug(
+                            f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func {rule["scan_func"]}'
+                        )
+                        return True
 
         self.context.logger.debug(
             f'========> Process[{name}]: No one data functions found sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
