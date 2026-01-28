@@ -83,6 +83,7 @@ CREATE SCHEMA IF NOT EXISTS schm_customer;
 
 DROP TABLE IF EXISTS schm_customer.customer_company CASCADE;
 DROP TABLE IF EXISTS schm_customer.customer_manager CASCADE;
+DROP TABLE IF EXISTS schm_customer.customer_contract CASCADE;
 DROP TABLE IF EXISTS public.contracts CASCADE;
 DROP TABLE IF EXISTS public.inn_info CASCADE;
 
@@ -96,6 +97,13 @@ CREATE TABLE schm_customer.customer_company
     inn bigint,
     CONSTRAINT customer_company_pkey UNIQUE (id),
     CONSTRAINT inn_uniq UNIQUE (inn)
+);
+CREATE TABLE schm_customer.customer_contract
+(
+    id serial PRIMARY KEY,
+    customer_company_id integer NOT NULL
+        REFERENCES schm_customer.customer_company(id),
+    contract_text text NOT NULL
 );
 
 CREATE TABLE public.inn_info
@@ -147,6 +155,23 @@ select
 	'company_name_' || v || '.com' as site,
 	10000000 + v * 10 as inn
 from generate_series(1,1512) as v;
+
+INSERT INTO schm_customer.customer_contract (customer_company_id, contract_text)
+SELECT
+    c.id,
+    format(
+        'Настоящий договор заключён между ООО "%s" и Заказчиком.
+        ООО "%s" обязуется оказать услуги в соответствии с условиями договора.',
+        c.company_name,
+        c.company_name
+    )
+FROM schm_customer.customer_company c;
+
+CREATE INDEX customer_contract_fts_idx
+ON schm_customer.customer_contract
+USING GIN (
+    to_tsvector('simple', contract_text)
+);
 
 INSERT INTO schm_customer.customer_manager
 (customer_company_id, first_name, last_name, email, phone)
@@ -574,6 +599,45 @@ END;
 $$
   LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION test_anon_funcs.test_check_by_fts_is_include_organization_title(
+    schema_name TEXT,
+    table_name TEXT,
+    field_name TEXT,
+    field_type TEXT
+) RETURNS BOOLEAN AS $$
+DECLARE
+    organization_titles TEXT;
+    sql TEXT;
+    res BOOLEAN;
+BEGIN
+    IF field_type NOT IN ('text', 'character varying', 'varchar', 'character', 'char') THEN
+        RETURN FALSE;
+    END IF;
+
+    SELECT string_agg(regexp_replace(company_name, '\s+', ' & ', 'g'), ' | ')
+    INTO organization_titles
+    FROM schm_customer.customer_company;
+
+    IF organization_titles IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
+    sql := format(
+        'SELECT EXISTS (
+            SELECT 1
+            FROM %I.%I
+            WHERE to_tsvector(''simple'', %I) @@ to_tsquery(''simple'', %L)
+        )',
+        schema_name,
+        table_name,
+        field_name,
+        organization_titles
+    );
+
+    EXECUTE sql INTO res;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
 --------------------------------------------------------------
 
 CREATE SCHEMA IF NOT EXISTS schm_other_3;

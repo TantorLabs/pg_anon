@@ -145,7 +145,7 @@ async def get_db_size(connection_params: ConnectionParams, db_name: str, server_
 
 async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
     """
-    Execute scan in data by custom DB function
+    Execute scan in row by custom DB function
     :param connection: Active connection to db
     :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
     :param value: Data value from field
@@ -157,6 +157,24 @@ async def exec_data_scan_func_query(connection: Connection, scan_func: str, valu
     statement = await connection.prepare(query)
     res = await statement.fetchval(
         value, field_info.nspname, field_info.relname, field_info.column_name
+    )
+
+    return res
+
+
+async def exec_data_scan_func_per_field_query(connection: Connection, scan_func_per_field: str, field_info: FieldInfo) -> bool:
+    """
+    Execute scan in field by custom DB function
+    :param connection: Active connection to db
+    :param scan_func_per_field: DB function name which can call with "(schema, table, column_name, column_type)" and returns boolean value
+    :param field_info: Field info
+    :return: If it sensitive by scan func per field then return **True**, otherwise **False**
+    """
+
+    query = f"""SELECT {scan_func_per_field}($1, $2, $3, $4)"""
+    statement = await connection.prepare(query)
+    res = await statement.fetchval(
+        field_info.nspname, field_info.relname, field_info.column_name, field_info.type
     )
 
     return res

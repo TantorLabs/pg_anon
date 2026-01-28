@@ -2557,6 +2557,41 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.FAIL)
         passed_stages.append("test_19_create_dict_using_not_existing_functions")
 
+    async def test_20_create_dict_using_data_func_per_field(self):
+        # self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_data_func_per_field.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_func_per_field.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_func_per_field_expected.py")
+
+        options = build_run_options([
+            "create-dict",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_20_create_dict_using_data_func_per_field")
+
 
 class TmpResults:
     res_test_02 = None
