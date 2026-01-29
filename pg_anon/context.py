@@ -30,7 +30,7 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches = {}  # for create-dict mode
         self.create_dict_no_sens_matches = {}  # for create-dict mode
-        self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
+        self.exclude_schemas = ["columnar_internal"]
         self.included_tables_rules: List[Dict] = []
         self.excluded_tables_rules: List[Dict] = []
         self.tables: List[Tuple[str, str]] = []
