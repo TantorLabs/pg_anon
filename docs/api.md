@@ -5,18 +5,20 @@
 | Operation Endpoints                                                                                   |
 |-------------------------------------------------------------------------------------------------------|
 | [Check DB connection](#check-db-connection)                                                           |
-| [Run create-dict (scan) operation](#run-create-dict-scan-operation)                                   | 
-| [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) | 
-| [Display table with anonymization data](#display-table-with-anonymization-data)                       | 
-| [Run dump operation](#run-dump-operation)                                                             | 
-| [Run restore operation](#run-restore-operation)                                                       | 
+| [Run create-dict (scan) operation](#run-create-dict-scan-operation)                                   |
+| [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) |
+| [Display database schemas only for preview](#display-database-schemas-only-for-preview)               |
+| [Display database tables with fields for preview](#display-database-tables-with-fields-for-preview)   |
+| [Display table with anonymization data](#display-table-with-anonymization-data)                       |
+| [Run dump operation](#run-dump-operation)                                                             |
+| [Run restore operation](#run-restore-operation)                                                       |
 
 | Integration Endpoints                           |
-|-------------------------------------------------| 
-| [Operations list](#operations-list)             | 
-| [Operation details](#operation-details)         | 
-| [Delete operation data](#delete-operation-data) | 
-| [Operation logs](#operation-logs)               | 
+|-------------------------------------------------|
+| [Operations list](#operations-list)             |
+| [Operation details](#operation-details)         |
+| [Delete operation data](#delete-operation-data) |
+| [Operation logs](#operation-logs)               |
 
 ---
 
@@ -150,7 +152,8 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
 | started               | string                                   | No       | Operation start timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                        |
 | ended                 | string                                   | No       | Operation end timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                          |
 | error                 | string                                   | No       | Error message. Present only when `status = error`.                                                                                                                                                                                                          |
-| run_options           | JSON                                     | No       | Snapshot of the operation’s runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
+| error_code            | string                                   | No       | Machine-readable error code for i18n mapping. Present only when `status = error`.                                                                                                                                                                           |
+| run_options           | JSON                                     | No       | Snapshot of the operation's runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
 | sens_dict_content     | [dictionary content](#dictionarycontent) | No       | Resulting [Sensitive dictionary](dicts/sens-dict-schema.md). Returned only when the scan completes successfully. Used for dump operations or repeated scans.                                                                                                |
 | no_sens_dict_content  | [dictionary content](#dictionarycontent) | No       | Resulting [Non-Sensitive dictionary](dicts/non-sens-dict-schema.md). Present only when the scan completes successfully **and** the original request specified `need_no_sens_dict = true`.                                                                   |
 
@@ -269,6 +272,102 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
 
 ---
 
+### Display database schemas only for preview
+```http request
+POST /api/stateless/preview
+```
+
+#### Description
+Returns a list of database schemas. Can be filtered by schema name substring.
+
+#### 📦 Preview schemas request body schema
+| Field                | Type                                        | Required | Description                                           |
+|----------------------|---------------------------------------------|----------|-------------------------------------------------------|
+| db_connection_params | [db connection params](#dbconnectionparams) | Yes      | Source database credentials.                          |
+| schema_filter        | string                                      | No       | Filter schemas by name substring (case-sensitive).    |
+
+#### Example
+```shell
+curl -X POST http://127.0.0.1:8000/api/stateless/preview \
+-H "Content-Type: application/json" \
+-d '{
+  "db_connection_params": {
+     "host": "localhost",
+     "port": "5432",
+     "db_name":  "source_db",
+     "user_login": "postgres",
+     "user_password":  "postgres"
+  },
+  "schema_filter": "public"
+}'
+```
+
+#### ✅ Responses
+| Status Code | Description           | Component                                               |
+|-------------|-----------------------|---------------------------------------------------------|
+| 200         | Successful Response   | [PreviewSchemasResponse](#previewschemasresponse)       |
+| 400         | Bad Request           | [ErrorResponse](#errorresponse)                         |
+| 500         | Internal Server Error | [ErrorResponse](#errorresponse)                         |
+| 422         | Validation Error      | [HTTPValidationError](#httpvalidationerror)              |
+
+---
+
+### Display database tables with fields for preview
+```http request
+POST /api/stateless/preview/{schema}
+```
+
+#### Description
+Returns a list of tables in the specified schema with their fields and sensitivity/exclusion status based on the provided sensitive dictionary.
+
+#### 📦 Preview schema tables request body schema
+| Field                      | Type                                              | Required | Description                                                                                                                     |
+|----------------------------|---------------------------------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------|
+| db_connection_params       | [db connection params](#dbconnectionparams)       | Yes      | Source database credentials.                                                                                                    |
+| sens_dict_contents         | array of [dictionary content](#dictionarycontent) | Yes      | [Sensitive dictionary](dicts/sens-dict-schema.md) content that defines rules for sensitive fields.                              |
+| limit                      | integer                                           | No       | Maximum number of tables to return (default: `20`).                                                                             |
+| offset                     | integer                                           | No       | Number of tables to skip for pagination (default: `0`).                                                                         |
+| table_filter               | string                                            | No       | Filter tables by name substring (case-sensitive).                                                                               |
+| view_only_sensitive_tables | boolean                                           | No       | If `true`, returns only tables that match the sensitive dictionary (default: `false`).                                          |
+
+#### Path parameters
+| Field  | Type   | Required | Description |
+|--------|--------|----------|-------------|
+| schema | string | Yes      | Schema name |
+
+#### Example
+```shell
+curl -X POST http://127.0.0.1:8000/api/stateless/preview/public \
+-H "Content-Type: application/json" \
+-d '{
+  "db_connection_params": {
+     "host": "localhost",
+     "port": "5432",
+     "db_name":  "source_db",
+     "user_login": "postgres",
+     "user_password":  "postgres"
+  },
+  "sens_dict_contents": [{
+    "name": "sens dict for email anonymization",
+    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+  }],
+  "limit": 20,
+  "offset": 0,
+  "table_filter": "user",
+  "view_only_sensitive_tables": false
+}'
+```
+
+#### ✅ Responses
+| Status Code | Description           | Component                                                       |
+|-------------|-----------------------|-----------------------------------------------------------------|
+| 200         | Successful Response   | [PreviewSchemaTablesResponse](#previewschematablesresponse)     |
+| 400         | Bad Request           | [ErrorResponse](#errorresponse)                                 |
+| 500         | Internal Server Error | [ErrorResponse](#errorresponse)                                 |
+| 422         | Validation Error      | [HTTPValidationError](#httpvalidationerror)                      |
+
+---
+
 ### Run dump operation
 ```http request
 POST /api/stateless/dump
@@ -357,7 +456,8 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
 | started               | string  | No       | Operation start timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                        |
 | ended                 | string  | No       | Operation end timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                          |
 | error                 | string  | No       | Error message. Present only when `status = error`.                                                                                                                                                                                                          |
-| run_options           | JSON    | No       | Snapshot of the operation’s runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
+| error_code            | string  | No       | Machine-readable error code for i18n mapping. Present only when `status = error`.                                                                                                                                                                           |
+| run_options           | JSON    | No       | Snapshot of the operation's runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
 | size                  | integer | No       | Size of the dump in bytes.                                                                                                                                                                                                                                  |
 
 #### ✅ Responses
@@ -459,7 +559,8 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
 | started               | string  | No       | Operation start timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                        |
 | ended                 | string  | No       | Operation end timestamp in ISO8601 format (UTC+0). Present only for statuses `success` or `error`.                                                                                                                                                          |
 | error                 | string  | No       | Error message. Present only when `status = error`.                                                                                                                                                                                                          |
-| run_options           | JSON    | No       | Snapshot of the operation’s runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
+| error_code            | string  | No       | Machine-readable error code for i18n mapping. Present only when `status = error`.                                                                                                                                                                           |
+| run_options           | JSON    | No       | Snapshot of the operation's runtime options. Useful for analysis, debugging, and rerunning the operation. Present only when `status = success` or `error`.                                                                                                  |
 
 #### ✅ Responses
 | Status Code | Description                    | Component                                   |
@@ -669,10 +770,41 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | dict_data   | [DictionaryMetadata](#dictionarymetadata) | No       | Matched dictionary metadata containing anonymization rule |
 | rule        | str                                       | No       | Matched anonymization rule if field is sensitive          |
 
+## PreviewSchemasResponse
+| Field     | Type            | Required | Description                                                          |
+|-----------|-----------------|----------|----------------------------------------------------------------------|
+| status_id | integer         | Yes      | Integer code of operation status. Can be: `2` - success, `3` - error |
+| status    | string          | Yes      | Human readable operation status. Can be: `success`, `error`          |
+| content   | array of string | No       | List of schema names                                                 |
+
+## PreviewSchemaTablesResponse
+| Field     | Type                                            | Required | Description                                                          |
+|-----------|-------------------------------------------------|----------|----------------------------------------------------------------------|
+| status_id | integer                                         | Yes      | Integer code of operation status. Can be: `2` - success, `3` - error |
+| status    | string                                          | Yes      | Human readable operation status. Can be: `success`, `error`          |
+| content   | array of [PreviewTableContent](#previewtablecontent) | No  | List of tables with sensitivity info                                 |
+
+## PreviewTableContent
+| Field        | Type                                                 | Required | Description                                                              |
+|--------------|------------------------------------------------------|----------|--------------------------------------------------------------------------|
+| table_name   | string                                               | Yes      | Table name                                                               |
+| is_sensitive | boolean                                              | Yes      | Whether the table matches the sensitive dictionary                       |
+| is_excluded  | boolean                                              | Yes      | Whether the table is excluded by `dictionary_exclude`                    |
+| fields       | array of [PreviewFieldContent](#previewfieldcontent)  | No       | List of fields with their types and sensitivity info                     |
+
+## PreviewFieldContent
+| Field        | Type    | Required | Description                                     |
+|--------------|---------|----------|-------------------------------------------------|
+| field_name   | string  | Yes      | Field name                                      |
+| type         | string  | Yes      | Field data type                                 |
+| is_sensitive | boolean | Yes      | Whether the field matches an anonymization rule  |
+| rule         | string  | No       | Matched anonymization rule if field is sensitive |
+
 ## ErrorResponse
-| Field   | Type   | Required | Description    |
-|---------|--------|----------|----------------|
-| message | string | Yes      | Error message. |
+| Field      | Type   | Required | Description                                        |
+|------------|--------|----------|----------------------------------------------------|
+| error_code | string | Yes      | Machine-readable error code for i18n mapping.      |
+| message    | string | Yes      | Human-readable error message.                      |
 
 ## HTTPValidationError
 | Field  | Type   | Required | Description    |

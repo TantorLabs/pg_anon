@@ -10,6 +10,7 @@ from rest_api.enums import DumpMode, ScanMode, RestoreMode
 # Common
 #############################################
 class ErrorResponse(BaseModel):
+    error_code: str
     message: str
 
 
@@ -344,6 +345,7 @@ class StatelessRunnerResponse(BaseModel):
     started: Optional[str] = None
     ended: Optional[str] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
     run_options: Optional[Dict[str, Any]] = None
 
 
@@ -451,6 +453,51 @@ class RestoreRequest(StatelessRunnerRequest):
             self.validated_input_path = get_full_dump_path(self.input_path)
 
         return self
+
+
+#############################################
+# Stateless | Preview
+#############################################
+class PreviewSchemasRequest(BaseModel):
+    db_connection_params: DbConnectionParams
+    schema_filter: Optional[str] = None
+
+
+class PreviewSchemasResponse(BaseModel):
+    status_id: int
+    status: str
+    content: Optional[List[str]] = None
+
+
+class PreviewSchemaTablesRequest(BaseModel):
+    db_connection_params: DbConnectionParams
+    sens_dict_contents: List[DictionaryContent]
+
+    limit: int = 20
+    offset: int = 0
+
+    table_filter: Optional[str] = None
+    view_only_sensitive_tables: bool = False
+
+
+class PreviewFieldContent(BaseModel):
+    field_name: str
+    type: str
+    is_sensitive: bool = False
+    rule: Optional[str] = None
+
+
+class PreviewTableContent(BaseModel):
+    table_name: str
+    is_sensitive: bool
+    is_excluded: bool
+    fields: Optional[List[PreviewFieldContent]] = None
+
+
+class PreviewSchemaTablesResponse(BaseModel):
+    status_id: int
+    status: str
+    content: Optional[List[PreviewTableContent]] = None
 
 
 #############################################

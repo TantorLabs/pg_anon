@@ -614,9 +614,15 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    SELECT string_agg(regexp_replace(company_name, '\s+', ' & ', 'g'), ' | ')
-    INTO organization_titles
-    FROM schm_customer.customer_company;
+    -- Cache organization_titles in session variable to avoid recalculating per each field
+    BEGIN
+        organization_titles := current_setting('test_scan.org_titles');
+    EXCEPTION WHEN OTHERS THEN
+        SELECT string_agg(regexp_replace(company_name, '\s+', ' & ', 'g'), ' | ')
+        INTO organization_titles
+        FROM schm_customer.customer_company;
+        PERFORM set_config('test_scan.org_titles', organization_titles, false);
+    END;
 
     IF organization_titles IS NULL THEN
         RETURN FALSE;

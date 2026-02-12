@@ -16,6 +16,7 @@ from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_qu
     create_connection, check_required_connections, exec_data_scan_func_per_field_query
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (chunkify, exception_helper, setof_to_list, get_dict_rule_for_table,
                                   save_dicts_info_file, safe_compile, get_base_field_type)
@@ -504,9 +505,10 @@ class CreateDictMode:
                             if len(fld_data) == 0 or len(res) > 0:
                                 break
 
-        except Exception as e:
-            self.context.logger.error(f"Exception in scan_obj_func:\n{field_info}\n" + exception_helper())
-            raise Exception("Can't execute task for field: %s" % field_info)
+        except Exception as ex:
+            field = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name} (type={field_info.type})"
+            self.context.logger.error(f"Exception in scan_obj_func:\n{field}\n" + exception_helper())
+            raise PgAnonError(ErrorCode.SCAN_FIELD_ERROR, "Can't execute task for field %s. Error: %s" % (field, ex.message))
 
         end_t = time.time()
         if end_t - start_t > 10:
@@ -666,7 +668,7 @@ class CreateDictMode:
     async def _create_dict(self):
         fields_info: Dict[str, FieldInfo] = await self._get_fields_for_scan()
         if not fields_info:
-            raise Exception("No objects for create dictionary!")
+            raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_SCAN, "No objects for scan!")
 
         self._scan_fields_by_names(fields_info)  # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
 

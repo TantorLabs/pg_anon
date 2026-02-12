@@ -4,6 +4,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SAVED_RUN_STATUS
 from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, get_pg_version
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import check_pg_util, exception_helper, save_json_file
 from pg_anon.context import Context
 from pg_anon.modes.create_dict import CreateDictMode
@@ -60,7 +61,7 @@ class PgAnonApp:
         pg_restore_exists = check_pg_util(self.context, self.context.pg_restore, "pg_restore")
 
         if not pg_dump_exists or not pg_restore_exists:
-            raise RuntimeError('pg_dump or pg_restore not found')
+            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, 'pg_dump or pg_restore not found')
 
     async def _check_initialization(self):
         if self.context.options.mode in (
@@ -74,7 +75,8 @@ class PgAnonApp:
                 server_settings=self.context.server_settings
             )
             if not anon_utils_schema_exists:
-                raise ValueError(
+                raise PgAnonError(
+                    ErrorCode.SCHEMA_NOT_INITIALIZED,
                     f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
                 )
 
@@ -97,7 +99,7 @@ class PgAnonApp:
         if self.context.options.mode == AnonMode.VIEW_DATA:
             return ViewDataMode(self.context)
 
-        raise RuntimeError("Unknown mode: " + self.context.options.mode.value)
+        raise PgAnonError(ErrorCode.UNKNOWN_MODE, "Unknown mode: " + self.context.options.mode.value)
 
     async def run(self) -> PgAnonResult:
         self._bootstrap()

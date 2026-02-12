@@ -7,8 +7,10 @@ import asyncpg
 from asyncpg import Connection, Pool
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, DEFAULT_EXCLUDED_SCHEMAS
-from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query
+from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query, \
+    get_tables_with_fields_query
 from pg_anon.common.dto import FieldInfo, ConnectionParams
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 from pg_anon.logger import get_logger
@@ -73,6 +75,18 @@ async def get_scan_fields_list(connection_params: ConnectionParams, server_setti
     fields_list = await db_conn.fetch(query)
     await db_conn.close()
     return fields_list
+
+
+async def get_tables_with_fields(schema: str, connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, limit: int = None, offset: int = None, table_filter: str = None) -> List:
+    query = get_tables_with_fields_query(schema, limit, offset, table_filter=table_filter)
+
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    try:
+        data = await db_conn.fetch(query)
+    finally:
+        await db_conn.close()
+
+    return data
 
 
 async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> int:
@@ -204,11 +218,12 @@ async def get_db_tables(
     return list(map(tuple, tables))
 
 
-async def get_schemas(connection: Connection) -> List[str]:
+async def get_schemas(connection: Connection, schema_filter: str = None) -> List[str]:
+    schema_filter_clause = f"AND nspname like '%{schema_filter}%'" if schema_filter else ''
     query = f"""
     SELECT nspname AS schema_name
     FROM pg_namespace
-    WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema'
+    WHERE nspname NOT LIKE 'pg_%' AND nspname != 'information_schema' {schema_filter_clause}
     ORDER BY nspname;
     """
 
@@ -630,9 +645,9 @@ async def run_query_in_pool(pool: Pool, query: str):
         async with pool.acquire() as connection:
             await connection.execute(query)
             logger.info(f"Execute query: {query}")
-    except Exception as e:
+    except Exception as ex:
         logger.error("Exception in run_query_in_pool:\n" + exception_helper())
-        raise RuntimeError(f"Can't execute query: {query}")
+        raise PgAnonError(ErrorCode.DB_QUERY_FAILED, f"Can't execute query: {query}")
 
     logger.info(f"<================ Finished query {query}")
 
@@ -680,7 +695,8 @@ async def check_required_connections(
     available_connections = await get_available_connections(connection)
 
     if required_connections > available_connections:
-        raise ValueError(
+        raise PgAnonError(
+            ErrorCode.INSUFFICIENT_CONNECTIONS,
             f"Not enough database connections. "
             f"Required: {required_connections}, available: ~{available_connections}"
         )
@@ -780,6 +796,7 @@ async def get_dump_query(
                 f'"{field["column_name"]}"' + ' NULLS LAST' for field in fields_list
                 if field["is_nullable"].lower() == "yes"
             ])
-            query += f" ORDER BY {ordering}"
+            if ordering:
+                query += f" ORDER BY {ordering}"
 
         return query

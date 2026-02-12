@@ -17,31 +17,6 @@
             }
         },
         {
-            "schema": "schm_customer",
-            "table": "customer_company",
-            "fields": {
-                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')",
-                "inn": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')"
-            }
-        },
-        {
-            "schema": "schm_customer",
-            "table": "customer_manager",
-            "fields": {
-                "phone": "anon_funcs.digest(\"phone\", 'salt_word', 'md5')"
-            }
-        },
-        {
-            "schema": "schm_mask_ext_exclude_2",
-            "table": "card_numbers",
-            "fields": {
-                "val": "anon_funcs.digest(\"val\", 'salt_word', 'md5')",
-                "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
-                "usd": "anon_funcs.noise(\"usd\", 30)",
-                "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
-            }
-        },
-        {
             "schema": "public",
             "table": "key_value",
             "fields": {
@@ -58,27 +33,12 @@
             }
         },
         {
-            "schema": "schm_mask_ext_exclude_2",
-            "table": "other_ext_tbl_2",
-            "fields": {
-                "val_2": "anon_funcs.digest(\"val_2\", 'salt_word', 'md5')",
-                "val_1": "anon_funcs.digest(\"val_1\", 'salt_word', 'md5')"
-            }
-        },
-        {
             "schema": "public",
             "table": "tbl_100",
             "fields": {
                 "другое_поле": "anon_funcs.digest(\"другое_поле\", 'salt_word', 'md5')",
                 "amount": "anon_funcs.noise(\"amount\", 30)",
                 "имя_поля": "anon_funcs.digest(\"имя_поля\", 'salt_word', 'md5')"
-            }
-        },
-        {
-            "schema": "schm_customer",
-            "table": "customer_contract",
-            "fields": {
-                "contract_text": "anon_funcs.digest(\"contract_text\", 'scan_func_per_field', 'md5')"
             }
         },
         {

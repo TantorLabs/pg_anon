@@ -1,4 +1,12 @@
 {
+    "skip_rules": [
+        {"schema": "schm_customer"},
+        {"schema": "schm_mask_include_1"},
+        {"schema": "schm_mask_exclude_1"},
+        {"schema": "schm_mask_ext_include_2"},
+        {"schema": "schm_mask_ext_exclude_2"},
+        {"schema": "columnar_internal"}
+    ],
     "data_func": {
         "anyelement": [
             {

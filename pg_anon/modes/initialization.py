@@ -1,6 +1,5 @@
 from pg_anon.common.constants import BASE_DIR
 from pg_anon.common.db_utils import create_connection
-from pg_anon.common.utils import exception_helper
 from pg_anon.context import Context
 
 

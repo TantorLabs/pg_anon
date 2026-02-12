@@ -15,6 +15,7 @@ from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import ResultCode
+from pg_anon.common.errors import PgAnonError
 from pg_anon.common.utils import (
     exception_helper,
     recordset_to_list_flat,
@@ -651,6 +652,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -688,6 +690,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ['public', 'tbl_100', 0],
             ['public', 'tbl_constants', 0],
             ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_contract', 0],
             ['schm_customer', 'customer_manager', 0],
             ['schm_mask_exclude_1', 'other_tbl', 0],
             ['schm_mask_exclude_1', 'some_tbl', 0],
@@ -772,6 +775,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -976,6 +980,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -1013,6 +1018,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ['public', 'tbl_100', 0],
             ['public', 'tbl_constants', 0],
             ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_contract', 0],
             ['schm_customer', 'customer_manager', 0],
             ['schm_mask_exclude_1', 'other_tbl', 0],
             ['schm_mask_exclude_1', 'some_tbl', 0],
@@ -1422,6 +1428,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['public', 'inn_info'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_other_1', 'some_tbl'],
                     ["schm_other_2", "some_tbl"],
@@ -1487,6 +1494,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
                     ['schm_mask_ext_exclude_2', 'card_numbers'],
@@ -1568,6 +1576,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1629,6 +1638,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1690,6 +1700,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1751,6 +1762,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -2558,7 +2570,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_19_create_dict_using_not_existing_functions")
 
     async def test_20_create_dict_using_data_func_per_field(self):
-        # self.assertTrue("init_env" in passed_stages)
+        self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
             self.get_test_dict_path('test_meta_dict.py'),
@@ -2934,10 +2946,11 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
-        self.assertEqual(len(executor.table.rows), all_rows_count)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
+        self.assertEqual(len(executor.table.rows), all_rows_count - excluded_fields_count)
 
         fields_counters = self._count_fields_by_type(executor)
-        self.assertEqual(all_rows_count, fields_counters['in_dict'] + fields_counters['not_in_dict'])
+        self.assertEqual(all_rows_count - excluded_fields_count, fields_counters['in_dict'] + fields_counters['not_in_dict'])
 
         passed_stages.append("test_02_view_fields_full")
 
@@ -3123,9 +3136,10 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await executor_full.run()
 
         all_rows_count = await get_scan_fields_count(context_full.connection_params)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
-        self.assertEqual(len(executor_full.table.rows), all_rows_count)
-        self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count)
+        self.assertEqual(len(executor_full.table.rows), all_rows_count - excluded_fields_count)
+        self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count - excluded_fields_count)
 
         sensitive_fields_in_full_executor: Set[str] = {
             str(field) for field in executor_full.fields if field.rule != '---'
@@ -3165,8 +3179,9 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertIsNotNone(executor.json)
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
         json_data_len = len(json.loads(executor.json))
-        self.assertEqual(json_data_len, all_rows_count)
+        self.assertEqual(json_data_len, all_rows_count - excluded_fields_count)
         self.assertEqual(json_data_len, len(executor.fields))
 
         passed_stages.append("test_11_view_filter_json_output")
@@ -3194,7 +3209,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         executor = ViewFieldsMode(context)
         try:
             await executor.run()
-        except ValueError:
+        except PgAnonError:
             executor_failed = True
 
         self.assertTrue(executor_failed)
@@ -3230,9 +3245,9 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         except ValueError:
             executor_failed = True
 
-        self.assertTrue(executor_failed)
+        self.assertFalse(executor_failed)
         self.assertEqual(len(executor.fields), 0)
-        self.assertIsNone(executor.table)
+        self.assertIsNotNone(executor.table)
         self.assertFalse(executor.fields_cut_by_limits)
 
         passed_stages.append("test_10_view_filter_to_zero_fields")
@@ -3262,7 +3277,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         except ValueError:
             executor_failed = True
 
-        self.assertTrue(executor_failed)
+        self.assertFalse(executor_failed)
 
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 

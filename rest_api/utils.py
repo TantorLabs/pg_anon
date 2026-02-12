@@ -9,6 +9,7 @@ import aioprocessing
 
 from pg_anon.cli import run_pg_anon
 from pg_anon.common.dto import PgAnonResult
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import validate_exists_mode, simple_slugify
 from rest_api.constants import DUMP_STORAGE_BASE_DIR
 from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
@@ -17,7 +18,7 @@ from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 def get_full_dump_path(dump_path: str) -> str:
     full_dump_path = Path(DUMP_STORAGE_BASE_DIR / dump_path.lstrip("/")).resolve()
     if not str(full_dump_path).startswith(str(DUMP_STORAGE_BASE_DIR)) or full_dump_path == DUMP_STORAGE_BASE_DIR:
-        raise ValueError(f"Invalid path: {dump_path}")
+        raise PgAnonError(ErrorCode.INVALID_PATH, f"Invalid path: {dump_path}")
 
     return str(full_dump_path)
 
@@ -115,7 +116,9 @@ def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params
         )
         queue.put(result)
     except Exception as ex:
-        print(ex)
+        failed_result = PgAnonResult()
+        failed_result.fail(ex)
+        queue.put(failed_result)
     finally:
         queue.put(None)  # Завершаем процесс
         queue.close()
@@ -124,7 +127,7 @@ def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params
 
 async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: List[str]) -> Optional[PgAnonResult]:
     if not validate_exists_mode(mode):
-        raise ValueError(f'Invalid mode: {mode}')
+        raise PgAnonError(ErrorCode.UNKNOWN_MODE, f'Invalid mode: {mode}')
 
     application_name_suffix = f'worker__{mode}__{operation_id}'
     cli_run_params.append(f'--application-name-suffix={application_name_suffix}')

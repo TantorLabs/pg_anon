@@ -21,6 +21,7 @@ from pg_anon.common.db_utils import create_connection, create_pool, get_db_table
     get_custom_aggregates_ddl, get_extensions, check_required_connections
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
     exception_helper, get_dict_rule_for_table, chunkify, get_pg_util_version, save_dicts_info_file, safe_compile
@@ -97,7 +98,7 @@ class DumpMode:
         elif not self.context.options.clear_output_dir:
             msg = f"Output directory {self.output_dir} is not empty!"
             self.context.logger.error(msg)
-            raise Exception(msg)
+            raise PgAnonError(ErrorCode.OUTPUT_DIR_NOT_EMPTY, msg)
         else:
             self._clear_output_dir()
 
@@ -117,7 +118,7 @@ class DumpMode:
                 if file_path.suffix.lower() not in expected_file_extensions:
                     msg = f"Option --clear-output-dir enabled. Unexpected file extension: {file_path}"
                     self.context.logger.error(msg)
-                    raise Exception(msg)
+                    raise PgAnonError(ErrorCode.INVALID_OUTPUT_DIR, msg)
 
                 file_path.unlink()
 
@@ -328,7 +329,7 @@ class DumpMode:
         if proc.returncode != 0:
             msg = "ERROR: database schema dump has failed!"
             self.context.logger.error(msg)
-            raise RuntimeError(msg)
+            raise PgAnonError(ErrorCode.DUMP_FAILED, msg)
 
     async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: Union[str, Path]):
         try:
@@ -391,7 +392,7 @@ class DumpMode:
                 compress_is_complete = True
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file end - {binary_output_file_path}")
 
-        except Exception as e:
+        except Exception as ex:
             self.context.logger.error(
                 f"Process [{process_name}] Task [{task_id}] Exception in DumpMode._dump_data_by_query:\n"
                 + exception_helper()
@@ -399,14 +400,14 @@ class DumpMode:
             if pool.is_closing():
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Pool closed!")
 
-            error_message = "Something went wrong"
+            error_message = f"Something went wrong: {ex.message}"
             if not dump_is_complete:
                 error_message = f"Can't execute query: {query}"
             elif not compress_is_complete:
                 error_message = f"Can't compress file: {binary_output_file_path}"
 
             self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Error: {error_message}")
-            raise Exception(error_message)
+            raise PgAnonError(ErrorCode.DUMP_FAILED, error_message)
 
         self.context.logger.info(f"<================ Process [{process_name}] Task [{task_id}] Finished task {query}")
 
@@ -566,7 +567,7 @@ class DumpMode:
                 # Preparing dump queries
                 await self._prepare_dump_queries()
                 if not self._data_dump_queries:
-                    raise Exception("No objects for dump!")
+                    raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_DUMP, "No objects for dump!")
 
                 queries_chunks = chunkify(
                     list(zip(self._data_dump_files.keys(), self._data_dump_queries)),
@@ -619,7 +620,7 @@ class DumpMode:
                 for process_task in process_tasks:
                     process_task_result = process_task.result()
                     if not process_task_result:
-                        raise ValueError("One or more dump queries has been failed!")
+                        raise PgAnonError(ErrorCode.DUMP_QUERY_FAILED, "One or more dump queries has been failed!")
 
                     for res in process_task_result:
                         self._data_dump_tasks_results.update(res)

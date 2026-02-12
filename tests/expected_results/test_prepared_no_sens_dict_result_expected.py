@@ -72,6 +72,14 @@
         },
         {
             "schema": "schm_customer",
+            "table": "customer_contract",
+            "fields": [
+                "contract_text",
+                "customer_company_id"
+            ]
+        },
+        {
+            "schema": "schm_customer",
             "table": "customer_manager",
             "fields": [
                 "customer_company_id",
