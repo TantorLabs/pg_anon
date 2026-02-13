@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import hashlib
+import shlex
 import multiprocessing
 import os
 import re
@@ -308,7 +309,6 @@ class DumpMode:
             "--no-owner",
             "-f",
             str((self.output_dir / section.replace("-", "_")).with_suffix(".backup")),
-            self.context.options.db_name,
         ]
         if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
@@ -316,6 +316,10 @@ class DumpMode:
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
+        if self.context.options.pg_dump_options:
+            command.extend(shlex.split(self.context.options.pg_dump_options))
+
+        command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty

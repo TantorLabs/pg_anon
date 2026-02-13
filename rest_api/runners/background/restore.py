@@ -67,6 +67,11 @@ class RestoreRunner(BaseRunner):
                 f"--ignore-privileges"
             )
 
+        if self.request.pg_restore_options:
+            self.cli_params.append(
+                f'--pg-restore-options={self.request.pg_restore_options}'
+            )
+
     def _prepare_additional_cli_params(self):
         if self.request.drop_custom_check_constr:
             self.cli_params.append(

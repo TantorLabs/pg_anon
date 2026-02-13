@@ -3282,5 +3282,113 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 
 
+class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_dump_with_valid_pg_dump_options(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test.py")
+        output_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
+
+        options = build_run_options([
+            "dump",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            '--pg-dump-options=--no-comments --no-publications',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_dump_with_valid_pg_dump_options")
+
+    async def test_03_restore_with_valid_pg_restore_options(self):
+        self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
+
+        input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
+
+        options = build_run_options([
+            "restore",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            '--pg-restore-options=--no-comments --no-publications',
+            '--drop-db',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_03_restore_with_valid_pg_restore_options")
+
+    async def test_04_dump_with_invalid_pg_dump_options(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test.py")
+        output_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_04_dump")
+
+        options = build_run_options([
+            "dump",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            '--pg-dump-options=--no-comments --non-existing-flag',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+    async def test_05_restore_with_invalid_pg_restore_options(self):
+        self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
+
+        input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
+
+        options = build_run_options([
+            "restore",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            '--pg-restore-options=--no-comments --non-existing-flag',
+            '--drop-db',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+
 if __name__ == "__main__":
     unittest.main(exit=False)

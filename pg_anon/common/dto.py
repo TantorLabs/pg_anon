@@ -49,6 +49,7 @@ class RunOptions:
     # dump options
     prepared_sens_dict_files: Optional[List[str]] = None
     pg_dump: Optional[str] = None
+    pg_dump_options: Optional[str] = None
     output_dir: Optional[str] = None
     clear_output_dir: bool = False
     dbg_stage_1_validate_dict: bool = False
@@ -60,6 +61,7 @@ class RunOptions:
     # restore options
     input_dir: Optional[str] = None
     pg_restore: Optional[str] = None
+    pg_restore_options: Optional[str] = None
     drop_custom_check_constr: bool = False
     seq_init_by_max_value: bool = False
     disable_checks: bool = False

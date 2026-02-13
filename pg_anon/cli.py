@@ -241,6 +241,12 @@ def dump_parser():
         action="store_true",
         default=False,
     )
+    p.add_argument(
+        "--pg-dump-options",
+        type=str,
+        default=None,
+        help="Additional options passed directly to pg_dump utility.",
+    )
 
     return p
 
@@ -314,6 +320,13 @@ def restore_parser():
         help="Ignore privileges from source db",
         action="store_true",
         default=False,
+    )
+
+    p.add_argument(
+        "--pg-restore-options",
+        type=str,
+        default=None,
+        help="Additional options passed directly to pg_restore utility.",
     )
 
     # Hidden param for validate_target_tables() in tests

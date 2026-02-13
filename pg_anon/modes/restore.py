@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import json
 import os
+import shlex
 import re
 import shutil
 import subprocess
@@ -292,6 +293,9 @@ class RestoreMode:
                 '-L',
                 self._toc_list_pre_data_file_path if section == 'pre-data' else self._toc_list_post_data_file_path
             ])
+
+        if self.context.options.pg_restore_options:
+            command.extend(shlex.split(self.context.options.pg_restore_options))
 
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

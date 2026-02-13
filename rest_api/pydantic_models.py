@@ -393,6 +393,7 @@ class DumpRequest(StatelessRunnerRequest):
     validated_output_path: Optional[str] = Field(default=None, exclude=True)
 
     pg_dump_path: Optional[str] = None
+    pg_dump_options: Optional[str] = None
 
     proc_count: Optional[int] = None
     proc_conn_count: Optional[int] = None
@@ -435,6 +436,7 @@ class RestoreRequest(StatelessRunnerRequest):
     partial_tables_dict_contents: Optional[List[DictionaryContent]] = None
     partial_tables_exclude_dict_contents: Optional[List[DictionaryContent]] = None
     pg_restore_path: Optional[str] = None
+    pg_restore_options: Optional[str] = None
     proc_conn_count: Optional[int] = None
     drop_custom_check_constr: bool = False
     clean_db: bool = False
