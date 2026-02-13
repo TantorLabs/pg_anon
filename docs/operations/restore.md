@@ -20,7 +20,7 @@ Restores both the database structure and data.
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=restore \
+python pg_anon.py restore \
                   --db-host=127.0.0.1 \
                   --db-user=postgres \
                   --db-user-password=postgres \
@@ -42,7 +42,7 @@ Restores only the database structure.
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=sync-struct-restore \
+python pg_anon.py sync-struct-restore \
                   --db-host=127.0.0.1 \
                   --db-user=postgres \
                   --db-user-password=postgres \
@@ -64,7 +64,7 @@ Restores data only.
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=sync-data-restore \
+python pg_anon.py sync-data-restore \
                   --db-host=127.0.0.1 \
                   --db-user=postgres \
                   --db-user-password=postgres \
@@ -91,38 +91,35 @@ See [tables dictionary](../dicts/tables-dictionary.md).
 ### Run example
 #### Restore only need tables (whitelist)
 ```commandline
-python pg_anon.py --mode=restore \
+python pg_anon.py restore \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
                  --db-name=source_db \
                  --input-dir=partial_dump_white_list \
-                 --prepared-sens-dict-file=sens_dict.py
                  --partial-tables-dict-file=include_tables.py
 ```
 
 #### Dump all tables without some specified tables (blacklist)
 ```commandline
-python pg_anon.py --mode=restore \
+python pg_anon.py restore \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
                  --db-name=source_db \
                  --input-dir=partial_dump_black_list \
-                 --prepared-sens-dict-file=sens_dict.py
                  --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 
 #### Dump only specified tables with excluding some of them  (whitelist + blacklist)
 ```commandline
-python pg_anon.py --mode=restore \
+python pg_anon.py restore \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
                  --db-name=source_db \
                  --input-dir=partial_dump_white_list_and_black_list \
-                 --prepared-sens-dict-file=sens_dict.py
                  --partial-tables-dict-file=include_tables.py
                  --partial-tables-exclude-dict-file=exclude_tables.py
 ```
@@ -136,7 +133,6 @@ python pg_anon.py --mode=restore \
 | Option                          | Required | Description                                                                                      |
 |---------------------------------|----------|--------------------------------------------------------------------------------------------------|
 | `--config`                      | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
-| `--processes`                   | No       | Number of processes used for multiprocessing operations. (default: 4)                            |
 | `--db-connections-per-process`  | No       | Number of database connections per process for I/O operations. (default: 4)                      |
 | `--verbose`                     | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
 | `--debug`                       | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
@@ -147,7 +143,7 @@ python pg_anon.py --mode=restore \
 | Option                | Required | Description                                                         |
 |-----------------------|----------|---------------------------------------------------------------------|
 | `--db-host`           | Yes      | Database host.                                                      |
-| `--db-port`           | Yes      | Database port.                                                      |
+| `--db-port`           | No       | Database port.                                                      |
 | `--db-name`           | Yes      | Database name.                                                      |
 | `--db-user`           | Yes      | Database user.                                                      |
 | `--db-user-password`  | No       | Database user password.                                             |
@@ -168,6 +164,7 @@ python pg_anon.py --mode=restore \
 | `--seq-init-by-max-value`            | No       | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database.                                                                                                               |
 | `--drop-custom-check-constr`         | No       | Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading.                                                                                                                               |
 | `--pg-restore`                       | No       | Path to the `pg_restore` Postgres tool.                                                                                                                                                                                                              |
+| `--pg-restore-options`               | No       | Additional options passed directly to `pg_restore` utility. Example: `"--no-comments --no-table-access-method"`.                                                                                                                                     |
 | `--clean-db`                         | No       | Cleans the database objects before restoring (if they exist in the dump). Mutually exclusive with `--drop-db`.                                                                                                                                       |
 | `--drop-db`                          | No       | Drop target database before restore. Mutually exclusive with `--clean-db`.                                                                                                                                                                           |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |

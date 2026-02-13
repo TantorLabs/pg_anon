@@ -24,7 +24,6 @@ TRANSACTIONS_SERVER_SETTINGS = {
 }
 
 DEFAULT_EXCLUDED_SCHEMAS = [
-    ANON_UTILS_DB_SCHEMA_NAME,
     "pg_catalog",
     "information_schema"
 ]

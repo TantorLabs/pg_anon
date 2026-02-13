@@ -68,7 +68,7 @@ class ViewDataRunner:
         ])
 
     def _prepare_cli_params(self):
-        self.cli_params = []
+        self.cli_params = ['view-data']
         self._prepare_db_credentials_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_filters_cli_params()

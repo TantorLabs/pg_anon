@@ -56,8 +56,8 @@ class Logger:
                 handler.acquire()
                 handler.flush()
                 handler.close()
-            except Exception as e:
-                print(f"Error closing log handler: {e}")
+            except Exception as ex:
+                print(f"Error closing log handler: {ex}")
             finally:
                 handler.release()
                 self.logger.removeHandler(handler)

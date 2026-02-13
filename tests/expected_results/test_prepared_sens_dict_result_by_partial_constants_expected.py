@@ -38,6 +38,13 @@
         },
         {
             "schema": "schm_customer",
+            "table": "customer_contract",
+            "fields": {
+                "contract_text": "anon_funcs.digest(\"contract_text\", 'salt_word', 'md5')"
+            }
+        },
+        {
+            "schema": "schm_customer",
             "table": "customer_manager",
             "fields": {
                 "last_name": "anon_funcs.digest(\"last_name\", 'salt_word', 'md5')",

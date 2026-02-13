@@ -13,6 +13,7 @@ import yaml
 
 from pg_anon.common.constants import BASE_TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.dto import FieldInfo, RunOptions
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.logger import get_logger
 
 logger = get_logger()
@@ -232,7 +233,7 @@ def simple_slugify(value: str):
 def read_yaml(file_path: Union[str, Path]) -> Dict:
     path = Path(file_path)
     if path.suffix not in ('.yml', '.yaml'):
-        raise ValueError("File must be .yml or .yaml")
+        raise PgAnonError(ErrorCode.INVALID_FILE_FORMAT, "File must be .yml or .yaml")
 
     with open(path.absolute(), "r") as file:
         data = yaml.safe_load(file)
@@ -381,6 +382,21 @@ def save_json_file(file_path: Union[str, Path], data: Dict):
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
 
+def read_dict_data(data: str, dict_name: str) -> Optional[Dict[str, Any]]:
+    try:
+        dict_data = ast.literal_eval(data)
+    except Exception as exc:
+        raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Can't read data from file: {dict_name}")
+
+    if not dict_data:
+        return
+
+    if not isinstance(dict_data, dict):
+        raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Received non-dictionary structure from file: {dict_name}")
+
+    return dict_data
+
+
 def read_dict_data_from_file(dictionary_file_path: Path) -> Optional[Dict[str, Any]]:
     with open(dictionary_file_path, "r") as dictionary_file:
         data = dictionary_file.read().strip()
@@ -388,18 +404,7 @@ def read_dict_data_from_file(dictionary_file_path: Path) -> Optional[Dict[str, A
     if not data:
         return
 
-    try:
-        dict_data = ast.literal_eval(data)
-    except Exception as exc:
-        raise ValueError(f"Can't read data from file: {dictionary_file_path}")
-
-    if not dict_data:
-        return
-
-    if not isinstance(dict_data, dict):
-        raise ValueError(f"Received non-dictionary structure from file: {dictionary_file_path}")
-
-    return dict_data
+    return read_dict_data(data, dictionary_file_path)
 
 
 def save_dicts_info_file(options: RunOptions):

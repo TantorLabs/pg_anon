@@ -1,6 +1,8 @@
 import asyncio
 import gzip
 import hashlib
+import shlex
+import multiprocessing
 import os
 import re
 import shutil
@@ -17,9 +19,10 @@ from pg_anon.common.db_queries import get_relation_size_query, get_sequences_que
 from pg_anon.common.db_utils import create_connection, create_pool, get_db_tables, get_db_size, get_dump_query, \
     get_custom_functions_ddl, get_custom_domains_ddl, get_indexes_data, get_views_related_to_tables, get_schemas, \
     get_constraints_to_excluded_tables, get_custom_types_ddl, get_custom_casts_ddl, get_custom_operators_ddl, \
-    get_custom_aggregates_ddl, get_extensions
+    get_custom_aggregates_ddl, get_extensions, check_required_connections
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
     exception_helper, get_dict_rule_for_table, chunkify, get_pg_util_version, save_dicts_info_file, safe_compile
@@ -96,7 +99,7 @@ class DumpMode:
         elif not self.context.options.clear_output_dir:
             msg = f"Output directory {self.output_dir} is not empty!"
             self.context.logger.error(msg)
-            raise Exception(msg)
+            raise PgAnonError(ErrorCode.OUTPUT_DIR_NOT_EMPTY, msg)
         else:
             self._clear_output_dir()
 
@@ -116,7 +119,7 @@ class DumpMode:
                 if file_path.suffix.lower() not in expected_file_extensions:
                     msg = f"Option --clear-output-dir enabled. Unexpected file extension: {file_path}"
                     self.context.logger.error(msg)
-                    raise Exception(msg)
+                    raise PgAnonError(ErrorCode.INVALID_OUTPUT_DIR, msg)
 
                 file_path.unlink()
 
@@ -306,7 +309,6 @@ class DumpMode:
             "--no-owner",
             "-f",
             str((self.output_dir / section.replace("-", "_")).with_suffix(".backup")),
-            self.context.options.db_name,
         ]
         if not self.context.options.db_host:
             del command[command.index("-h"): command.index("-h") + 2]
@@ -314,6 +316,10 @@ class DumpMode:
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
+        if self.context.options.pg_dump_options:
+            command.extend(shlex.split(self.context.options.pg_dump_options))
+
+        command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
@@ -327,7 +333,7 @@ class DumpMode:
         if proc.returncode != 0:
             msg = "ERROR: database schema dump has failed!"
             self.context.logger.error(msg)
-            raise RuntimeError(msg)
+            raise PgAnonError(ErrorCode.DUMP_FAILED, msg)
 
     async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: Union[str, Path]):
         try:
@@ -390,7 +396,7 @@ class DumpMode:
                 compress_is_complete = True
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Compressing file end - {binary_output_file_path}")
 
-        except Exception as e:
+        except Exception as ex:
             self.context.logger.error(
                 f"Process [{process_name}] Task [{task_id}] Exception in DumpMode._dump_data_by_query:\n"
                 + exception_helper()
@@ -398,14 +404,14 @@ class DumpMode:
             if pool.is_closing():
                 self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Pool closed!")
 
-            error_message = "Something went wrong"
+            error_message = f"Something went wrong: {ex.message}"
             if not dump_is_complete:
                 error_message = f"Can't execute query: {query}"
             elif not compress_is_complete:
                 error_message = f"Can't compress file: {binary_output_file_path}"
 
             self.context.logger.debug(f"Process [{process_name}] Task [{task_id}] Error: {error_message}")
-            raise Exception(error_message)
+            raise PgAnonError(ErrorCode.DUMP_FAILED, error_message)
 
         self.context.logger.info(f"<================ Process [{process_name}] Task [{task_id}] Finished task {query}")
 
@@ -434,7 +440,14 @@ class DumpMode:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
-    def _process_dump_data(self, name: str, queue: AioQueue, query_tasks: List[Tuple[str, str]], transaction_snapshot_id: str):
+    def _process_dump_data(
+        self,
+        name: str,
+        queue: AioQueue,
+        query_tasks: List[Tuple[str, str]],
+        stop_event: Optional[multiprocessing.Event] = None,
+        transaction_snapshot_id: str = None
+    ):
         tasks_res = []
 
         status_ratio = 10
@@ -443,8 +456,26 @@ class DumpMode:
         if len(query_tasks) > 50000:
             status_ratio = 1000
 
+        def _should_stop():
+            return stop_event is not None and stop_event.is_set()
+
+        async def _wait_and_check(tasks: set):
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            if _should_stop():
+                self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                return None
+
+            for done_task in done:
+                if exc := done_task.exception():
+                    self.context.logger.error(f"<================ Process [{name}]: {exc}")
+                    raise exc
+
+            return pending
+
         async def _process_run():
             self.context.logger.debug(f"================> Process [{name}] Connection pool opening")
+
             pool = await create_pool(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
@@ -456,16 +487,14 @@ class DumpMode:
             try:
                 query_tasks_count = len(query_tasks)
                 for idx, (file_name, query) in enumerate(query_tasks):
-                    if len(tasks) >= self.context.options.db_connections_per_process:
-                        self.context.logger.debug(f"================> Process [{name}] Tasks pool is full. Waiting results by already started tasks")
-                        # Wait for some dump to finish before adding a new one
-                        done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                        exception = done.pop().exception()
-                        if exception is not None:
-                            self.context.logger.error(f"<================ Process [{name}]: {exception}")
-                            raise exception
+                    if _should_stop():
+                        self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                        return
 
-                        self.context.logger.debug(f"Process [{name}] One of tasks has been completed")
+                    while len(tasks) >= self.context.options.db_connections_per_process:
+                        tasks = await _wait_and_check(tasks)
+                        if tasks is None:
+                            return
 
                     self.context.logger.debug(f"Process [{name}] Adding new task into pool [{idx + 1}/{query_tasks_count}]")
                     task_res = loop.create_task(
@@ -483,15 +512,14 @@ class DumpMode:
 
                     self.context.logger.debug(f"Process [{name}] New task added. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
 
-                    if idx % status_ratio:
-                        progress_percents = round(float(idx) * 100 / len(query_tasks), 2)
+                    if idx % status_ratio == 0:
+                        progress_percents = round(float(idx) * 100 / query_tasks_count, 2)
                         self.context.logger.info(f"Process [{name}] Progress {progress_percents}%")
 
-                self.context.logger.debug(f"Process [{name}] All tasks was started")
-
-                if len(tasks) > 0:
-                    self.context.logger.debug(f"Process [{name}] Waiting when all tasks will be ended. Current tasks in pool: {len(tasks)} / {self.context.options.db_connections_per_process}")
-                    await asyncio.wait(tasks)
+                while tasks:
+                    tasks = await _wait_and_check(tasks)
+                    if tasks is None:
+                        return
             finally:
                 self.context.logger.debug(f"<================ Process [{name}] Connection pool closing")
 
@@ -521,7 +549,7 @@ class DumpMode:
             self.context.logger.debug(f"Process [{name}] Processing results end")
         except Exception as ex:
             self.context.logger.error(f"<================ Process [{name}]: {exception_helper()}")
-            raise ex
+            queue.put([ex])  # Send exception to parent process
         finally:
             self.context.logger.debug(f"<================ Process [{name}] closing")
             loop.close()
@@ -543,12 +571,15 @@ class DumpMode:
                 # Preparing dump queries
                 await self._prepare_dump_queries()
                 if not self._data_dump_queries:
-                    raise Exception("No objects for dump!")
+                    raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_DUMP, "No objects for dump!")
 
                 queries_chunks = chunkify(
                     list(zip(self._data_dump_files.keys(), self._data_dump_queries)),
                     self.context.options.processes
                 )
+
+                # Shared event to signal all processes to stop on error
+                stop_event = multiprocessing.Event()
 
                 process_tasks = []
                 for idx, queries_chunk in enumerate(queries_chunks):
@@ -559,32 +590,41 @@ class DumpMode:
                                 ctx=self.context,
                                 target_func=self._process_dump_data,
                                 tasks=queries_chunk,
+                                stop_event=stop_event,
                                 transaction_snapshot_id=transaction_snapshot_id,
                             )
                         )
                     )
 
-                # Wait for the remaining dumps to finish
-                task_group = asyncio.gather(*process_tasks)
+                # Wait with immediate error detection while keeping transaction alive
+                remaining = process_tasks
+                while remaining:
+                    # Use timeout to periodically run SELECT 1 for keeping transaction alive
+                    done, pending = await asyncio.wait(
+                        remaining,
+                        timeout=5,
+                        return_when=asyncio.FIRST_EXCEPTION
+                    )
 
-                while not task_group.done():
-                    """
-                    Keeps main transaction in active by using simple query `SELECT 1`
-                    It's needs for large databases, when dump can making for very long time
-            
-                    Avoids lots of queries by sleep
-                    Big value for sleeping isn't recommended, because it can freeze processing, when tasks will be done
-                    """
-                    await asyncio.sleep(5)
+                    # Keep main transaction active (needed for large databases with long dumps)
                     await connection.execute('SELECT 1')
 
-                await task_group
+                    for task in done:
+                        if task.exception():
+                            # Signal all processes to stop
+                            stop_event.set()
+                            # Wait for remaining processes to finish (with timeout)
+                            if pending:
+                                await asyncio.wait(pending, timeout=10)
+                            raise task.exception()
+
+                    remaining = list(pending)
 
                 self._data_dump_tasks_results = {}
                 for process_task in process_tasks:
                     process_task_result = process_task.result()
                     if not process_task_result:
-                        raise ValueError("One or more dump queries has been failed!")
+                        raise PgAnonError(ErrorCode.DUMP_QUERY_FAILED, "One or more dump queries has been failed!")
 
                     for res in process_task_result:
                         self._data_dump_tasks_results.update(res)
@@ -683,6 +723,9 @@ class DumpMode:
                 self.context.connection_params,
                 server_settings=self.context.server_settings
             )
+
+            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
+            await check_required_connections(connection, required_connections)
 
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()

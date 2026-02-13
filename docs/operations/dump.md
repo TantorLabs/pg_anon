@@ -25,7 +25,7 @@ This backup can be restored using the following modes:
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=dump \
+python pg_anon.py dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -45,7 +45,7 @@ This mode is useful when used together with the [data dump (`sync-data-dump`) mo
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=sync-struct-dump \
+python pg_anon.py sync-struct-dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -66,7 +66,7 @@ This mode can be useful for scheduling database synchronization, for example usi
 
 ### Run example
 ```commandline
-python pg_anon.py --mode=sync-data-dump \
+python pg_anon.py sync-data-dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -94,7 +94,7 @@ See [tables dictionary](../dicts/tables-dictionary.md).
 ### Run example
 #### Dump only need tables (whitelist)
 ```commandline
-python pg_anon.py --mode=dump \
+python pg_anon.py dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -106,7 +106,7 @@ python pg_anon.py --mode=dump \
 
 #### Dump all tables without some specified tables (blacklist)
 ```commandline
-python pg_anon.py --mode=dump \
+python pg_anon.py dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -119,7 +119,7 @@ python pg_anon.py --mode=dump \
 
 #### Dump only specified tables with excluding some of them  (whitelist + blacklist)
 ```commandline
-python pg_anon.py --mode=dump \
+python pg_anon.py dump \
                  --db-host=127.0.0.1 \
                  --db-user=postgres \
                  --db-user-password=postgres \
@@ -150,7 +150,7 @@ python pg_anon.py --mode=dump \
 | Option               | Required | Description                                                         |
 |----------------------|----------|---------------------------------------------------------------------|
 | `--db-host`          | Yes      | Database host.                                                      |
-| `--db-port`          | Yes      | Database port.                                                      |
+| `--db-port`          | No       | Database port.                                                      |
 | `--db-name`          | Yes      | Database name.                                                      |
 | `--db-user`          | Yes      | Database user.                                                      |
 | `--db-user-password` | No       | Database user password.                                             |
@@ -172,6 +172,7 @@ python pg_anon.py --mode=dump \
 | `--dbg-stage-3-validate-full`        | No       | Makes all logic with "limit" in SQL queries. (default: false)                                                                                                                                                                                        |
 | `--clear-output-dir`                 | No       | Clears the output directory from previous dumps or other files. (default: false)                                                                                                                                                                     |
 | `--pg-dump`                          | No       | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                                                                    |
+| `--pg-dump-options`                  | No       | Additional options passed directly to `pg_dump` utility. Example: `"--no-comments --encoding=LATIN1"`.                                                                                                                                               |
 | `--output-dir`                       | No       | Output directory for dump files. (default "")                                                                                                                                                                                                        |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |
 | `--save-dicts`                       | No       | Duplicate all input dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                                                                                                                              |

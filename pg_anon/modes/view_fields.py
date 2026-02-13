@@ -5,6 +5,7 @@ from prettytable import PrettyTable, SINGLE_BORDER
 
 from pg_anon.common.db_utils import get_scan_fields_list, get_scan_fields_count
 from pg_anon.common.dto import FieldInfo
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
 from pg_anon.context import Context
 
@@ -101,6 +102,16 @@ class ViewFieldsMode:
                 table=field.relname,
             )
 
+            if "dictionary_exclude" in self.context.prepared_dictionary_obj:
+                exclude_rule = get_dict_rule_for_table(
+                    dictionary_rules=self.context.prepared_dictionary_obj["dictionary_exclude"],
+                    schema=field.nspname,
+                    table=field.relname,
+                )
+
+                if exclude_rule is not None and include_rule is None:
+                    continue
+
             if include_rule:
                 if field.column_name in include_rule.get('fields', {}):
                     field.rule = include_rule['fields'][field.column_name]
@@ -155,13 +166,8 @@ class ViewFieldsMode:
         await self._make_notice_fields_cut_by_limits()
 
         self.fields = await self._get_fields_for_view()
-        if not self.fields:
-            raise ValueError("Not found fields for view!")
-
-        self._prepare_fields_for_view()
-
-        if not self.fields:
-            raise ValueError("Haven't fields for view!")
+        if self.fields:
+            self._prepare_fields_for_view()
 
         if self.context.options.json:
             self._prepare_json()
@@ -175,10 +181,8 @@ class ViewFieldsMode:
 
         try:
             if self._processing_fields_limit < 1:
-                raise ValueError("Processing fields limit must be greater than zero!")
+                raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
             self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
-            if not self.context.prepared_dictionary_obj.get("dictionary"):
-                raise ValueError("Prepared dictionary is empty!")
             await self._output_fields()
 
             self.context.logger.info("<------------- Finished view_fields mode")

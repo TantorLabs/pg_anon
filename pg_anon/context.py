@@ -8,6 +8,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS,
     LOGS_FILE_NAME, LOGS_DIR_NAME, SENS_PG_TYPES
 from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import VerboseOptions, AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import exception_handler, read_yaml, normalize_data_type, \
     split_constants_to_words_and_phrases, filter_db_tables, read_dict_data_from_file, safe_compile
 from pg_anon.logger import logger_add_file_handler, logger_set_log_level, get_logger
@@ -30,7 +31,7 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches = {}  # for create-dict mode
         self.create_dict_no_sens_matches = {}  # for create-dict mode
-        self.exclude_schemas = [ANON_UTILS_DB_SCHEMA_NAME, "columnar_internal"]
+        self.exclude_schemas = ["columnar_internal"]
         self.included_tables_rules: List[Dict] = []
         self.excluded_tables_rules: List[Dict] = []
         self.tables: List[Tuple[str, str]] = []
@@ -78,7 +79,7 @@ class Context:
             isinstance(meta_dict["funcs"], dict) and
             isinstance(meta_dict["no_sens_dictionary"], list)
         ):
-            raise ValueError('Meta dict does not have expected types')
+            raise PgAnonError(ErrorCode.INVALID_META_DICT, 'Meta dict does not have expected types')
 
     def _make_meta_dict(self, meta_dict_data: Optional[Dict] = None) -> dict:
         """
@@ -191,7 +192,7 @@ class Context:
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
         if not self.options.prepared_sens_dict_files:
-            raise ValueError("No prepared sens dict files specified")
+            raise PgAnonError(ErrorCode.NO_DICT_FILES, "No prepared sens dict files specified")
 
         self.prepared_dictionary_obj = {
             "dictionary": [],
@@ -248,7 +249,7 @@ class Context:
         pg_restore = pg_utils.get('pg_restore')
 
         if not pg_dump or not pg_restore:
-            return ValueError("Config incorrect. Must be specified pg_dump and pg_restore utils paths")
+            raise PgAnonError(ErrorCode.INVALID_CONFIG, "Config incorrect. Must be specified pg_dump and pg_restore utils paths")
 
         self.pg_dump = pg_dump
         self.pg_restore = pg_restore

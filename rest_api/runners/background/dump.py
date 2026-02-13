@@ -44,6 +44,11 @@ class DumpRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
+
     def _prepare_dump_path_cli_params(self):
         self.full_dump_path = self.request.validated_output_path
         self.cli_params.extend([
@@ -71,6 +76,11 @@ class DumpRunner(BaseRunner):
         if self.request.ignore_privileges:
             self.cli_params.append(
                 f"--ignore-privileges"
+            )
+
+        if self.request.pg_dump_options:
+            self.cli_params.append(
+                f'--pg-dump-options={self.request.pg_dump_options}'
             )
 
     def _prepare_cli_params(self):

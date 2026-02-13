@@ -39,6 +39,11 @@ class RestoreRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
+
     def _prepare_input_dump_path_cli_params(self):
         self.full_input_path = self.request.validated_input_path
         self.cli_params.extend([
@@ -60,6 +65,11 @@ class RestoreRunner(BaseRunner):
         if self.request.ignore_privileges:
             self.cli_params.append(
                 f"--ignore-privileges"
+            )
+
+        if self.request.pg_restore_options:
+            self.cli_params.append(
+                f'--pg-restore-options={self.request.pg_restore_options}'
             )
 
     def _prepare_additional_cli_params(self):

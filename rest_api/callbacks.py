@@ -5,6 +5,7 @@ from typing import Optional, Dict
 import aiohttp
 from pydantic import BaseModel
 
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatus
 from rest_api.pydantic_models import ScanStatusResponse, DumpStatusResponse, DumpRequest, ScanRequest, RestoreRequest, \
@@ -84,16 +85,18 @@ async def scan_callback(request: ScanRequest):
         logger.debug("SCAN completed - FAIL")
         logger.error(ex)
         logger.debug("Send ERROR webhook")
+
+        error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
         scan_runner_params = {
-            "error": str(ex)
+            "error": str(ex),
+            "error_code": error_code,
         }
-        if scan_runner:
+        if scan_runner and scan_runner.result:
             scan_runner_params.update({
                 "internal_operation_id": scan_runner.result.internal_operation_id,
                 "started": scan_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": scan_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": scan_runner.result.run_options.to_dict(),
-                "error": scan_runner.result.error_message,
             })
         await send_webhook(
             url=request.webhook_status_url,
@@ -163,16 +166,17 @@ async def dump_callback(request: DumpRequest):
         logger.debug("DUMP completed - FAIL")
         logger.error(ex)
 
+        error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
         dump_runner_params = {
-            "error": str(ex)
+            "error": str(ex),
+            "error_code": error_code,
         }
-        if dump_runner:
+        if dump_runner and dump_runner.result:
             dump_runner_params.update({
                 "internal_operation_id": dump_runner.result.internal_operation_id,
                 "started": dump_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": dump_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": dump_runner.result.run_options.to_dict(),
-                "error": dump_runner.result.error_message,
             })
         await send_webhook(
             url=request.webhook_status_url,
@@ -233,19 +237,21 @@ async def restore_callback(request: RestoreRequest):
 
         logger.debug("RESTORE completed - OK")
     except Exception as ex:
-        logger.debug("DUMP completed - FAIL")
+        logger.debug("RESTORE completed - FAIL")
         logger.error(ex)
         logger.debug("Send ERROR webhook")
+
+        error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
         restore_runner_params = {
-            "error": str(ex)
+            "error": str(ex),
+            "error_code": error_code,
         }
-        if restore_runner:
+        if restore_runner and restore_runner.result:
             restore_runner_params.update({
                 "internal_operation_id": restore_runner.result.internal_operation_id,
                 "started": restore_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": restore_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": restore_runner.result.run_options.to_dict(),
-                "error": restore_runner.result.error_message,
             })
         await send_webhook(
             url=request.webhook_status_url,

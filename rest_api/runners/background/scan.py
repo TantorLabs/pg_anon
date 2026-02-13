@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pg_anon.common.enums import AnonMode, ScanMode
+from pg_anon.common.enums import AnonMode
 from rest_api.enums import ScanMode
 from rest_api.pydantic_models import ScanRequest
 from rest_api.runners.background import BaseRunner
@@ -52,6 +52,11 @@ class ScanRunner(BaseRunner):
             self.cli_params.append(
                 f"--prepared-no-sens-dict-file={','.join(input_no_sens_dict_file_names)}"
             )
+
+        if self.request.save_dicts:
+            self.cli_params.extend([
+                "--save-dicts",
+            ])
 
     def _prepare_parallelization_cli_params(self):
         if self.request.proc_count:

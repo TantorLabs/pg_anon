@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import json
 import os
+import shlex
 import re
 import shutil
 import subprocess
@@ -14,9 +15,10 @@ from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool, \
-    get_available_extensions_map
+    get_available_extensions_map, check_required_connections
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import (
     exception_helper,
     get_major_version,
@@ -52,7 +54,7 @@ class RestoreMode:
         if not self.input_dir.exists():
             msg = f"ERROR: input directory {self.input_dir} does not exists"
             self.context.logger.error(msg)
-            raise RuntimeError(msg)
+            raise PgAnonError(ErrorCode.INPUT_DIR_NOT_FOUND, msg)
 
         self._load_metadata()
 
@@ -102,12 +104,14 @@ class RestoreMode:
         source_pg_dump_version = get_major_version(self.metadata.pg_dump_version)
 
         if target_postgres_version < source_postgres_version:
-            raise Exception(
+            raise PgAnonError(
+                ErrorCode.VERSION_INCOMPATIBLE,
                 f"Target PostgreSQL major version {target_postgres_version} is below than source {source_postgres_version}!"
             )
 
         if target_pg_restore_version < source_pg_dump_version:
-            raise Exception(
+            raise PgAnonError(
+                ErrorCode.VERSION_INCOMPATIBLE,
                 f"pg_restore major version {target_pg_restore_version} is below than source pg_dump version {source_pg_dump_version}!"
             )
 
@@ -116,7 +120,7 @@ class RestoreMode:
             return
 
         if not await check_db_is_empty(connection=connection):
-            raise Exception(f"Target DB {self.context.connection_params.database} is not empty!")
+            raise PgAnonError(ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!")
 
     async def _check_free_disk_space(self, connection: Connection):
         data_directory_location = await connection.fetchval(
@@ -134,7 +138,8 @@ class RestoreMode:
         self.context.logger.info(f"Required disk space: {required_disk_space}")
 
         if disk_size.free < int(self.metadata.total_tables_size) * 1.5:
-            raise Exception(
+            raise PgAnonError(
+                ErrorCode.INSUFFICIENT_DISK_SPACE,
                 f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}"
             )
 
@@ -289,6 +294,9 @@ class RestoreMode:
                 self._toc_list_pre_data_file_path if section == 'pre-data' else self._toc_list_post_data_file_path
             ])
 
+        if self.context.options.pg_restore_options:
+            command.extend(shlex.split(self.context.options.pg_restore_options))
+
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
@@ -302,7 +310,7 @@ class RestoreMode:
         if proc.returncode != 0:
             msg = "ERROR: database restore has failed!"
             self.context.logger.error(msg)
-            raise RuntimeError(msg)
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
 
     async def _sequences_init(self, connection: Connection):
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
@@ -364,7 +372,7 @@ class RestoreMode:
             # Check necessary schemas exists or extension can be relocatable
             if extension_data['schema'] not in available_schemas or extension_data['is_excluded_by_schema']:
                 if not extension_data['relocatable']:
-                    raise RuntimeError(f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists')
+                    raise PgAnonError(ErrorCode.EXTENSION_ERROR, f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists')
                 self.context.logger.warn(f'EXTENSION "{extension_name}" will restored into default schema, cause SCHEMA "{extension_data["schema"]}" is not exists')
             else:
                 query_parts.append(f'SCHEMA {extension_data["schema"]}')
@@ -372,7 +380,7 @@ class RestoreMode:
             # Check extension exists in system
             available_extension_versions = available_extensions.get(extension_name)
             if not available_extension_versions:
-                raise RuntimeError(f'Required EXTENSION "{extension_name}" is not available for creating')
+                raise PgAnonError(ErrorCode.EXTENSION_ERROR, f'Required EXTENSION "{extension_name}" is not available for creating')
 
             extension_already_installed = False
             version_specified = None
@@ -430,9 +438,33 @@ class RestoreMode:
         if self.metadata.partial_dump_aggregates:
             ddl_list.extend(self.metadata.partial_dump_aggregates)
 
-        for query in ddl_list:
-            self.context.logger.info("PARTIAL RESTORE MODE: " + query)
-            await connection.execute(query)
+        remaining = list(ddl_list)
+        while remaining:
+            failed = []
+            for query in remaining:
+                try:
+                    self.context.logger.info("PARTIAL RESTORE MODE: " + query)
+                    await connection.execute(query)
+                except Exception as ex:
+                    self.context.logger.warning(
+                        f"PARTIAL RESTORE MODE: DDL failed, will retry: {ex}"
+                    )
+                    failed.append((query, ex))
+
+            if not failed:
+                break
+
+            if len(failed) == len(remaining):
+                error_details = "; ".join(f"{ex}" for _, ex in failed)
+                raise PgAnonError(
+                    ErrorCode.RESTORE_FAILED,
+                    f"Failed to execute {len(failed)} DDL statement(s): {error_details}"
+                )
+
+            remaining = [query for query, _ in failed]
+            self.context.logger.info(
+                f"PARTIAL RESTORE MODE: Retrying {len(remaining)} failed DDL(s)"
+            )
 
     async def _drop_constraints(self, connection: Connection):
         """
@@ -578,7 +610,8 @@ class RestoreMode:
 
         restored_rows = self.context.total_rows
         if restored_rows != dumped_rows:
-            raise ValueError(
+            raise PgAnonError(
+                ErrorCode.ROW_COUNT_MISMATCH,
                 f"The number of restored rows ({restored_rows}) is different from the metadata ({dumped_rows})"
             )
 
@@ -731,7 +764,7 @@ class RestoreMode:
                     % json.dumps(diff_r, indent=4)
                 )
                 context.logger.error(msg)
-                raise RuntimeError(msg)
+                raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
 
             if len(diff_l) > 0:
                 msg = (
@@ -740,11 +773,11 @@ class RestoreMode:
                     % json.dumps(diff_l, indent=4)
                 )
                 context.logger.error(msg)
-                raise RuntimeError(msg)
+                raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
         else:
             msg = "Section validate_tables is not found in dictionary!"
             context.logger.error(msg)
-            raise RuntimeError(msg)
+            raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
 
         context.logger.info("<------------- Finished validate_restore")
 
@@ -760,6 +793,8 @@ class RestoreMode:
                 self.context.connection_params,
                 server_settings=self.context.server_settings
             )
+
+            await check_required_connections(connection, self.context.options.db_connections_per_process)
 
             await self._check_db_is_empty(connection)
             self._check_utils_version_for_dump()

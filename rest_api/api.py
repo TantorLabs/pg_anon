@@ -3,7 +3,7 @@ from datetime import date, datetime, UTC
 from pathlib import Path
 from typing import List
 
-from fastapi import FastAPI, BackgroundTasks, Depends, status, HTTPException, Query
+from fastapi import FastAPI, BackgroundTasks, Depends, status, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -12,21 +12,44 @@ from pg_anon.common.constants import RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME, 
 from pg_anon.common.db_utils import check_db_connection
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import get_folder_size
 from rest_api.callbacks import scan_callback, dump_callback, restore_callback
 from rest_api.dependencies import date_range_filter, get_operation_run_dir
 from rest_api.enums import ResponseStatus, DumpMode, RestoreMode, ScanMode
 from rest_api.pydantic_models import ErrorResponse, ScanRequest, DumpRequest, DbConnectionParams, ViewFieldsRequest, \
     ViewFieldsResponse, ViewDataResponse, \
-    ViewDataRequest, DumpDeleteRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
-    OperationDataResponse
+    ViewDataRequest, RestoreRequest, ScanType, RestoreType, DumpType, TaskStatus, \
+    OperationDataResponse, PreviewSchemasResponse, PreviewSchemasRequest, PreviewSchemaTablesRequest, \
+    PreviewSchemaTablesResponse
 from rest_api.runners.direct import ViewFieldsRunner
+from rest_api.runners.direct.preview import PreviewRunner
 from rest_api.runners.direct.view_data import ViewDataRunner
 from rest_api.utils import delete_folder, read_json_file, read_logs_from_tail
 
 app = FastAPI(
     title='Stateless web service for pg_anon'
 )
+
+
+@app.exception_handler(PgAnonError)
+async def pganon_error_handler(request: Request, exc: PgAnonError):
+    return JSONResponse(
+        status_code=400,
+        content=jsonable_encoder(
+            ErrorResponse(error_code=exc.code, message=exc.message)
+        ),
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content=jsonable_encoder(
+            ErrorResponse(error_code=ErrorCode.INTERNAL_ERROR, message=str(exc))
+        ),
+    )
 
 
 def generate_openapi_doc_file():
@@ -62,6 +85,7 @@ async def db_connection_check(request: DbConnectionParams):
             status_code=400,
             content=jsonable_encoder(
                 ErrorResponse(
+                    error_code=ErrorCode.DB_CONNECTION_FAILED,
                     message='Connection is unreachable'
                 )
             )
@@ -106,6 +130,48 @@ async def stateless_view_fields(request: ViewFieldsRequest):
 
 
 @app.post(
+    '/api/stateless/preview',
+    tags=['Stateless | Preview'],
+    summary='Render preview rules by fields',  # TODO: Update
+    description='Rendering of preview rules by fields',  # TODO: Update
+    response_model=PreviewSchemasResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_preview_schemas(request: PreviewSchemasRequest):
+    data = await PreviewRunner.get_schemas(request)
+
+    return PreviewSchemasResponse(
+        status_id=ResponseStatus.SUCCESS.value,
+        status=ResponseStatus.SUCCESS.name.lower(),
+        content=data
+    )
+
+
+@app.post(
+    '/api/stateless/preview/{schema}',
+    tags=['Stateless | Preview'],
+    summary='Preview rules by fields',  # TODO: Update
+    description='Rendering of preview rules by fields',  # TODO: Update
+    response_model=PreviewSchemaTablesResponse,
+    responses={
+        "400": {"model": ErrorResponse},
+        "500": {"model": ErrorResponse},
+    }
+)
+async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTablesRequest):
+    data = await PreviewRunner.get_schema_tables(schema, request)
+
+    return PreviewSchemaTablesResponse(
+        status_id=ResponseStatus.SUCCESS.value,
+        status=ResponseStatus.SUCCESS.name.lower(),
+        content=data
+    )
+
+
+@app.post(
     '/api/stateless/view-data',
     tags=['Stateless'],
     summary='Render preview data by rules',
@@ -140,21 +206,6 @@ async def stateless_view_data(request: ViewDataRequest):
 )
 async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(dump_callback, request)
-
-
-@app.delete(
-    '/api/stateless/dump',
-    tags=['Stateless'],
-    summary='[DEPRICATED] Delete dump',
-    description='Delete dump. Will be removed in pg_anon 1.9',
-    status_code=204,
-    responses={
-        "400": {"model": ErrorResponse},
-        "500": {"model": ErrorResponse},
-    }
-)
-async def dump_operation_delete(request: DumpDeleteRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(delete_folder, Path(request.validated_path))
 
 
 @app.post(

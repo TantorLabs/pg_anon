@@ -1,5 +1,6 @@
 import asyncio
 import json
+import multiprocessing
 import re
 import shutil
 import time
@@ -11,9 +12,11 @@ from asyncpg import Connection
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
-from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool
+from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool, \
+    create_connection, check_required_connections, exec_data_scan_func_per_field_query
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (chunkify, exception_helper, setof_to_list, get_dict_rule_for_table,
                                   save_dicts_info_file, safe_compile, get_base_field_type)
@@ -274,7 +277,7 @@ class CreateDictMode:
         if not rules_by_type:
             rules_by_type = dictionary_obj["data_func"].get(get_base_field_type(field_info), [])
         rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
-        data_func_rules = [rules_by_type, rules_for_anyelements]
+        data_func_rules = [*rules_by_type, *rules_for_anyelements]
 
         if not data_func_rules:
             self.context.logger.debug(
@@ -282,29 +285,52 @@ class CreateDictMode:
             )
             return False
 
-        for rules in data_func_rules:
-            for rule in rules:
-                matched_count = 0
-                rule_expected_matches_count = rule.get("n_count", 1)
+        scan_func_per_field_rules = []
+        scan_func_rules = []
+        for rule in data_func_rules:
+            if "scan_func_per_field" in rule:
+                scan_func_per_field_rules.append(rule)
+            elif "scan_func" in rule:
+                scan_func_rules.append(rule)
+            else:
+                self.context.logger.warn(
+                    f'========> Process[{name}]: Rule SKIPPED. Wrong data func rule: {rule}'
+                )
 
-                for value in fld_data:
-                    if value is None:
-                        continue
+        for rule in scan_func_per_field_rules:
+            if await exec_data_scan_func_per_field_query(
+                    connection=connection,
+                    scan_func_per_field=rule["scan_func_per_field"],
+                    field_info=field_info
+            ):
+                field_info.rule = rule["anon_func"]
+                self.context.logger.debug(
+                    f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func per field {rule["scan_func_per_field"]}'
+                )
+                return True
 
-                    if await exec_data_scan_func_query(
-                        connection=connection,
-                        scan_func=rule["scan_func"],
-                        value=value,
-                        field_info=field_info
-                    ):
-                        matched_count += 1
+        for rule in scan_func_rules:
+            matched_count = 0
+            rule_expected_matches_count = rule.get("n_count", 1)
 
-                        if matched_count == rule_expected_matches_count:
-                            field_info.rule = rule["anon_func"]
-                            self.context.logger.debug(
-                                f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func {rule["scan_func"]}'
-                            )
-                            return True
+            for value in fld_data:
+                if value is None:
+                    continue
+
+                if await exec_data_scan_func_query(
+                    connection=connection,
+                    scan_func=rule["scan_func"],
+                    value=value,
+                    field_info=field_info
+                ):
+                    matched_count += 1
+
+                    if matched_count == rule_expected_matches_count:
+                        field_info.rule = rule["anon_func"]
+                        self.context.logger.debug(
+                            f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func {rule["scan_func"]}'
+                        )
+                        return True
 
         self.context.logger.debug(
             f'========> Process[{name}]: No one data functions found sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
@@ -479,9 +505,10 @@ class CreateDictMode:
                             if len(fld_data) == 0 or len(res) > 0:
                                 break
 
-        except Exception as e:
-            self.context.logger.error(f"Exception in scan_obj_func:\n{field_info}\n" + exception_helper())
-            raise Exception("Can't execute task for field: %s" % field_info)
+        except Exception as ex:
+            field = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name} (type={field_info.type})"
+            self.context.logger.error(f"Exception in scan_obj_func:\n{field}\n" + exception_helper())
+            raise PgAnonError(ErrorCode.SCAN_FIELD_ERROR, "Can't execute task for field %s. Error: %s" % (field, ex.message))
 
         end_t = time.time()
         if end_t - start_t > 10:
@@ -496,7 +523,13 @@ class CreateDictMode:
         )
         return res
 
-    def _process_create_dict(self, name: str, queue: AioQueue, fields_info_chunk: List[FieldInfo]):
+    def _process_create_dict(
+        self,
+        name: str,
+        queue: AioQueue,
+        fields_info_chunk: List[FieldInfo],
+        stop_event: Optional[multiprocessing.Event] = None
+    ):
         tasks_res = []
 
         status_ratio = 10
@@ -504,6 +537,22 @@ class CreateDictMode:
             status_ratio = 100
         if len(fields_info_chunk) > 50000:
             status_ratio = 1000
+
+        def _should_stop():
+            return stop_event is not None and stop_event.is_set()
+
+        async def _wait_and_check(tasks: set):
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+            if _should_stop():
+                self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                return None
+
+            for done_task in done:
+                if exc := done_task.exception():
+                    raise exc
+
+            return pending
 
         async def _process_run():
             pool = await create_pool(
@@ -521,33 +570,40 @@ class CreateDictMode:
                 "<============ Finished collecting list_tagged_fields in mode: create-dict"
             )
 
-            for idx, field_info in enumerate(fields_info_chunk):
-                if len(tasks) >= self.context.options.db_connections_per_process:
-                    done, tasks = await asyncio.wait(
-                        tasks, return_when=asyncio.FIRST_COMPLETED
+            try:
+                for idx, field_info in enumerate(fields_info_chunk):
+                    if _should_stop():
+                        self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                        return
+
+                    while len(tasks) >= self.context.options.db_connections_per_process:
+                        tasks = await _wait_and_check(tasks)
+                        if tasks is None:
+                            return
+
+                    task_res = loop.create_task(
+                        self._scan_obj_func(
+                            name,
+                            pool,
+                            field_info,
+                            self.context.options.scan_mode,
+                            self.context.meta_dictionary_obj,
+                            self.context.options.scan_partial_rows,
+                        )
                     )
-                    exception = done.pop().exception()
-                    if exception is not None:
-                        await pool.close()
-                        raise exception
-                task_res = loop.create_task(
-                    self._scan_obj_func(
-                        name,
-                        pool,
-                        field_info,
-                        self.context.options.scan_mode,
-                        self.context.meta_dictionary_obj,
-                        self.context.options.scan_partial_rows,
-                    )
-                )
-                tasks_res.append(task_res)
-                tasks.add(task_res)
-                if idx % status_ratio:
-                    progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
-                    self.context.logger.info(f"Process [{name}] Progress {progress_percents}%")
-            if len(tasks) > 0:
-                await asyncio.wait(tasks)
-            await pool.close()
+                    tasks_res.append(task_res)
+                    tasks.add(task_res)
+
+                    if idx % status_ratio == 0:
+                        progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
+                        self.context.logger.info(f"Process [{name}] Progress {progress_percents}%")
+
+                while tasks:
+                    tasks = await _wait_and_check(tasks)
+                    if tasks is None:
+                        return
+            finally:
+                await pool.close()
 
         loop = asyncio.new_event_loop()
 
@@ -561,9 +617,6 @@ class CreateDictMode:
                     tasks_res_final.append(task.result())
 
             queue.put(tasks_res_final)
-        except asyncio.exceptions.TimeoutError as ex:
-            self.context.logger.error(f"================> Process [{name}]: asyncio.exceptions.TimeoutError")
-            queue.put([ex])
         except Exception as ex:
             self.context.logger.error(f"================> Process [{name}]: {ex}")
             queue.put([ex])
@@ -615,7 +668,7 @@ class CreateDictMode:
     async def _create_dict(self):
         fields_info: Dict[str, FieldInfo] = await self._get_fields_for_scan()
         if not fields_info:
-            raise Exception("No objects for create dictionary!")
+            raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_SCAN, "No objects for scan!")
 
         self._scan_fields_by_names(fields_info)  # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
 
@@ -626,6 +679,9 @@ class CreateDictMode:
         if fields_info:
             fields_info_chunks = list(chunkify(list(fields_info.values()), self.context.options.processes))
 
+            # Shared event to signal all processes to stop on error
+            stop_event = multiprocessing.Event()
+
             tasks = []
             for idx, fields_info_chunk in enumerate(fields_info_chunks):
                 tasks.append(
@@ -634,21 +690,36 @@ class CreateDictMode:
                             name=str(idx + 1),
                             ctx=self.context,
                             target_func=self._process_create_dict,
-                            tasks=fields_info_chunk
+                            tasks=fields_info_chunk,
+                            stop_event=stop_event,
                         )
                     )
                 )
-            await asyncio.wait(tasks)
+
+            # Wait with immediate error detection
+            completed_tasks = []
+            remaining = tasks
+            while remaining:
+                done, pending = await asyncio.wait(remaining, return_when=asyncio.FIRST_EXCEPTION)
+
+                for task in done:
+                    if task.exception():
+                        # Signal all processes to stop
+                        stop_event.set()
+                        # Wait for remaining processes to finish (with timeout)
+                        if pending:
+                            await asyncio.wait(pending, timeout=10)
+                        raise task.exception()
+
+                completed_tasks.extend(done)
+                remaining = list(pending)
 
             # ============================================================================================
             # Fill results based on processes
             # ============================================================================================
-            for v in tasks:
+            for v in completed_tasks:
                 if v.result() is not None:
                     for res in v.result():
-                        if isinstance(res, Exception):
-                            raise res
-
                         for field_info in res.values():
                             prepared_sens_dict_rules = self._prepare_sens_dict_rule(
                                 self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
@@ -726,11 +797,23 @@ class CreateDictMode:
                 output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
             )
 
+    async def _check_available_connections(self):
+        connection = await create_connection(
+            self.context.connection_params,
+            server_settings=self.context.server_settings
+        )
+        try:
+            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
+            await check_required_connections(connection, required_connections)
+        finally:
+            await connection.close()
+
     async def run(self) -> None:
         self.context.logger.info("-------------> Started create_dict mode")
 
         try:
             self._save_input_dicts_to_run_dir()
+            await self._check_available_connections()
 
             self.context.read_meta_dict()
             if self.context.options.prepared_sens_dict_files:

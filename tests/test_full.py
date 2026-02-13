@@ -15,6 +15,7 @@ from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.db_utils import get_scan_fields_count, create_connection
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.enums import ResultCode
+from pg_anon.common.errors import PgAnonError
 from pg_anon.common.utils import (
     exception_helper,
     recordset_to_list_flat,
@@ -137,13 +138,13 @@ class DBOperations:
 class BasicUnitTest:
     async def init_env(self):
         options = build_run_options([
+            "init",
             f"--db-host={params.test_db_host}",
             f"--db-name=postgres",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=init",
             "--debug",
         ])
 
@@ -173,13 +174,13 @@ class BasicUnitTest:
         print("<============ Finished init_env")
 
         options = build_run_options([
+            "init",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=init",
             "--debug",
         ])
 
@@ -191,13 +192,13 @@ class BasicUnitTest:
 
     async def init_stress_env(self):
         options = build_run_options([
+            "init",
             f"--db-host={params.test_db_host}",
             "--db-name=postgres",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=init",
             "--debug",
         ])
 
@@ -210,13 +211,13 @@ class BasicUnitTest:
         source_db_params.database = params.test_source_db + "_stress"
 
         options = build_run_options([
+            "init",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}_stress",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=init",
             "--debug",
         ])
 
@@ -477,72 +478,6 @@ class BasicUnitTest:
         return cmp
 
 
-class PGAnonArgumentsValidationUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-
-    def test_all_list_arguments_are_empty(self):
-        options = build_run_options([
-            f"--db-host={params.test_db_host}",
-            f"--db-name={params.test_source_db}",
-            f"--db-user={params.test_db_user}",
-            f"--db-port={params.test_db_port}",
-            f"--db-user-password={params.test_db_user_password}",
-            f"--config={params.test_config}",
-            f"--mode=create-dict",
-        ])
-        self.assertIsNone(options.meta_dict_files)
-        self.assertIsNone(options.prepared_sens_dict_files)
-        self.assertIsNone(options.prepared_no_sens_dict_files)
-
-    def test_all_list_arguments_filled_with_simple_value(self):
-        meta_dict_file_name = self.get_test_dict_path('test.py')
-        prepared_sens_dict_file_name = self.get_test_dict_path('prepared_sens_dict_file.py')
-        prepared_no_sens_dict_file_name = self.get_test_dict_path('prepared_no_sens_dict_file.py')
-
-        options = build_run_options([
-            f"--db-host={params.test_db_host}",
-            f"--db-name={params.test_source_db}",
-            f"--db-user={params.test_db_user}",
-            f"--db-port={params.test_db_port}",
-            f"--db-user-password={params.test_db_user_password}",
-            f"--config={params.test_config}",
-            f"--meta-dict-file={meta_dict_file_name}",
-            f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-            f"--prepared-no-sens-dict-file={prepared_no_sens_dict_file_name}",
-        ])
-        self.assertEqual([meta_dict_file_name], options.meta_dict_files)
-        self.assertEqual([prepared_sens_dict_file_name], options.prepared_sens_dict_files)
-        self.assertEqual([prepared_no_sens_dict_file_name], options.prepared_no_sens_dict_files)
-
-    def test_all_list_arguments_filled_with_list_values(self):
-        meta_dict_file_names = [
-            self.get_test_dict_path('test.py'),
-            self.get_test_dict_path('meta_dict_file.py'),
-        ]
-        prepared_sens_dict_file_names = [
-            self.get_test_dict_path('prepared_sens_dict_file.py'),
-            self.get_test_dict_path('another_prepared_sens_dict_file.py'),
-        ]
-        prepared_no_sens_dict_file_names = [
-            self.get_test_dict_path('prepared_no_sens_dict_file.py'),
-            self.get_test_dict_path('another_prepared_no_sens_dict_file.py'),
-        ]
-
-        options = build_run_options([
-            f"--db-host={params.test_db_host}",
-            f"--db-name={params.test_source_db}",
-            f"--db-user={params.test_db_user}",
-            f"--db-port={params.test_db_port}",
-            f"--db-user-password={params.test_db_user_password}",
-            f"--config={params.test_config}",
-            f"--meta-dict-file={','.join(meta_dict_file_names)}",
-            f"--prepared-sens-dict-file={','.join(prepared_sens_dict_file_names)}",
-            f"--prepared-no-sens-dict-file={','.join(prepared_no_sens_dict_file_names)}",
-        ])
-        self.assertEqual(meta_dict_file_names, options.meta_dict_files)
-        self.assertEqual(prepared_sens_dict_file_names, options.prepared_sens_dict_files)
-        self.assertEqual(prepared_no_sens_dict_file_names, options.prepared_no_sens_dict_files)
-
-
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     async def test_01_init(self):
         res = await self.init_env()
@@ -555,13 +490,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -580,13 +515,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
@@ -604,13 +539,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_04_dump")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -630,13 +565,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_04_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_2",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
@@ -647,6 +582,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_2",
             f"--db-user={params.test_db_user}",
@@ -655,6 +591,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--config={params.test_config}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--input-dir={input_dir}",
             "--debug",
         ])
         res = await PgAnonApp(options).validate_target_tables()
@@ -668,13 +605,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_06_sync_struct")
 
         options = build_run_options([
+            "sync-struct-dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-struct-dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -687,13 +624,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "sync-struct-restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_3",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-struct-restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--debug",
@@ -715,6 +652,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -752,6 +690,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ['public', 'tbl_100', 0],
             ['public', 'tbl_constants', 0],
             ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_contract', 0],
             ['schm_customer', 'customer_manager', 0],
             ['schm_mask_exclude_1', 'other_tbl', 0],
             ['schm_mask_exclude_1', 'some_tbl', 0],
@@ -788,13 +727,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_07_sync_data")
 
         options = build_run_options([
+                "sync-data-dump",
                 f"--db-host={params.test_db_host}",
                 f"--db-name={params.test_source_db}",
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
                 f"--config={params.test_config}",
-                "--mode=sync-data-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -808,13 +747,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "sync-data-restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_3",  # here target DB have 3 empty tables
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-data-restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--debug",
@@ -836,6 +775,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -886,13 +826,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_08_sync_data")
 
         options = build_run_options([
+                "sync-data-dump",
                 f"--db-host={params.test_db_host}",
                 f"--db-name={params.test_source_db}",
                 f"--db-user={params.test_db_user}",
                 f"--db-port={params.test_db_port}",
                 f"--db-user-password={params.test_db_user_password}",
                 f"--config={params.test_config}",
-                "--mode=sync-data-dump",
                 f"--processes={params.test_processes}",
                 f"--db-connections-per-process={params.db_connections_per_process}",
                 f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -906,13 +846,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "sync-data-restore",  # just sync data of specific tables from test_sync_data_2.py
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",  # here target DB is NOT empty
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-data-restore",  # just sync data of specific tables from test_sync_data_2.py
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--debug",
@@ -943,13 +883,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
@@ -966,13 +906,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
@@ -991,13 +931,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonUnitTest.test_11_dump_with_sql_conditions")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -1010,13 +950,13 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
@@ -1040,6 +980,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
@@ -1077,6 +1018,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             ['public', 'tbl_100', 0],
             ['public', 'tbl_constants', 0],
             ['schm_customer', 'customer_company', 0],
+            ['schm_customer', 'customer_contract', 0],
             ['schm_customer', 'customer_manager', 0],
             ['schm_mask_exclude_1', 'other_tbl', 0],
             ['schm_mask_exclude_1', 'some_tbl', 0],
@@ -1124,13 +1066,13 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await db_conn.close()
 
         options = build_run_options([
+            "init",
             f"--db-host={params.test_db_host}",
             f"--db-name={db_name}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=init",
             "--debug",
         ])
 
@@ -1153,13 +1095,13 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={db_name}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -1173,13 +1115,13 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
     async def make_restore(self, output_dir: str):
         restore_options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={self.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
@@ -1275,13 +1217,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_02_sync_struct_for_validate")
 
         options = build_run_options([
+            "sync-struct-dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-struct-dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1295,13 +1237,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "sync-struct-restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_7",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-struct-restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--debug",
@@ -1318,13 +1260,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_03_validate_dict")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
@@ -1345,13 +1287,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_04_validate_data")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
@@ -1365,13 +1307,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "sync-data-restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_7",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=sync-data-restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             "--debug",
             f"--input-dir={output_dir}",
@@ -1389,13 +1331,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonValidateUnitTest.test_05_validate_full")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
@@ -1409,13 +1351,13 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_8",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             "--debug",
             f"--input-dir={output_dir}",
@@ -1440,13 +1382,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_02_partial_dump_include_restore_full")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1460,13 +1402,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
@@ -1486,6 +1428,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['public', 'inn_info'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_customer', 'customer_manager'],
                     ['schm_other_1', 'some_tbl'],
                     ["schm_other_2", "some_tbl"],
@@ -1503,13 +1446,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_03_partial_dump_exclude_restore_full")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1523,13 +1466,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
@@ -1551,6 +1494,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ['public', 'tbl_100'],
                     ['public', 'tbl_constants'],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ['schm_mask_exclude_1', 'other_tbl'],
                     ['schm_mask_exclude_1', 'some_tbl'],
                     ['schm_mask_ext_exclude_2', 'card_numbers'],
@@ -1587,13 +1531,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_04_partial_dump_include_exclude_restore_full")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1608,13 +1552,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             "--drop-custom-check-constr",
@@ -1632,6 +1576,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1648,13 +1593,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_05_partial_dump_include_restore_exclude")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1668,13 +1613,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
@@ -1693,6 +1638,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1709,13 +1655,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_06_partial_dump_exclude_restore_include")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1729,13 +1675,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             f"--partial-tables-dict-file={partial_tables_dict_file}",
@@ -1754,6 +1700,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1770,13 +1717,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         output_dir = self.get_test_output_path("PGAnonPartialDumpRestoreUnitTest.test_07_partial_dump_full_restore_include_exclude")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--processes={params.test_processes}",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
@@ -1790,13 +1737,13 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
         self.assertEqual(res_dump.result_code, ResultCode.DONE)
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={output_dir}",
             f"--partial-tables-dict-file={partial_tables_dict_file}",
@@ -1815,6 +1762,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],
                     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'3"],
                     ['schm_customer', 'customer_company'],
+                    ['schm_customer', 'customer_contract'],
                     ["schm_other_2", "some_tbl"],
                 ],
             )
@@ -1951,13 +1899,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict}",
             f"--output-sens-dict-file={self.target_sens_dict}",
@@ -1983,13 +1931,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={self.target_sens_dict}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -2009,6 +1957,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_4",
             f"--db-user={params.test_db_user}",
@@ -2016,7 +1965,6 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
             f"--db-connections-per-process={params.db_connections_per_process}",
-            "--mode=restore",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
             "--debug",
@@ -2080,13 +2028,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict_file}",
             f"--output-sens-dict-file={self.target_sens_dict}",
@@ -2115,13 +2063,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         target_no_sens_dict_repeat = self.get_test_dict_path("test_prepared_no_sens_dict_result_repeat.py", output=True)
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict_file}",
             f"--output-sens-dict-file={self.target_sens_dict}",
@@ -2154,13 +2102,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_rule_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2189,13 +2137,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2224,13 +2172,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_partial_constants_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2259,13 +2207,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_sql_condition_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2294,13 +2242,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_func_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2326,13 +2274,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_type_aliases_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2358,13 +2306,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_type_aliases_complex_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2392,13 +2340,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_default_func_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2427,13 +2375,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_words_and_phrases_constants_expected.py")
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2457,13 +2405,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         meta_dict = self.get_test_dict_path('test_meta_dict.py')
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict}",
             f"--prepared-sens-dict-file={self.target_sens_dict_expected}",
@@ -2514,13 +2462,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={self.target_sens_dict}",
             f"--partial-tables-dict-file={partial_tables_dict_file}",
             f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
@@ -2560,6 +2508,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         partial_tables_exclude_dict_file = self.get_test_dict_path("test_partial_exclude_tables_dict.py")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_4",
             f"--db-user={params.test_db_user}",
@@ -2567,7 +2516,6 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
             f"--db-connections-per-process={params.db_connections_per_process}",
-            "--mode=restore",
             f"--input-dir={input_dir}",
             f"--partial-tables-dict-file={partial_tables_dict_file}",
             f"--partial-tables-exclude-dict-file={partial_tables_exclude_dict_file}",
@@ -2602,13 +2550,13 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_not_existing_functions_in_datafunc.py", output=True)
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={','.join(meta_dicts)}",
             f"--output-sens-dict-file={prepared_sens_dict}",
@@ -2620,6 +2568,41 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.FAIL)
         passed_stages.append("test_19_create_dict_using_not_existing_functions")
+
+    async def test_20_create_dict_using_data_func_per_field(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        meta_dicts = [
+            self.get_test_dict_path('test_meta_dict.py'),
+            self.get_test_dict_path('meta_data_func_per_field.py'),
+        ]
+        prepared_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result_by_data_func_per_field.py", output=True)
+        prepared_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_by_data_func_per_field_expected.py")
+
+        options = build_run_options([
+            "create-dict",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            "--scan-mode=full",
+            f"--meta-dict-file={','.join(meta_dicts)}",
+            f"--output-sens-dict-file={prepared_sens_dict}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--scan-partial-rows=10000",
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertTrue(os.path.exists(prepared_sens_dict))
+        self.assertTrue(os.path.exists(self.target_no_sens_dict))
+
+        self.assert_sens_dicts(prepared_sens_dict, prepared_sens_dict_expected)
+
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_20_create_dict_using_data_func_per_field")
 
 
 class TmpResults:
@@ -2644,19 +2627,20 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         meta_dict_file = self.get_test_dict_path('test_meta_dict.py')
         output_sens_dict_file = self.get_test_dict_path(f'stress_{self.target_dict}', output=True)
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}_stress",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=partial",
             f"--meta-dict-file={meta_dict_file}",
             f"--output-sens-dict-file={output_sens_dict_file}",
             "--db-connections-per-process=4",
             "--processes=2",
             "--scan-partial-rows=100",
+            "--debug"
         ])
 
         res = await PgAnonApp(options).run()
@@ -2671,18 +2655,19 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         output_sens_dict_file = self.get_test_dict_path(f'stress_{self.target_dict}', output=True)
 
         options = build_run_options([
+            "create-dict",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}_stress",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=create-dict",
             "--scan-mode=full",
             f"--meta-dict-file={meta_dict_file}",
             f"--output-sens-dict-file={output_sens_dict_file}",
             "--db-connections-per-process=4",
             "--processes=2",
+            "--debug"
         ])
 
         res = await PgAnonApp(options).run()
@@ -2718,13 +2703,13 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         output_dir = self.get_test_output_path("PGAnonMaskUnitTest.test_02_mask_dump")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=dump",
             f"--prepared-sens-dict-file={prepared_sens_dict_file}",
             f"--output-dir={output_dir}",
             f"--processes={params.test_processes}",
@@ -2743,13 +2728,13 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         input_dir = self.get_test_output_path("PGAnonMaskUnitTest.test_02_mask_dump")
 
         options = build_run_options([
+            "restore",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_target_db}_5",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=restore",
             f"--db-connections-per-process={params.db_connections_per_process}",
             f"--input-dir={input_dir}",
             "--drop-custom-check-constr",
@@ -2796,13 +2781,13 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         options = build_run_options([
+            "view-data",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-data",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             "--schema-name=public",
             "--table-name=contracts",
@@ -2821,6 +2806,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         options = build_run_options([
+            "view-data",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
@@ -2828,7 +2814,6 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
             "--json",
-            "--mode=view-data",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             "--schema-name=public",
             "--table-name=contracts",
@@ -2852,13 +2837,13 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_expected_dict_path('test_prepared_sens_dict_result_expected.py')
 
         options = [
+            "view-data",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-data",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             "--schema-name=schm_mask_ext_exclude_2",
             "--table-name=card_numbers",
@@ -2885,13 +2870,13 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         table_name: str = 'card_numbers'
 
         options = build_run_options([
+            "view-data",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-data",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--schema-name={schema_name}",
             f"--table-name={table_name}",
@@ -2945,13 +2930,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
         ])
 
@@ -2961,10 +2946,11 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await executor.run()
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
-        self.assertEqual(len(executor.table.rows), all_rows_count)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
+        self.assertEqual(len(executor.table.rows), all_rows_count - excluded_fields_count)
 
         fields_counters = self._count_fields_by_type(executor)
-        self.assertEqual(all_rows_count, fields_counters['in_dict'] + fields_counters['not_in_dict'])
+        self.assertEqual(all_rows_count - excluded_fields_count, fields_counters['in_dict'] + fields_counters['not_in_dict'])
 
         passed_stages.append("test_02_view_fields_full")
 
@@ -2975,13 +2961,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         schema_name: str = 'public'
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--schema-name={schema_name}",
         ])
@@ -3003,13 +2989,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         schema_mask: str = '^pub.*'
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--schema-mask={schema_mask}",
         ])
@@ -3032,13 +3018,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         table_name: str = 'inn_info'
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--table-name={table_name}",
         ])
@@ -3060,13 +3046,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         table_mask: str = '.*\\d$'
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--table-mask={table_mask}",
         ])
@@ -3089,13 +3075,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         fields_scan_length = 5
 
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--fields-count={fields_scan_length}",
         ])
@@ -3120,13 +3106,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         # Only sensitive executor run
         options_only_sensitive = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             "--view-only-sensitive-fields",
         ])
@@ -3136,13 +3122,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         # Full executor run
         options_full = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
         ])
         context_full = PgAnonApp(options_full).context  # Setup for context reusing only
@@ -3150,9 +3136,10 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await executor_full.run()
 
         all_rows_count = await get_scan_fields_count(context_full.connection_params)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
         self.assertNotEqual(len(executor_full.fields), len(executor_only_sensitive.fields))
-        self.assertEqual(len(executor_full.table.rows), all_rows_count)
-        self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count)
+        self.assertEqual(len(executor_full.table.rows), all_rows_count - excluded_fields_count)
+        self.assertNotEqual(len(executor_only_sensitive.table.rows), all_rows_count - excluded_fields_count)
 
         sensitive_fields_in_full_executor: Set[str] = {
             str(field) for field in executor_full.fields if field.rule != '---'
@@ -3172,15 +3159,15 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-            f"--json",
+            "--json",
         ])
 
         context = PgAnonApp(options).context  # Setup for context reusing only
@@ -3192,8 +3179,9 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertIsNotNone(executor.json)
 
         all_rows_count = await get_scan_fields_count(context.connection_params)
+        excluded_fields_count = 1  # schm_other_2.exclude_tbl.val excluded by dictionary_exclude
         json_data_len = len(json.loads(executor.json))
-        self.assertEqual(json_data_len, all_rows_count)
+        self.assertEqual(json_data_len, all_rows_count - excluded_fields_count)
         self.assertEqual(json_data_len, len(executor.fields))
 
         passed_stages.append("test_11_view_filter_json_output")
@@ -3204,13 +3192,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test.py')
 
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             "--fields-count=0",
         ])
@@ -3221,7 +3209,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         executor = ViewFieldsMode(context)
         try:
             await executor.run()
-        except ValueError:
+        except PgAnonError:
             executor_failed = True
 
         self.assertTrue(executor_failed)
@@ -3237,13 +3225,13 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         schema_name: str = 'not_exists_schema_name'
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
             f"--schema-name={schema_name}",
         ])
@@ -3257,9 +3245,9 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         except ValueError:
             executor_failed = True
 
-        self.assertTrue(executor_failed)
+        self.assertFalse(executor_failed)
         self.assertEqual(len(executor.fields), 0)
-        self.assertIsNone(executor.table)
+        self.assertIsNotNone(executor.table)
         self.assertFalse(executor.fields_cut_by_limits)
 
         passed_stages.append("test_10_view_filter_to_zero_fields")
@@ -3270,6 +3258,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         prepared_sens_dict_file_name = self.get_test_dict_path('test_empty_dictionary.py')
 
         options = build_run_options([
+            "view-fields",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
@@ -3277,7 +3266,6 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
             f"--prepared-sens-dict-file={prepared_sens_dict_file_name}",
-            "--mode=view-fields",
         ])
         executor_failed = False
 
@@ -3289,63 +3277,118 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         except ValueError:
             executor_failed = True
 
-        self.assertTrue(executor_failed)
+        self.assertFalse(executor_failed)
 
         passed_stages.append("test_12_view_with_empty_prepared_dictionary")
 
-    async def test_13_view_fields_exception_on_no_prepared_dictionary(self):
+
+class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
+    async def test_01_init(self):
+        res = await self.init_env()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+
+    async def test_02_dump_with_valid_pg_dump_options(self):
         self.assertTrue("init_env" in passed_stages)
 
-        """
-
-        run_options = RunOptions([
-            f"--db-host={params.test_db_host}",
-            f"--db-name={params.test_source_db}",
-            f"--db-user={params.test_db_user}",
-            f"--db-port={params.test_db_port}",
-            f"--db-user-password={params.test_db_user_password}",
-            f"--config={params.test_config}",
-            "--mode=view-fields",
-        ])
-        executor_failed = False
-
-        context = Context(run_options)  # Setup for context reusing only
-
-        
-        """
+        prepared_sens_dict_file = self.get_test_dict_path("test.py")
+        output_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
 
         options = build_run_options([
+            "dump",
             f"--db-host={params.test_db_host}",
             f"--db-name={params.test_source_db}",
             f"--db-user={params.test_db_user}",
             f"--db-port={params.test_db_port}",
             f"--db-user-password={params.test_db_user_password}",
             f"--config={params.test_config}",
-            "--mode=view-fields",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            '--pg-dump-options=--no-comments --no-publications',
+            "--debug",
         ])
-        executor_failed = False
 
-        context = PgAnonApp(options).context  # Setup for context reusing only
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_02_dump_with_valid_pg_dump_options")
 
-        executor = ViewFieldsMode(context)
-        try:
-            await executor.run()
-        except ValueError:
-            executor_failed = True
+    async def test_03_restore_with_valid_pg_restore_options(self):
+        self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
 
-        self.assertTrue(executor_failed)
+        input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
 
-        passed_stages.append("test_13_view_without_prepared_dictionary")
+        options = build_run_options([
+            "restore",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            '--pg-restore-options=--no-comments --no-publications',
+            '--drop-db',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.DONE)
+        passed_stages.append("test_03_restore_with_valid_pg_restore_options")
+
+    async def test_04_dump_with_invalid_pg_dump_options(self):
+        self.assertTrue("init_env" in passed_stages)
+
+        prepared_sens_dict_file = self.get_test_dict_path("test.py")
+        output_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_04_dump")
+
+        options = build_run_options([
+            "dump",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_source_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--prepared-sens-dict-file={prepared_sens_dict_file}",
+            f"--output-dir={output_dir}",
+            f"--processes={params.test_processes}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            "--clear-output-dir",
+            '--pg-dump-options=--no-comments --non-existing-flag',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
+
+    async def test_05_restore_with_invalid_pg_restore_options(self):
+        self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
+
+        input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
+
+        options = build_run_options([
+            "restore",
+            f"--db-host={params.test_db_host}",
+            f"--db-name={params.test_target_db}",
+            f"--db-user={params.test_db_user}",
+            f"--db-port={params.test_db_port}",
+            f"--db-user-password={params.test_db_user_password}",
+            f"--config={params.test_config}",
+            f"--db-connections-per-process={params.db_connections_per_process}",
+            f"--input-dir={input_dir}",
+            "--drop-custom-check-constr",
+            '--pg-restore-options=--no-comments --non-existing-flag',
+            '--drop-db',
+            "--debug",
+        ])
+
+        res = await PgAnonApp(options).run()
+        self.assertEqual(res.result_code, ResultCode.FAIL)
 
 
 if __name__ == "__main__":
     unittest.main(exit=False)
-    # loader = unittest.TestLoader()
-    #
-    # tests = loader.loadTestsFromTestCase(PGAnonDictGenUnitTest)
-    # test_suite = unittest.TestSuite(tests)
-    #
-    # test_suite = loader.discover(start_dir='.', pattern='test*.py')
-    #
-    # runner = unittest.TextTestRunner(failfast=True, verbosity=2)
-    # runner.run(test_suite)

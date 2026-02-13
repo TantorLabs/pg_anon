@@ -77,6 +77,33 @@ def get_scan_fields_query(limit: int = None, count_only: bool = False):
     """
 
 
+def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, table_filter: str = None):
+    table_filter_clause = f"AND table_name LIKE '%{table_filter}%'" if table_filter else ''
+    return f"""
+    WITH paged_tables AS (
+        SELECT
+            table_schema,
+            table_name
+        FROM information_schema.tables
+        WHERE table_type = 'BASE TABLE'
+          AND table_schema NOT IN ('pg_catalog', 'information_schema')
+          AND table_schema = '{schema}'
+          {table_filter_clause}
+        ORDER BY table_schema, table_name
+        LIMIT {limit} OFFSET {offset}
+    )
+    SELECT
+        pt.table_name,
+        c.column_name,
+        c.data_type
+    FROM paged_tables pt
+    JOIN information_schema.columns c
+      ON c.table_schema = pt.table_schema
+     AND c.table_name = pt.table_name
+    ORDER BY pt.table_name, c.ordinal_position;
+    """
+
+
 def get_data_from_field_query(field_info: FieldInfo, limit: int = None, condition: str = None, not_null: bool = True) -> str:
     """
     Build query for receiving data from table

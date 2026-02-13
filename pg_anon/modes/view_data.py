@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from prettytable import PrettyTable, SINGLE_BORDER
 
 from pg_anon.common.db_utils import get_fields_list, create_connection, get_rows_count, get_dump_query
+from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
 from pg_anon.context import Context
 
@@ -47,6 +48,10 @@ class ViewDataMode:
             table_schema=self._schema_name,
             table_name=self._table_name
         )
+
+        if not fields_list:
+            raise PgAnonError(ErrorCode.TABLE_NOT_FOUND, f"Table \"{self._schema_name}.{self._table_name}\" hasn't exists!")
+
         for field in fields_list:
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
@@ -89,14 +94,8 @@ class ViewDataMode:
         self.json = json.dumps(result, default=lambda x: str(x), ensure_ascii=False)
 
     async def _output_fields(self) -> None:
-
         await self._get_fields_for_view()
-        if not self.field_names:
-            raise ValueError("No field names for view!")
-
         self.data = await self._get_data_for_view(self.query)
-        if not self.data:
-            raise ValueError("Not found fields for view!")
 
         if self._need_raw_data:
             self.raw_data = await self._get_data_for_view(self.raw_query)
@@ -117,6 +116,9 @@ class ViewDataMode:
             table_rule=self.table_rule,
             nulls_last=True
         )
+        if not query_without_limit:
+            raise PgAnonError(ErrorCode.TABLE_EXCLUDED, f"Table \"{self._schema_name}.{self._table_name}\" excluded!")
+
         self.query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
         if self._need_raw_data:
@@ -134,9 +136,9 @@ class ViewDataMode:
 
         try:
             if self._limit < 1:
-                raise ValueError("Processing fields limit must be greater than zero!")
+                raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
             if self._offset < 0:
-                raise ValueError("Processing fields offset must be greater than zero or equals to zero!")
+                raise PgAnonError(ErrorCode.INVALID_OFFSET, "Processing fields offset must be greater than zero or equals to zero!")
 
             self.context.read_prepared_dict()
             self.table_rule = get_dict_rule_for_table(
