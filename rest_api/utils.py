@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import List, Optional, Dict, Union
 
 import aioprocessing
+from rest_api.constants import DUMP_STORAGE_BASE_DIR
+from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 from pg_anon.cli import run_pg_anon
+from pg_anon.common.constants import QUEUE_POLL_TIMEOUT
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import validate_exists_mode, simple_slugify
-from rest_api.constants import DUMP_STORAGE_BASE_DIR
-from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 
 def get_full_dump_path(dump_path: str) -> str:
@@ -143,7 +144,16 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: List[
 
     result = None
     while True:
-        coro_result = await queue.coro_get()
+        try:
+            coro_result = await queue.coro_get(timeout=QUEUE_POLL_TIMEOUT)
+        except queue.Empty:
+            if not p.is_alive():
+                raise PgAnonError(
+                    ErrorCode.OPERATION_FAILED,
+                    f"pg_anon worker process terminated unexpectedly (exit code: {p.exitcode})"
+                )
+            continue
+
         if coro_result is None:
             break
         result = coro_result
