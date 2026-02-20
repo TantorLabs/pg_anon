@@ -491,6 +491,11 @@ class RestoreMode:
             query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
             await connection.execute(query)
 
+    @staticmethod
+    def _extract_file(src_path: Path, dst_path: Path):
+        with gzip.open(src_path, "rb") as src_file, open(dst_path, "wb") as trg_file:
+            trg_file.writelines(src_file)
+
     async def _restore_table_data(
             self,
             pool: asyncpg.Pool,
@@ -502,8 +507,7 @@ class RestoreMode:
         self.context.logger.info(f"{'>':=>20} Started task copy_to_table {schema_name}.{table_name}")
         extracted_file = Path(dump_file.stem)
 
-        with gzip.open(dump_file, "rb") as src_file, open(extracted_file, "wb") as trg_file:
-            trg_file.writelines(src_file)
+        await asyncio.to_thread(self._extract_file, dump_file, extracted_file)
 
         try:
             async with pool.acquire() as connection:

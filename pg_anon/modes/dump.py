@@ -350,6 +350,13 @@ class DumpMode:
             raise exc
 
     async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True):
+        return await asyncio.to_thread(
+            self._compress_file,
+            file_path,
+            remove_origin_file_after_compress=remove_origin_file_after_compress,
+        )
+
+    def _compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True):
         gzipped_file_path = file_path.with_name(file_path.name + ".gz")
 
         self.context.logger.debug(f"Start compressing file: {file_path}")
