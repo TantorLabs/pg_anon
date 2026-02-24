@@ -35,7 +35,7 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `source venv/bin/activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[rest]`
+    - CLI + REST API: `pip install .[api]`
 
 ## Windows
 
@@ -47,7 +47,7 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `.\venv\Scripts\activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[rest]`
+    - CLI + REST API: `pip install .[api]`
 
 ## macOS
 
@@ -61,7 +61,7 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `source venv/bin/activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[rest]`
+    - CLI + REST API: `pip install .[api]`
 
 ---
 
@@ -110,8 +110,8 @@ For example, `pg_anon` can be run with this config on Postgres 16. In this case,
 ## Running REST API
 Run service command
 ```sh
-python -m uvicorn rest_api.api:app --host 0.0.0.0 --port 8000 --workers=3
+pg_anon_api --host 0.0.0.0 --port 8000 --workers=3
 ```
 - Recommended worker count = `2 * CPU_CORES + 1`
 - Service OpenAPI documentation will be able by address - http://0.0.0.0:8000/docs#/
-- Also you can see [API documentation](api.md) 
+- Also, you can see [API documentation](api.md) 

@@ -17,10 +17,13 @@ dependencies=[
 ]
 
 [project.optional-dependencies]
-rest = [
+api = [
     "fastapi>=0.113,<1.0",
     "uvicorn[standard]>=0.38",
     "aiohttp>=3.13.2",
+]
+dev = [
+    "build>=1.0",
 ]
 
 [build-system]
@@ -29,6 +32,7 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
+pg_anon_api = "rest_api.__main__:main"
 
 [tool.setuptools]
 include-package-data = false

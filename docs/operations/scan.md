@@ -19,16 +19,16 @@ You need:
 - **meta-dictionary** file with scan rules.
 
 ```commandline
-python pg_anon.py create-dict \
-                  --db-user=postgres \
-                  --db-user-password=postgres \
-                  --db-name=test_source_db \
-                  --meta-dict-file=test_meta_dict.py \
-                  --prepared-sens-dict-file=test_sens_dict_output_previous_use.py \
-                  --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
-                  --output-sens-dict-file=test_sens_dict_output.py \
-                  --output-no-sens-dict-file=test_no_sens_dict_output.py \
-                  --processes=2
+pg_anon create-dict \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=test_source_db \
+    --meta-dict-file=test_meta_dict.py \
+    --prepared-sens-dict-file=test_sens_dict_output_previous_use.py \
+    --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
+    --output-sens-dict-file=test_sens_dict_output.py \
+    --output-no-sens-dict-file=test_no_sens_dict_output.py \
+    --processes=2
 ```
 
 ---

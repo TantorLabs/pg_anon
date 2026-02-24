@@ -10,10 +10,10 @@ These functions are required for processing data in the source database.
 ## Run example
 
 ```commandline
-python -m pg_anon init \
-                  --db-user=postgres \
-                  --db-user-password=postgres \
-                  --db-name=source_db
+pg_anon init \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db
 ```
 
 ---

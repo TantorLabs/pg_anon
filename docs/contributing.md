@@ -1,44 +1,23 @@
 # 💡 Contributing
 > [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
 
-## Dependencies
+## Development setup
 
-The pg_anon uses [Poetry](https://python-poetry.org/)
-dependency management tool for managing dependencies and creating packages.  
-For [adding new dependencies](https://python-poetry.org/docs/managing-dependencies/)
-install Poetry and run command:
+Install the project in editable mode:
 
 ```commandline
-poetry add <package_name>
+pip install -e ".[api,dev]"
 ```
 
-For locking the dependencies use command:
-
-```commandline
-poetry lock --no-update
-```
-
-Additionally, [export](https://python-poetry.org/docs/cli/#export)
-the latest packages to _requirements.txt_ using poetry export plugin:
-
-```commandline
-poetry export -f requirements.txt --output requirements.txt
-```
-
----
+To add a new dependency, edit the `dependencies` list
+in `pyproject.toml` and re-run install command above.
 
 ## Build package
 
-For [building](https://python-poetry.org/docs/libraries/#packaging) the package use command:
+For building the package use command:
 
 ```commandline
-poetry build
-```
-
-Additionally package could be build package using setuptools:
-
-```commandline
-python3 setup.py sdist
+python -m build
 ```
 
 ---
@@ -61,6 +40,7 @@ The main logic of pg_anon is contained within the following Python modules:
  - `db_utils.py` - Utility functions for working with databases.
  - `dto.py` - Small classes for data transfer.
  - `enums.py` - Enumerations for pg_anon.
+ - `errors.py` - Error enumerations and classes for pg_anon.
  - `multiprocessing_utils.py` - Utility functions for multiprocessing.
  - `utils.py` - Common utility functions.
 - `pg_anon/modes/`
@@ -85,6 +65,7 @@ The logic of REST API service for pg_anon is contained within the following Pyth
  - `dump.py` - DumpRunner class for run in background pg_anon in modes `dump`, `sync-struct-dump`, and `sync-data-dump`.
  - `restore.py` - RestoreRunner class for run in background pg_anon in modes `restore`, `sync-struct-restore`, and `sync-data-restore`.
 - `rest_api/runners/direct/`
+  - `preview.py` - PreviewRunner class for get data for preview.
   - `view_fields.py` - ViewFieldsRunner class for run pg_anon in mode `view-fields`.
   - `view_data.py` - ViewDataRunner class for run pg_anon in mode `view-data`.
 - `rest_api/api.py` - Contains API routing and app object used as entrypoint for REST service
@@ -108,13 +89,14 @@ pg_anon/
 │   ├── motd
 │   └── README.md
 ├── docs
+│   ├── api.md
 │   ├── contributing.md
 │   ├── debugging.md
 │   ├── dicts
 │   │   ├── meta-dict-schema.md
-│   │   ├── partial-dump-restore-dict.md
-│   │   ├── prepared-non-sens-dict-schema.md
-│   │   └── prepared-sens-dict-schema.md
+│   │   ├── non-sens-dict-schema.md
+│   │   ├── sens-dict-schema.md
+│   │   └── tables-dictionary.md
 │   ├── faq.md
 │   ├── how-it-works.md
 │   ├── installation-and-configuring.md
@@ -141,6 +123,7 @@ pg_anon/
 │   │   ├── db_utils.py
 │   │   ├── dto.py
 │   │   ├── enums.py
+│   │   ├── errors.py
 │   │   ├── __init__.py
 │   │   ├── multiprocessing_utils.py
 │   │   └── utils.py
@@ -162,12 +145,9 @@ pg_anon/
 │   ├── callbacks.py
 │   ├── constants.py
 │   ├── dependencies.py
-│   ├── dict_templates.py
 │   ├── enums.py
 │   ├── openapi.json
 │   ├── pydantic_models.py
-│   ├── README.md
-│   ├── requirements.txt
 │   ├── runners
 │   │   ├── background
 │   │   ├── direct
@@ -180,6 +160,7 @@ pg_anon/
 │   │   ├── PGAnonMaskUnitTest_target_tables.result
 │   │   ├── test_prepared_no_sens_dict_result_expected.py
 │   │   ├── test_prepared_sens_dict_result_by_data_func_expected.py
+│   │   ├── test_prepared_sens_dict_result_by_data_func_per_field_expected.py
 │   │   ├── test_prepared_sens_dict_result_by_data_sql_condition_expected.py
 │   │   ├── test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py
 │   │   ├── test_prepared_sens_dict_result_by_include_rule_expected.py
@@ -187,11 +168,13 @@ pg_anon/
 │   │   ├── test_prepared_sens_dict_result_by_words_and_phrases_constants_expected.py
 │   │   ├── test_prepared_sens_dict_result_default_func_expected.py
 │   │   ├── test_prepared_sens_dict_result_expected.py
+│   │   ├── test_prepared_sens_dict_result_type_aliases_complex_expected.py
 │   │   ├── test_prepared_sens_dict_result_type_aliases_expected.py
 │   │   └── test_prepared_sens_dict_result_with_no_existing_schema.py
 │   ├── __init__.py
 │   ├── input_dict
 │   │   ├── mask_test.py
+│   │   ├── meta_data_func_per_field.py
 │   │   ├── meta_data_func.py
 │   │   ├── meta_data_sql_condition.py
 │   │   ├── meta_include_and_skip_rules.py
@@ -204,7 +187,9 @@ pg_anon/
 │   │   ├── test_exclude.py
 │   │   ├── test_meta_dict_default_func.py
 │   │   ├── test_meta_dict.py
+│   │   ├── test_meta_dict_type_aliases_complex.py
 │   │   ├── test_meta_dict_type_aliases.py
+│   │   ├── test_meta_not_existing_functions_in_datafunc.py
 │   │   ├── test_partial_exclude_tables_dict.py
 │   │   ├── test_partial_tables_dict.py
 │   │   ├── test.py
@@ -218,15 +203,13 @@ pg_anon/
 │   │   ├── init_simple_env.sql
 │   │   └── init_stress_env.sql
 │   └── test_full.py
-├── config.yml
+├── .gitignore
 ├── __init__.py
 ├── init.sql
 ├── MANIFEST.in
 ├── pg_anon.py
-├── poetry.lock
 ├── pyproject.toml
 ├── README.md
-├── requirements.txt
 └── setup.py
 ```
 
