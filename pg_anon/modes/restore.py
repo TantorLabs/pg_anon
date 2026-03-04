@@ -15,7 +15,7 @@ from asyncpg import Connection
 
 from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
 from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool, \
-    get_available_extensions_map, check_required_connections
+    get_available_extensions_map, check_required_connections, get_available_schemas
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import PgAnonError, ErrorCode
@@ -26,6 +26,15 @@ from pg_anon.common.utils import (
     pretty_size, save_dicts_info_file, resolve_dependencies
 )
 from pg_anon.context import Context
+
+_CUSTOM_OBJECTS_TOC_RE = re.compile(
+    r"^\d+;\s+\d+\s+\d+\s+"
+    r"(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR|AGGREGATE)\b"
+)
+
+_EXTENSION_TOC_RE = re.compile(
+    r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b"
+)
 
 
 class RestoreMode:
@@ -46,6 +55,10 @@ class RestoreMode:
     _skip_post_data_restore: bool = False
 
     _restored_schemas: List[str]
+
+    @property
+    def _whitelist_active(self) -> bool:
+        return bool(self.context.included_tables_rules)
 
     def __init__(self, context: Context):
         self.context = context
@@ -85,7 +98,7 @@ class RestoreMode:
             if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
                 continue
 
-            if self.context.white_listed_tables and (schema, table) not in self.context.white_listed_tables:
+            if self._whitelist_active and (schema, table) not in self.context.white_listed_tables:
                 continue
 
             analyze_queries.append(
@@ -181,7 +194,7 @@ class RestoreMode:
                         re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
                     )
 
-                # Update blacklist for INDEX
+                # Update whitelist for INDEX
                 if not index['is_excluded'] and (index['schema'], index['table']) in self.context.white_listed_tables:
                     whitelist.append(
                         re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
@@ -195,7 +208,7 @@ class RestoreMode:
                         re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
                     )
 
-                # Update blacklist for VIEW, MATERIALIZED VIEW
+                # Update whitelist for VIEW, MATERIALIZED VIEW
                 if not view['is_excluded'] and (view['table_schema'], view['table_name']) in self.context.white_listed_tables:
                     whitelist.append(
                         re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
@@ -214,10 +227,32 @@ class RestoreMode:
 
                 constraint_tables_both_in_white_list = constraint_table_to in self.context.white_listed_tables and constraint_table_from in self.context.white_listed_tables
                 if not constraint['is_excluded'] and constraint_tables_both_in_white_list:
-                    # Update blacklist for FK CONSTRAINT
+                    # Update whitelist for FK CONSTRAINT
                     whitelist.extend([
                         re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
                     ])
+
+        if self._restored_schemas:
+            blacklist.extend([
+                re.compile(fr".*SCHEMA - {re.escape(schema)}")
+            for schema in self._restored_schemas])
+
+        has_custom_ddl = bool(
+            self.metadata.partial_dump_types or
+            self.metadata.partial_dump_domains or
+            self.metadata.partial_dump_functions or
+            self.metadata.partial_dump_casts or
+            self.metadata.partial_dump_operators or
+            self.metadata.partial_dump_aggregates
+        )
+        if has_custom_ddl:
+            blacklist.append(_CUSTOM_OBJECTS_TOC_RE)
+
+        # Extensions are always saved in metadata (even for full dumps)
+        # and created separately by _create_extensions_for_partial_mode.
+        # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
+        if self.metadata.extensions:
+            blacklist.append(_EXTENSION_TOC_RE)
 
         for section in ["pre_data", "post_data"]:
             command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]
@@ -236,11 +271,14 @@ class RestoreMode:
                     if toc_line.startswith(';'):
                         continue
 
-                    if blacklist and any(p.search(toc_line) for p in blacklist):
+                    is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
+                    if is_blacklisted:
                         self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by blacklist - "{toc_line}" ')
                         continue
 
-                    if whitelist and not any(p.search(toc_line) for p in whitelist):
+                    is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)
+                    is_allowed_custom_object = not has_custom_ddl and _CUSTOM_OBJECTS_TOC_RE.match(toc_line)
+                    if is_skipped_by_whitelist and not is_allowed_custom_object:
                         self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by whitelist - "{toc_line}" ')
                         continue
 
@@ -330,7 +368,7 @@ class RestoreMode:
                 if self.context.black_listed_tables and sequence_relation in self.context.black_listed_tables:
                     continue
 
-                if self.context.white_listed_tables and sequence_relation not in self.context.white_listed_tables:
+                if self._whitelist_active and sequence_relation not in self.context.white_listed_tables:
                     continue
 
                 schema = sequence_data["schema"].replace("'", "''")
@@ -343,13 +381,34 @@ class RestoreMode:
                 self.context.logger.info(query)
                 await connection.execute(query)
 
+    def _extract_schemas_from_toc(self) -> set:
+        """Extract schema names from pre_data backup TOC for cases
+        when partial_dump_schemas is not available in metadata (e.g. full dump + partial restore)."""
+        pre_data_backup = self.input_dir / "pre_data.backup"
+        if not pre_data_backup.exists():
+            return set()
+
+        command = [self.context.pg_restore, "-l", str(pre_data_backup)]
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        toc_bytes, _ = proc.communicate()
+
+        schemas = set()
+        schema_re = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+(\S+)")
+        for line in toc_bytes.decode('utf-8', errors='replace').split("\n"):
+            match = schema_re.match(line)
+            if match:
+                schemas.add(match.group(1))
+        return schemas
+
     async def _create_schemas_for_partial_mode(self, connection: Connection):
         self._restored_schemas = list()
-        if self.context.black_listed_tables or self.context.white_listed_tables:
-            self._restored_schemas = list({schema for schema, _ in self.context.tables})
 
         if self.metadata.partial_dump_schemas:
             self._restored_schemas = copy(self.metadata.partial_dump_schemas)
+        elif self.context.black_listed_tables or self._whitelist_active:
+            table_schemas = {schema for schema, _ in self.context.tables}
+            toc_schemas = self._extract_schemas_from_toc()
+            self._restored_schemas = list(table_schemas | toc_schemas)
 
         if not self._restored_schemas:
             return
@@ -360,12 +419,12 @@ class RestoreMode:
             await connection.execute(query)
 
     async def _create_extensions_for_partial_mode(self, connection: Connection):
-        # Manual extension creating only in case of whitelist using
-        if not self.metadata.extensions or not self._restored_schemas:
+        if not self.metadata.extensions:
             return
 
         available_extensions = await get_available_extensions_map(connection)
-        available_schemas = ['pg_catalog', *self._restored_schemas]
+        available_schemas = await get_available_schemas(connection)
+
         for extension_name, extension_data in self.metadata.extensions.items():
             query_parts = [f'CREATE EXTENSION IF NOT EXISTS {extension_name}']
 
@@ -555,7 +614,7 @@ class RestoreMode:
                     continue
 
                 # white list has the second priority for pg_dump / pg_restore
-                if self.context.white_listed_tables and (target["schema"], target["table"]) not in self.context.white_listed_tables:
+                if self._whitelist_active and (target["schema"], target["table"]) not in self.context.white_listed_tables:
                     self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
                     continue
 
@@ -580,7 +639,8 @@ class RestoreMode:
                 )
 
             # Wait for the remaining restores to finish
-            await asyncio.wait(tasks)
+            if tasks:
+                await asyncio.wait(tasks)
         finally:
             await pool.close()
 
@@ -596,7 +656,7 @@ class RestoreMode:
         self._compare_rows_count()
 
     def _compare_rows_count(self):
-        if self.context.black_listed_tables or self.context.white_listed_tables:
+        if self.context.black_listed_tables or self._whitelist_active:
             dumped_rows = 0
 
             for table_data in self.metadata.files.values():
@@ -605,7 +665,7 @@ class RestoreMode:
                 if self.context.black_listed_tables and table_name in self.context.black_listed_tables:
                     continue
 
-                if self.context.white_listed_tables and table_name not in self.context.white_listed_tables:
+                if self._whitelist_active and table_name not in self.context.white_listed_tables:
                     continue
 
                 dumped_rows += int(table_data['rows'])
@@ -671,6 +731,12 @@ class RestoreMode:
 
         tables = [(table_info["schema"], table_info["table"]) for table_info in self.metadata.files.values()]
         self.context.set_tables_lists(tables)
+
+        if self._whitelist_active and not self.context.white_listed_tables:
+            raise PgAnonError(
+                ErrorCode.NO_TABLES_FOR_RESTORE,
+                "None of the requested tables match the dump contents"
+            )
 
     def _save_input_dicts_to_run_dir(self):
         if not self.context.options.save_dicts:

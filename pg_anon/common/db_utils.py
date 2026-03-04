@@ -268,6 +268,12 @@ async def get_available_extensions_map(connection: Connection) -> Dict[str, List
     return dict(extensions_map)
 
 
+async def get_available_schemas(connection: Connection):
+    query = "SELECT nspname FROM pg_namespace"
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
 async def get_custom_functions_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
     if not excluded_schemas:
         excluded_schemas = []

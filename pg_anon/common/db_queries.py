@@ -150,7 +150,7 @@ def get_sequences_query(excluded_schemas: List[str] = None):
         excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str})'
 
     return f"""
-        SELECT
+        SELECT DISTINCT
             pn_t.nspname AS table_schema,
             t.relname AS table_name,
             a.attname AS column_name,
@@ -168,6 +168,31 @@ def get_sequences_query(excluded_schemas: List[str] = None):
             AND d.deptype in ('a', 'i')
             AND d.classid = 'pg_catalog.pg_class'::regclass
             AND d.refclassid = 'pg_catalog.pg_class'::regclass
+            {excluded_schemas_filter}
+
+        UNION
+
+        SELECT DISTINCT
+            pn_t.nspname AS table_schema,
+            t.relname AS table_name,
+            a.attname AS column_name,
+            pn_s.nspname AS sequence_schema,
+            s.relname AS sequence_name
+        FROM pg_attrdef AS ad
+        JOIN pg_class AS t ON t.oid = ad.adrelid
+        JOIN pg_attribute AS a ON a.attrelid = t.oid AND a.attnum = ad.adnum
+        JOIN pg_namespace AS pn_t ON pn_t.oid = t.relnamespace
+        CROSS JOIN LATERAL (
+            SELECT regexp_matches(
+                pg_get_expr(ad.adbin, ad.adrelid),
+                $re$nextval\('([^']+)'::regclass\)$re$
+            ) AS m
+        ) AS rx
+        JOIN pg_class AS s ON s.oid = (rx.m[1])::regclass
+        JOIN pg_namespace AS pn_s ON pn_s.oid = s.relnamespace
+        WHERE
+            t.relkind IN ('r', 'p')
+            AND s.relkind = 'S'
             {excluded_schemas_filter}
             """
 
