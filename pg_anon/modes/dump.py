@@ -46,6 +46,7 @@ class DumpMode:
     _total_rows: int = 0
     
     _schemas: List[str] = None
+    _sequences_data: Optional[List] = None
     _sequences_last_values: Dict = None
     _indexes: Dict = None
     _views: Dict = None
@@ -145,11 +146,7 @@ class DumpMode:
     async def _prepare_sequences_last_values(self, connection: Connection):
         self._sequences_last_values = {}
 
-        query = get_sequences_query(self.context.exclude_schemas)
-        self.context.logger.debug(str(query))
-        sequences_data = await connection.fetch(query)
-
-        for table_schema, table_name, _, sequence_schema, sequence_name in sequences_data:
+        for table_schema, table_name, _, sequence_schema, sequence_name in self._sequences_data:
             full_sequence_name = sequence_schema + "." + sequence_name
             sequence_last_value = await connection.fetchval(
                 f'select last_value from "{sequence_schema}"."{sequence_name}"'
@@ -238,10 +235,9 @@ class DumpMode:
 
         self.metadata.prepared_sens_dict_files = ','.join(self.context.options.prepared_sens_dict_files)
 
-        # Schemas and functions used in constraints need to be preserved only when a table whitelist is applied.
         self.metadata.extensions = self._extensions
 
-        if self.context.white_listed_tables:
+        if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_schemas = self._schemas
 
         if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
@@ -281,6 +277,14 @@ class DumpMode:
                 ("-t", f'"{table_schema}"."{table_name}"') for table_schema, table_name in self.context.white_listed_tables
             ]
             specific_tables.extend([item for sublist in white_list for item in sublist])
+
+            if self._sequences_data:
+                seq_list = [
+                    ("-t", f'"{seq_schema}"."{seq_name}"')
+                    for table_schema, table_name, _, seq_schema, seq_name in self._sequences_data
+                    if (table_schema, table_name) in self.context.white_listed_tables
+                ]
+                specific_tables.extend([item for sublist in seq_list for item in sublist])
 
         tmp_list = []
         for v in self.context.exclude_schemas:
@@ -666,6 +670,12 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
+    async def _fetch_sequences_data(self, connection: Connection):
+        """Fetch sequences data and cache for reuse in pg_dump and metadata."""
+        query = get_sequences_query(self.context.exclude_schemas)
+        self.context.logger.debug(str(query))
+        self._sequences_data = await connection.fetch(query)
+
     async def _prepare_tables_lists(self, connection: Connection):
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
@@ -695,7 +705,7 @@ class DumpMode:
         self.context.exclude_schemas.extend(excluded_schemas)
 
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection):
-        if self.context.white_listed_tables:
+        if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_functions = await get_custom_functions_ddl(connection, self.context.exclude_schemas)
@@ -740,6 +750,7 @@ class DumpMode:
 
             await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
+            await self._fetch_sequences_data(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
             await self._dump_data(connection)
