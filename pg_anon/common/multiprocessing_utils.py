@@ -1,5 +1,6 @@
 import queue
 import multiprocessing
+import sys
 import time
 from typing import Callable, List, Optional
 
@@ -7,6 +8,14 @@ import aioprocessing
 
 from pg_anon.common.constants import QUEUE_POLL_TIMEOUT
 from pg_anon.common.errors import PgAnonError, ErrorCode
+
+# Python 3.13+ changed default start method from "fork" to "spawn" on Linux.
+# "spawn" requires pickling all Process args, which fails for asyncpg.Record and bound methods.
+if sys.version_info >= (3, 13):
+    try:
+        multiprocessing.set_start_method("fork")
+    except RuntimeError:
+        pass  # already set
 
 
 async def init_process(
