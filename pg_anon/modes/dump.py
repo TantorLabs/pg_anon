@@ -46,7 +46,7 @@ class DumpMode:
     _total_rows: int = 0
     
     _schemas: List[str] = None
-    _sequences_data: Optional[List] = None
+    _sequences_data: Optional[List[Tuple]] = None
     _sequences_last_values: Dict = None
     _indexes: Dict = None
     _views: Dict = None
@@ -674,7 +674,7 @@ class DumpMode:
         """Fetch sequences data and cache for reuse in pg_dump and metadata."""
         query = get_sequences_query(self.context.exclude_schemas)
         self.context.logger.debug(str(query))
-        self._sequences_data = await connection.fetch(query)
+        self._sequences_data = [tuple(row) for row in await connection.fetch(query)]
 
     async def _prepare_tables_lists(self, connection: Connection):
         tables = await get_db_tables(connection, self.context.exclude_schemas)
