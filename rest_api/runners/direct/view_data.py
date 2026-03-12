@@ -1,19 +1,17 @@
-from typing import List, Type
-
 from pg_anon.cli import build_run_options
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
 from rest_api.constants import BASE_TEMP_DIR
-from rest_api.pydantic_models import ViewDataRequest, ViewDataContent
+from rest_api.pydantic_models import ViewDataContent, ViewDataRequest
 from rest_api.utils import write_dictionary_contents
 
 
 class ViewDataRunner:
     request: ViewDataRequest
-    cli_params: List[str] = None
+    cli_params: list[str] = None
     result: PgAnonResult = None
-    _executor = Type[ViewDataMode]
+    _executor = type[ViewDataMode]
 
     def __init__(self, request: ViewDataRequest):
         self.request = request
@@ -22,53 +20,55 @@ class ViewDataRunner:
         self._init_executor()
 
     def _prepare_db_credentials_cli_params(self):
-        self.cli_params.extend([
-            f'--db-host={self.request.db_connection_params.host}',
-            f'--db-port={self.request.db_connection_params.port}',
-            f'--db-user={self.request.db_connection_params.user_login}',
-            f'--db-user-password={self.request.db_connection_params.user_password}',
-            f'--db-name={self.request.db_connection_params.db_name}',
-        ])
+        self.cli_params.extend(
+            [
+                f"--db-host={self.request.db_connection_params.host}",
+                f"--db-port={self.request.db_connection_params.port}",
+                f"--db-user={self.request.db_connection_params.user_login}",
+                f"--db-user-password={self.request.db_connection_params.user_password}",
+                f"--db-name={self.request.db_connection_params.db_name}",
+            ]
+        )
 
     def _prepare_dictionaries_cli_params(self):
         self._input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents, BASE_TEMP_DIR)
-        self.cli_params.append(
-            f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names.keys())}"
-        )
+        self.cli_params.append(f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names.keys())}")
 
     def _prepare_filters_cli_params(self):
         self.cli_params.append(
-            f'--schema-name={self.request.schema_name}',
+            f"--schema-name={self.request.schema_name}",
         )
 
         self.cli_params.append(
-            f'--table-name={self.request.table_name}',
+            f"--table-name={self.request.table_name}",
         )
 
     def _prepare_pagination_cli_params(self):
         if self.request.limit:
             self.cli_params.append(
-                f'--limit={self.request.limit}',
+                f"--limit={self.request.limit}",
             )
 
         if self.request.offset:
             self.cli_params.append(
-                f'--offset={self.request.offset}',
+                f"--offset={self.request.offset}",
             )
 
     def _prepare_json_cli_params(self):
         self.cli_params.append(
-            f'--json',
+            "--json",
         )
 
     def _prepare_verbosity_cli_params(self):
-        self.cli_params.extend([
-            "--verbose=debug",
-            "--debug",
-        ])
+        self.cli_params.extend(
+            [
+                "--verbose=debug",
+                "--debug",
+            ]
+        )
 
     def _prepare_cli_params(self):
-        self.cli_params = ['view-data']
+        self.cli_params = ["view-data"]
         self._prepare_db_credentials_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_filters_cli_params()
@@ -84,7 +84,7 @@ class ViewDataRunner:
         self._executor = ViewDataMode(self.context, need_raw_data=True)
 
     def _format_output(self) -> ViewDataContent:
-        def _format_data_to_str(records: List[List[str]]):
+        def _format_data_to_str(records: list[list[str]]):
             return [[str(data) for data in record] for record in records]
 
         rows_before = _format_data_to_str(self._executor.raw_data)

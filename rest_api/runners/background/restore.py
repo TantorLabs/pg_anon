@@ -27,9 +27,7 @@ class RestoreRunner(BaseRunner):
             input_partial_tables_dict_file_names = list(
                 write_dictionary_contents(self.request.partial_tables_dict_contents, self.base_tmp_dir).keys()
             )
-            self.cli_params.append(
-                f"--partial-tables-dict-file={','.join(input_partial_tables_dict_file_names)}"
-            )
+            self.cli_params.append(f"--partial-tables-dict-file={','.join(input_partial_tables_dict_file_names)}")
 
         if self.request.partial_tables_exclude_dict_contents:
             input_partial_tables_exclude_dict_file_names = list(
@@ -40,51 +38,41 @@ class RestoreRunner(BaseRunner):
             )
 
         if self.request.save_dicts:
-            self.cli_params.extend([
-                "--save-dicts",
-            ])
+            self.cli_params.extend(
+                [
+                    "--save-dicts",
+                ]
+            )
 
     def _prepare_input_dump_path_cli_params(self):
         self.full_input_path = self.request.validated_input_path
-        self.cli_params.extend([
-            f'--input-dir={self.full_input_path}',
-        ])
+        self.cli_params.extend(
+            [
+                f"--input-dir={self.full_input_path}",
+            ]
+        )
 
     def _prepare_parallelization_cli_params(self):
         if self.request.proc_conn_count:
-            self.cli_params.append(
-                f'--db-connections-per-process={self.request.proc_conn_count}'
-            )
+            self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
 
     def _prepare_pg_restore_cli_params(self):
         if self.request.pg_restore_path:
-            self.cli_params.append(
-                f'--pg-restore={self.request.pg_restore_path}'
-            )
+            self.cli_params.append(f"--pg-restore={self.request.pg_restore_path}")
 
         if self.request.ignore_privileges:
-            self.cli_params.append(
-                f"--ignore-privileges"
-            )
+            self.cli_params.append("--ignore-privileges")
 
         if self.request.pg_restore_options:
-            self.cli_params.append(
-                f'--pg-restore-options={self.request.pg_restore_options}'
-            )
+            self.cli_params.append(f"--pg-restore-options={self.request.pg_restore_options}")
 
     def _prepare_additional_cli_params(self):
         if self.request.drop_custom_check_constr:
-            self.cli_params.append(
-                f'--drop-custom-check-constr'
-            )
+            self.cli_params.append("--drop-custom-check-constr")
         if self.request.clean_db:
-            self.cli_params.append(
-                f'--clean-db'
-            )
+            self.cli_params.append("--clean-db")
         if self.request.drop_db:
-            self.cli_params.append(
-                f'--drop-db'
-            )
+            self.cli_params.append("--drop-db")
 
     def _prepare_cli_params(self):
         super()._prepare_cli_params()

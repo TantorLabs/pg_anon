@@ -1,16 +1,20 @@
 import hashlib
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any
 
 import asyncpg
 from asyncpg import Connection, Pool
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, DEFAULT_EXCLUDED_SCHEMAS
-from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query, \
-    get_tables_with_fields_query
-from pg_anon.common.dto import FieldInfo, ConnectionParams
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, DEFAULT_EXCLUDED_SCHEMAS, SERVER_SETTINGS
+from pg_anon.common.db_queries import (
+    get_count_query,
+    get_database_size_query,
+    get_scan_fields_query,
+    get_tables_with_fields_query,
+)
+from pg_anon.common.dto import ConnectionParams, FieldInfo
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 from pg_anon.logger import get_logger
@@ -18,14 +22,14 @@ from pg_anon.logger import get_logger
 logger = get_logger()
 
 
-async def create_connection(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> Connection:
+async def create_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> Connection:
     return await asyncpg.connect(
         **connection_params.as_dict(),
         server_settings=server_settings,
     )
 
 
-async def create_pool(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Pool:
+async def create_pool(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Pool:
     return await asyncpg.create_pool(
         **connection_params.as_dict(),
         server_settings=server_settings,
@@ -34,19 +38,18 @@ async def create_pool(connection_params: ConnectionParams, server_settings: Dict
     )
 
 
-async def check_db_connection(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> bool:
+async def check_db_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> bool:
     try:
         db_conn = await create_connection(connection_params, server_settings=server_settings)
         await db_conn.close()
-    except Exception as ex:
+    except Exception:
         return False
 
     return True
 
 
-async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> bool:
-    """
-    Checks exists db schema what consists predefined anonymization utils
+async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> bool:
+    """Checks exists db schema what consists predefined anonymization utils
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
     :return: Exists schema or not
@@ -61,9 +64,8 @@ async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams,
     return exists
 
 
-async def get_scan_fields_list(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, limit: int = None) -> List:
-    """
-    Get fields list for scan sensitive data
+async def get_scan_fields_list(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None) -> list:
+    """Get fields list for scan sensitive data
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
     :param limit: Limit the number of results to return.
@@ -77,7 +79,7 @@ async def get_scan_fields_list(connection_params: ConnectionParams, server_setti
     return fields_list
 
 
-async def get_tables_with_fields(schema: str, connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, limit: int = None, offset: int = None, table_filter: str = None) -> List:
+async def get_tables_with_fields(schema: str, connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None, offset: int | None = None, table_filter: str | None = None) -> list:
     query = get_tables_with_fields_query(schema, limit, offset, table_filter=table_filter)
 
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -89,9 +91,8 @@ async def get_tables_with_fields(schema: str, connection_params: ConnectionParam
     return data
 
 
-async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get count of fields for scan sensitive data
+async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> int:
+    """Get count of fields for scan sensitive data
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
     :return: count of resulted fields list for processing
@@ -104,9 +105,8 @@ async def get_scan_fields_count(connection_params: ConnectionParams, server_sett
     return count
 
 
-async def get_fields_list(connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: Dict = SERVER_SETTINGS) -> List:
-    """
-    Get fields list for dump
+async def get_fields_list(connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: dict = SERVER_SETTINGS) -> list:
+    """Get fields list for dump
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param table_schema: Table schema name
     :param table_name: Table name
@@ -115,20 +115,18 @@ async def get_fields_list(connection_params: ConnectionParams, table_schema: str
     """
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
-        """
+        f"""
             SELECT column_name, udt_name, is_nullable, is_generated FROM information_schema.columns
-            WHERE table_schema = '%s' AND table_name='%s'
+            WHERE table_schema = '{table_schema.replace("'", "''")}' AND table_name='{table_name.replace("'", "''")}'
             ORDER BY ordinal_position ASC
         """
-        % (table_schema.replace("'", "''"), table_name.replace("'", "''"))
     )
     await db_conn.close()
     return fields_list
 
 
-async def get_rows_count(connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get rows count in table
+async def get_rows_count(connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS) -> int:
+    """Get rows count in table
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param schema_name: Schema name
     :param table_name: Table name
@@ -142,9 +140,8 @@ async def get_rows_count(connection_params: ConnectionParams, schema_name: str, 
     return count
 
 
-async def get_db_size(connection_params: ConnectionParams, db_name: str, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get db size count in table
+async def get_db_size(connection_params: ConnectionParams, db_name: str, server_settings: dict = SERVER_SETTINGS) -> int:
+    """Get db size count in table
     :param connection_params: Required connection parameters such as host, login, password and etc.
     :param db_name: Database name
     :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
@@ -158,46 +155,38 @@ async def get_db_size(connection_params: ConnectionParams, db_name: str, server_
 
 
 async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
-    """
-    Execute scan in row by custom DB function
+    """Execute scan in row by custom DB function
     :param connection: Active connection to db
     :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
     :param value: Data value from field
     :param field_info: Field info
     :return: If it sensitive by scan func then return **True**, otherwise **False**
     """
-
     query = f"""SELECT {scan_func}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    res = await statement.fetchval(
+    return await statement.fetchval(
         value, field_info.nspname, field_info.relname, field_info.column_name
     )
 
-    return res
-
 
 async def exec_data_scan_func_per_field_query(connection: Connection, scan_func_per_field: str, field_info: FieldInfo) -> bool:
-    """
-    Execute scan in field by custom DB function
+    """Execute scan in field by custom DB function
     :param connection: Active connection to db
     :param scan_func_per_field: DB function name which can call with "(schema, table, column_name, column_type)" and returns boolean value
     :param field_info: Field info
     :return: If it sensitive by scan func per field then return **True**, otherwise **False**
     """
-
     query = f"""SELECT {scan_func_per_field}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    res = await statement.fetchval(
+    return await statement.fetchval(
         field_info.nspname, field_info.relname, field_info.column_name, field_info.type
     )
-
-    return res
 
 
 async def get_db_tables(
         connection: Connection,
-        excluded_schemas: Optional[List[str]] = None,
-) -> List[Tuple[str, str]]:
+        excluded_schemas: list[str] | None = None,
+) -> list[tuple[str, str]]:
     if not excluded_schemas:
         excluded_schemas = []
     excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
@@ -218,8 +207,8 @@ async def get_db_tables(
     return list(map(tuple, tables))
 
 
-async def get_schemas(connection: Connection, schema_filter: str = None) -> List[str]:
-    schema_filter_clause = f"AND nspname like '%{schema_filter}%'" if schema_filter else ''
+async def get_schemas(connection: Connection, schema_filter: str | None = None) -> list[str]:
+    schema_filter_clause = f"AND nspname like '%{schema_filter}%'" if schema_filter else ""
     query = f"""
     SELECT nspname AS schema_name
     FROM pg_namespace
@@ -231,8 +220,8 @@ async def get_schemas(connection: Connection, schema_filter: str = None) -> List
     return [row[0] for row in result]
 
 
-async def get_extensions(connection: Connection) -> List[str]:
-    query = f"""
+async def get_extensions(connection: Connection) -> list[str]:
+    query = """
     SELECT
         n.nspname as "schema"
         , e.extname as "name"
@@ -246,23 +235,23 @@ async def get_extensions(connection: Connection) -> List[str]:
     return await connection.fetch(query)
 
 
-async def get_available_extensions_map(connection: Connection) -> Dict[str, List[Dict[str, Any]]]:
-    query = """   
+async def get_available_extensions_map(connection: Connection) -> dict[str, list[dict[str, Any]]]:
+    query = """
     SELECT ev.name, ev.version, ev.installed, ev.requires, e.default_version
     FROM pg_available_extension_versions as ev
     LEFT JOIN pg_available_extensions as e on e."name" = ev."name"
-    ORDER BY name, installed DESC, version DESC; 
+    ORDER BY name, installed DESC, version DESC;
     """
     rows = await connection.fetch(query)
 
     extensions_map = defaultdict(list)
 
     for row in rows:
-        extensions_map[row['name']].append({
-            'version': row['version'],
-            'installed': row['installed'],
-            'requires': row['requires'],
-            'default_version': row['default_version'],
+        extensions_map[row["name"]].append({
+            "version": row["version"],
+            "installed": row["installed"],
+            "requires": row["requires"],
+            "default_version": row["default_version"],
         })
 
     return dict(extensions_map)
@@ -274,7 +263,7 @@ async def get_available_schemas(connection: Connection):
     return [row[0] for row in result]
 
 
-async def get_custom_functions_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_functions_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     if not excluded_schemas:
         excluded_schemas = []
     excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
@@ -297,10 +286,10 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: Lis
     return [row[0] for row in result]
 
 
-async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["pg_catalog", "information_schema", *excluded_schemas]])
 
     query = f"""
     SELECT
@@ -327,10 +316,10 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[
     return [row[0] for row in result]
 
 
-async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["pg_catalog", "information_schema", *excluded_schemas]])
 
     query = f"""
     WITH user_types AS (
@@ -385,10 +374,10 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[st
     return [row[0] for row in result]
 
 
-async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['information_schema', *excluded_schemas]])
+    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["information_schema", *excluded_schemas]])
 
     query = f"""
     SELECT
@@ -459,12 +448,12 @@ async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[st
     return [row[0] for row in result]
 
 
-async def get_custom_operators_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
-    excluded_schemas_filter = ''
-    excluded_schemas_str = ''
+async def get_custom_operators_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    excluded_schemas_filter = ""
+    excluded_schemas_str = ""
     if excluded_schemas:
         excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND nf.nspname not in ({excluded_schemas_str})'
+        excluded_schemas_filter = f"AND nf.nspname not in ({excluded_schemas_str})"
 
     query = f"""
     SELECT
@@ -481,7 +470,7 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: Lis
     JOIN pg_namespace n ON n.oid = o.oprnamespace
     JOIN pg_proc f ON f.oid = o.oprcode
     JOIN pg_namespace nf ON nf.oid = f.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{", " + excluded_schemas_str if excluded_schemas_str else ""})
         {excluded_schemas_filter}
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -493,12 +482,12 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: Lis
     return [row[0] for row in result]
 
 
-async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
-    excluded_schemas_filter = ''
-    excluded_schemas_str = ''
+async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    excluded_schemas_filter = ""
+    excluded_schemas_str = ""
     if excluded_schemas:
         excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND ns.nspname not in ({excluded_schemas_str})'
+        excluded_schemas_filter = f"AND ns.nspname not in ({excluded_schemas_str})"
 
     query = f"""
     SELECT
@@ -513,7 +502,7 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: Li
     JOIN pg_proc sf ON sf.oid = a.aggtransfn
     JOIN pg_namespace n ON n.oid = p.pronamespace
     JOIN pg_namespace ns ON ns.oid = sf.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{", " + excluded_schemas_str if excluded_schemas_str else ""})
         {excluded_schemas_filter}
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -525,8 +514,8 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: Li
     return [row[0] for row in result]
 
 
-async def get_indexes_data(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
     WITH tables_to_check AS (
@@ -548,15 +537,15 @@ async def get_indexes_data(connection: Connection, tables: List[Tuple[str, str]]
     return await connection.fetch(query, *args)
 
 
-async def get_views_related_to_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+async def get_views_related_to_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
     WITH tables_to_check AS (
         VALUES {values_placeholders}
     ),
     all_views AS (
-        SELECT 
+        SELECT
             schemaname AS view_schema,
             viewname AS view_name,
             definition AS view_definition,
@@ -564,7 +553,7 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
         FROM pg_views
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
         UNION ALL
-        SELECT 
+        SELECT
             schemaname AS view_schema,
             matviewname AS view_name,
             definition AS view_definition,
@@ -573,7 +562,7 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
     ),
     all_tables AS (
-        SELECT 
+        SELECT
             n.nspname AS table_schema,
             c.relname AS table_name
         FROM pg_class c
@@ -599,8 +588,8 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
     return await connection.fetch(query, *args)
 
 
-async def get_constraints_to_excluded_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
     WITH tables_to_check AS (
@@ -621,7 +610,7 @@ async def get_constraints_to_excluded_tables(connection: Connection, tables: Lis
     JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
     LEFT JOIN tables_to_check t_from ON t_from.column1 = n_from.nspname AND t_from.column2 = c_from.relname
     WHERE con.contype IN ('p','f')
-      AND n_to.nspname NOT IN ('pg_catalog', 'information_schema') 
+      AND n_to.nspname NOT IN ('pg_catalog', 'information_schema')
     """
 
     return await connection.fetch(query, *args)
@@ -643,22 +632,20 @@ async def check_db_is_empty(connection: Connection) -> bool:
 
 
 async def run_query_in_pool(pool: Pool, query: str):
-    from pg_anon.common.utils import exception_helper
-
-    logger.info(f"================> Started query {query}")
+    logger.info("================> Started query %s", query)
 
     try:
         async with pool.acquire() as connection:
             await connection.execute(query)
-            logger.info(f"Execute query: {query}")
-    except Exception as ex:
-        logger.error("Exception in run_query_in_pool:\n" + exception_helper())
-        raise PgAnonError(ErrorCode.DB_QUERY_FAILED, f"Can't execute query: {query}")
+            logger.info("Execute query: %s", query)
+    except Exception as exc:
+        logger.exception("Exception in run_query_in_pool")
+        raise PgAnonError(ErrorCode.DB_QUERY_FAILED, f"Can't execute query: {query}") from exc
 
-    logger.info(f"<================ Finished query {query}")
+    logger.info("<================ Finished query %s", query)
 
 
-async def get_pg_version(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS):
+async def get_pg_version(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS):
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     pg_version = await db_conn.fetchval("select version()")
     await db_conn.close()
@@ -708,24 +695,24 @@ async def check_required_connections(
         )
 
 
-async def get_dump_query(
+async def get_dump_query(  # noqa: C901, PLR0912
         ctx: Context,
         table_schema: str,
         table_name: str,
-        table_rule: Optional[Dict] = None,
+        table_rule: dict | None = None,
         nulls_last: bool = False,
-        files: Optional[Dict] = None
+        files: dict | None = None
 ):
     table_name_full = f'"{table_schema}"."{table_name}"'
 
     # black list has the highest priority for pg_dump / pg_restore
     if ctx.black_listed_tables and (table_schema, table_name) in ctx.black_listed_tables:
-        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: %s", table_name_full)
         return None
 
     # white list has the second priority for pg_dump / pg_restore
     if ctx.white_listed_tables and (table_schema, table_name) not in ctx.white_listed_tables:
-        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: %s", table_name_full)
         return None
 
     # dictionary_exclude has third priority
@@ -737,10 +724,10 @@ async def get_dump_query(
         )
 
         if exclude_rule is not None and table_rule is None:
-            ctx.logger.info("Skipping: " + str(table_name_full))
+            ctx.logger.info("Skipping: %s", table_name_full)
             return None
 
-    hashed_name = hashlib.md5(
+    hashed_name = hashlib.md5(  # noqa: S324
         (table_schema + "_" + table_name).encode()
     ).hexdigest()
 
@@ -755,54 +742,51 @@ async def get_dump_query(
             query = table_rule["raw_sql"] + " " + ctx.validate_limit
             ctx.logger.info(str(query))
             return query
-        else:
-            query = table_rule["raw_sql"]
-            return query
-    else:
-        # the table is transferred with the specific fields for anonymization or transferred "as is"
-        fields_list = await get_fields_list(
-            connection_params=ctx.connection_params,
-            server_settings=ctx.server_settings,
-            table_schema=table_schema,
-            table_name=table_name
-        )
+        return table_rule["raw_sql"]
+    # the table is transferred with the specific fields for anonymization or transferred "as is"
+    fields_list = await get_fields_list(
+        connection_params=ctx.connection_params,
+        server_settings=ctx.server_settings,
+        table_schema=table_schema,
+        table_name=table_name
+    )
 
-        fields = []
+    fields = []
 
-        for cnt, column_info in enumerate(fields_list):
-            column_name = column_info["column_name"]
-            udt_name = column_info["udt_name"]
-            field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
+    for column_info in fields_list:
+        column_name = column_info["column_name"]
+        udt_name = column_info["udt_name"]
+        field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
 
-            if column_info["is_generated"] == 'ALWAYS':
-                continue
+        if column_info["is_generated"] == "ALWAYS":
+            continue
 
-            if field_anon_rule:
-                if field_anon_rule.find("SQL:") == 0:
-                    fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
-                else:
-                    fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
+        if field_anon_rule:
+            if field_anon_rule.find("SQL:") == 0:
+                fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
             else:
-                # field "as is"
-                fields.append(f'"{column_name}" as "{column_name}"')
+                fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
+        else:
+            # field "as is"
+            fields.append(f'"{column_name}" as "{column_name}"')
 
-        fields_expr = ',\n'.join(fields)
-        query = f"SELECT {fields_expr}\nFROM {table_name_full}"
-        if sql_condition := table_rule and table_rule.get('sql_condition'):
-            condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
-            query += f"\nWHERE {condition}"
+    fields_expr = ",\n".join(fields)
+    query = f"SELECT {fields_expr}\nFROM {table_name_full}"
+    if sql_condition := table_rule and table_rule.get("sql_condition"):
+        condition = re.sub(r"^\s*where\b\s*", "", sql_condition, flags=re.IGNORECASE)
+        query += f"\nWHERE {condition}"
 
-        if (ctx.options.dbg_stage_1_validate_dict
-                or ctx.options.dbg_stage_2_validate_data
-                or ctx.options.dbg_stage_3_validate_full):
-            query += f" {ctx.validate_limit}"
+    if (ctx.options.dbg_stage_1_validate_dict
+            or ctx.options.dbg_stage_2_validate_data
+            or ctx.options.dbg_stage_3_validate_full):
+        query += f" {ctx.validate_limit}"
 
-        if nulls_last:
-            ordering = ", ".join([
-                f'"{field["column_name"]}"' + ' NULLS LAST' for field in fields_list
-                if field["is_nullable"].lower() == "yes"
-            ])
-            if ordering:
-                query += f" ORDER BY {ordering}"
+    if nulls_last:
+        ordering = ", ".join([
+            f'"{field["column_name"]}"' + " NULLS LAST" for field in fields_list
+            if field["is_nullable"].lower() == "yes"
+        ])
+        if ordering:
+            query += f" ORDER BY {ordering}"
 
-        return query
+    return query

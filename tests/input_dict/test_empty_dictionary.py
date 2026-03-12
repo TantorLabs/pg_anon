@@ -1,3 +1,1 @@
-{
-	"dictionary": []
-}
+{"dictionary": []}

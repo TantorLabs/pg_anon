@@ -1,1 +1,1 @@
-from .view_fields import ViewFieldsRunner
+from .view_fields import ViewFieldsRunner as ViewFieldsRunner

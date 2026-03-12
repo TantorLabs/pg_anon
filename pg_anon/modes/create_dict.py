@@ -5,21 +5,32 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import List, Dict, Optional
 
 from aioprocessing import AioQueue
 from asyncpg import Connection
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
-from pg_anon.common.db_utils import get_scan_fields_list, exec_data_scan_func_query, create_pool, \
-    create_connection, check_required_connections, exec_data_scan_func_per_field_query
+from pg_anon.common.db_utils import (
+    check_required_connections,
+    create_connection,
+    create_pool,
+    exec_data_scan_func_per_field_query,
+    exec_data_scan_func_query,
+    get_scan_fields_list,
+)
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.multiprocessing_utils import init_process
-from pg_anon.common.utils import (chunkify, exception_helper, setof_to_list, get_dict_rule_for_table,
-                                  save_dicts_info_file, safe_compile, get_base_field_type)
+from pg_anon.common.utils import (
+    chunkify,
+    get_base_field_type,
+    get_dict_rule_for_table,
+    safe_compile,
+    save_dicts_info_file,
+    setof_to_list,
+)
 from pg_anon.context import Context
 
 
@@ -27,88 +38,86 @@ class CreateDictMode:
     def __init__(self, context: Context):
         self.context = context
 
-    def _check_field_match_by_rule(self, field: Dict, rule: Dict) -> bool:
+    def _check_field_match_by_rule(self, field: dict, rule: dict) -> bool:
         schema_matched = False
         table_matched = False
         field_matched = False
 
         if "schema" in rule and field["nspname"] == rule["schema"]:
-                schema_matched = True
+            schema_matched = True
         elif "schema_mask" in rule:
-            if rule["schema_mask"] == "*":
-                schema_matched = True
-            elif re.search(safe_compile(rule["schema_mask"]), field["nspname"]) is not None:
+            if rule["schema_mask"] == "*" or re.search(safe_compile(rule["schema_mask"]), field["nspname"]) is not None:
                 schema_matched = True
         else:
             # Required schema or schema_mask
             return False
 
         if "table" not in rule:
-            if "table_mask" not in rule:
+            if (
+                "table_mask" not in rule
+                or rule["table_mask"] == "*"
+                or re.search(safe_compile(rule["table_mask"]), field["relname"]) is not None
+            ):
                 table_matched = True
-            else:
-                if rule["table_mask"] == "*":
-                    table_matched = True
-                elif re.search(safe_compile(rule["table_mask"]), field["relname"]) is not None:
-                    table_matched = True
         elif field["relname"] == rule["table"]:
             table_matched = True
 
-        if "fields" not in rule:
-            field_matched = True
-        elif field["column_name"] in rule["fields"]:
+        if "fields" not in rule or field["column_name"] in rule["fields"]:
             field_matched = True
 
-        if schema_matched and table_matched and field_matched:
-            return True
+        return bool(schema_matched and table_matched and field_matched)
 
-        return False
-
-    def _check_not_skip_fields(self, field: Dict) -> bool:
+    def _check_not_skip_fields(self, field: dict) -> bool:
         for rule in self.context.meta_dictionary_obj["skip_rules"]:
             if self._check_field_match_by_rule(field=field, rule=rule):
-                self.context.logger.debug(f"------> Field {field['nspname']}.{field['relname']}.{field['column_name']} skipped by rule {rule}")
+                self.context.logger.debug(
+                    "------> Field %s.%s.%s skipped by rule %s",
+                    field["nspname"], field["relname"], field["column_name"], rule,
+                )
                 return False
 
         return True
 
-    def _check_include_fields(self, field: Dict) -> bool:
+    def _check_include_fields(self, field: dict) -> bool:
         if not self.context.meta_dictionary_obj["include_rules"]:
             return True
 
         for rule in self.context.meta_dictionary_obj["include_rules"]:
             if self._check_field_match_by_rule(field=field, rule=rule):
-                self.context.logger.debug(f"------> Field {field['nspname']}.{field['relname']}.{field['column_name']} included by rule {rule}")
+                self.context.logger.debug(
+                    "------> Field %s.%s.%s included by rule %s",
+                    field["nspname"], field["relname"], field["column_name"], rule,
+                )
                 return True
 
         return False
 
-    async def _get_fields_for_scan(self) -> Dict[str, FieldInfo]:
-        """
-        Get scanning fields for create dictionary mode
+    async def _get_fields_for_scan(self) -> dict[str, FieldInfo]:
+        """Get scanning fields for create dictionary mode
         :return: dict of fields with key by obj_id for create dictionary mode
         """
-        fields_list = await get_scan_fields_list(connection_params=self.context.connection_params, server_settings=self.context.server_settings)
+        fields_list = await get_scan_fields_list(
+            connection_params=self.context.connection_params, server_settings=self.context.server_settings
+        )
 
         return {
-            field['obj_id']: FieldInfo(**field) for field in fields_list
+            field["obj_id"]: FieldInfo(**field)
+            for field in fields_list
             if self._check_include_fields(field) and self._check_not_skip_fields(field)
         }
 
-    def _scan_fields_by_names(self, fields_info: Dict[str, FieldInfo]):
-        """
-        Scanning fields by names and removes matches according to dict rules
+    def _scan_fields_by_names(self, fields_info: dict[str, FieldInfo]):  # noqa: C901, PLR0912
+        """Scanning fields by names and removes matches according to dict rules
 
         Priorities of rules:
             - prepared-sens-dict-file
             - meta-dict-file
             - prepared-no-sens-dict-file
         """
-
         for obj_id, field_info in fields_info.copy().items():
             matched: bool = False
-            include_rule: Optional[Dict] = None
-            exclude_rule: Optional[Dict] = None
+            include_rule: dict | None = None
+            exclude_rule: dict | None = None
 
             if self.context.prepared_dictionary_obj.get("dictionary"):
                 include_rule = get_dict_rule_for_table(
@@ -127,18 +136,20 @@ class CreateDictMode:
             # include_rule + has field in include_rule => sensitive field
             # not include_rule + exclude_rule => not sensitive field
             # not include_rule + not exclude_rule => unknown. Go to next rules priority -> check by meta-dict
-            if include_rule and field_info.column_name in include_rule['fields']:
+            if include_rule and field_info.column_name in include_rule["fields"]:
                 self.context.logger.debug(
-                    f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{include_rule}"'
+                    '------> Field %s.%s.%s is SENSITIVE by rule "%s"',
+                    field_info.nspname, field_info.relname, field_info.column_name, include_rule,
                 )
                 del fields_info[obj_id]
-                field_info.rule = include_rule['fields'][field_info.column_name]
+                field_info.rule = include_rule["fields"][field_info.column_name]
                 self.context.create_dict_sens_matches[obj_id] = field_info
                 matched = True
 
             elif exclude_rule:
                 self.context.logger.debug(
-                    f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{exclude_rule}"'
+                    '------> Field %s.%s.%s is INSENSITIVE by rule "%s"',
+                    field_info.nspname, field_info.relname, field_info.column_name, exclude_rule,
                 )
                 del fields_info[obj_id]
                 self.context.create_dict_no_sens_matches[obj_id] = field_info
@@ -151,7 +162,8 @@ class CreateDictMode:
                 if rule == field_info.column_name:
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
+                            '------> Field %s.%s.%s is SENSITIVE by rule "%s"',
+                            field_info.nspname, field_info.relname, field_info.column_name, rule,
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_sens_matches[obj_id] = field_info
@@ -165,7 +177,8 @@ class CreateDictMode:
                 if re.search(rule, field_info.column_name) is not None:
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by rule "{rule}"'
+                            '------> Field %s.%s.%s is SENSITIVE by rule "%s"',
+                            field_info.nspname, field_info.relname, field_info.column_name, rule,
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_sens_matches[obj_id] = field_info
@@ -176,32 +189,29 @@ class CreateDictMode:
                 continue
 
             for rule in self.context.meta_dictionary_obj["no_sens_dictionary"]:
-                if (rule['schema'] == field_info.nspname and
-                    rule['table'] == field_info.relname and
-                    field_info.column_name in rule['fields']
+                if (
+                    rule["schema"] == field_info.nspname
+                    and rule["table"] == field_info.relname
+                    and field_info.column_name in rule["fields"]
                 ):
                     if obj_id in fields_info:
                         self.context.logger.debug(
-                            f'------> Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is INSENSITIVE by rule "{rule}"'
+                            '------> Field %s.%s.%s is INSENSITIVE by rule "%s"',
+                            field_info.nspname, field_info.relname, field_info.column_name, rule,
                         )
                         del fields_info[obj_id]
                         self.context.create_dict_no_sens_matches[obj_id] = field_info
                     break
 
-    def _check_data_by_constants(
-            self,
-            name: str,
-            dictionary_obj: Dict,
-            field_info: FieldInfo,
-            fld_data: List
-    ) -> bool:
+    def _check_data_by_constants(self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list) -> bool:
         words = dictionary_obj["data_const"]["constants"]["words"]
         phrases = dictionary_obj["data_const"]["constants"]["phrases"]
         if not words and not phrases:
             return False
 
         self.context.logger.debug(
-            f'========> Process[{name}]: checking by constants data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: checking by constants data of field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
 
         for value in fld_data:
@@ -211,34 +221,34 @@ class CreateDictMode:
             for word in value.split():
                 if len(word) >= self.context.data_const_constants_min_length and word.lower() in words:
                     self.context.logger.debug(
-                        f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by constant {word}'
+                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
+                        name, field_info.nspname, field_info.relname, field_info.column_name, word,
                     )
                     return True
 
             for phrase in phrases:
                 if phrase in value.lower():
                     self.context.logger.debug(
-                        f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by constant {phrase}'
+                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
+                        name, field_info.nspname, field_info.relname, field_info.column_name, phrase,
                     )
                     return True
 
         self.context.logger.debug(
-            f'========> Process[{name}]: No one constants matched in data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: No one constants matched in data of field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
         return False
 
     def _check_data_by_partial_constants(
-            self,
-            name: str,
-            dictionary_obj: Dict,
-            field_info: FieldInfo,
-            fld_data: List
+        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
     ) -> bool:
         if not dictionary_obj["data_const"]["partial_constants"]:
             return False
 
         self.context.logger.debug(
-            f'========> Process[{name}]: checking by partial constants data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: checking by partial constants data of field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
 
         for value in fld_data:
@@ -249,39 +259,39 @@ class CreateDictMode:
             for partial_constant in dictionary_obj["data_const"]["partial_constants"]:
                 if partial_constant in lower_value:
                     self.context.logger.debug(
-                        f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by partial constant {partial_constant}'
+                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by partial constant %s",
+                        name, field_info.nspname, field_info.relname,
+                        field_info.column_name, partial_constant,
                     )
                     return True
 
         self.context.logger.debug(
-            f'========> Process[{name}]: No one partial constants matched in data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: No one partial constants matched in data of field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
         return False
 
-    async def _check_data_by_functions(
-            self,
-            connection: Connection,
-            name: str,
-            dictionary_obj: Dict,
-            field_info: FieldInfo,
-            fld_data: List
+    async def _check_data_by_functions(  # noqa: C901, PLR0912
+        self, connection: Connection, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
     ) -> bool:
         if not dictionary_obj["data_func"]:
             return False
 
         self.context.logger.debug(
-            f'========> Process[{name}]: checking by functions data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name} (type = {field_info.type})'
+            "========> Process[%s]: checking by functions data of field %s.%s.%s (type = %s)",
+            name, field_info.nspname, field_info.relname, field_info.column_name, field_info.type,
         )
 
         rules_by_type = dictionary_obj["data_func"].get(field_info.type, [])
         if not rules_by_type:
             rules_by_type = dictionary_obj["data_func"].get(get_base_field_type(field_info), [])
-        rules_for_anyelements = dictionary_obj["data_func"].get('anyelement', [])
+        rules_for_anyelements = dictionary_obj["data_func"].get("anyelement", [])
         data_func_rules = [*rules_by_type, *rules_for_anyelements]
 
         if not data_func_rules:
             self.context.logger.debug(
-                f'========> Process[{name}]: Not found data checking functions for field {field_info.nspname}.{field_info.relname}.{field_info.column_name} (type = {field_info.type})'
+                "========> Process[%s]: Not found data checking functions for field %s.%s.%s (type = %s)",
+                name, field_info.nspname, field_info.relname, field_info.column_name, field_info.type,
             )
             return False
 
@@ -293,19 +303,17 @@ class CreateDictMode:
             elif "scan_func" in rule:
                 scan_func_rules.append(rule)
             else:
-                self.context.logger.warn(
-                    f'========> Process[{name}]: Rule SKIPPED. Wrong data func rule: {rule}'
-                )
+                self.context.logger.warning("========> Process[%s]: Rule SKIPPED. Wrong data func rule: %s", name, rule)
 
         for rule in scan_func_per_field_rules:
             if await exec_data_scan_func_per_field_query(
-                    connection=connection,
-                    scan_func_per_field=rule["scan_func_per_field"],
-                    field_info=field_info
+                connection=connection, scan_func_per_field=rule["scan_func_per_field"], field_info=field_info
             ):
                 field_info.rule = rule["anon_func"]
                 self.context.logger.debug(
-                    f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func per field {rule["scan_func_per_field"]}'
+                    "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func per field %s",
+                    name, field_info.nspname, field_info.relname,
+                    field_info.column_name, rule["scan_func_per_field"],
                 )
                 return True
 
@@ -318,39 +326,35 @@ class CreateDictMode:
                     continue
 
                 if await exec_data_scan_func_query(
-                    connection=connection,
-                    scan_func=rule["scan_func"],
-                    value=value,
-                    field_info=field_info
+                    connection=connection, scan_func=rule["scan_func"], value=value, field_info=field_info
                 ):
                     matched_count += 1
 
                     if matched_count == rule_expected_matches_count:
                         field_info.rule = rule["anon_func"]
                         self.context.logger.debug(
-                            f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data scan func {rule["scan_func"]}'
+                            "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func %s",
+                            name, field_info.nspname, field_info.relname,
+                            field_info.column_name, rule["scan_func"],
                         )
                         return True
 
         self.context.logger.debug(
-            f'========> Process[{name}]: No one data functions found sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: No one data functions found sensitive data in field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
 
         return False
 
     def _check_data_by_regexp(
-            self,
-            name: str,
-            dictionary_obj: Dict,
-            create_dict_matches: List,
-            field_info: FieldInfo,
-            fld_data: List
+        self, name: str, dictionary_obj: dict, create_dict_matches: list, field_info: FieldInfo, fld_data: list
     ) -> bool:
         if field_info.obj_id in create_dict_matches:
             return False
 
         self.context.logger.debug(
-            f'========> Process[{name}]: checking by regexp data of field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: checking by regexp data of field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
 
         if dictionary_obj["data_regex"]["rules"]:
@@ -358,31 +362,39 @@ class CreateDictMode:
                 for rule in dictionary_obj["data_regex"]["rules"]:
                     if value is not None and re.search(rule, value) is not None:
                         self.context.logger.debug(
-                            f'========> Process[{name}]: Field {field_info.nspname}.{field_info.relname}.{field_info.column_name} is SENSITIVE by data_regex (regex={rule}; value={value})'
+                            "========> Process[%s]: Field %s.%s.%s is SENSITIVE"
+                            " by data_regex (regex=%s; value=%s)",
+                            name, field_info.nspname, field_info.relname,
+                            field_info.column_name, rule, value,
                         )
                         return True
 
         self.context.logger.debug(
-            f'========> Process[{name}]: No one regexp rules found sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name}'
+            "========> Process[%s]: No one regexp rules found sensitive data in field %s.%s.%s",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
         )
         return False
 
     async def _check_sensitive_data_in_fld(
-            self,
-            connection: Connection,
-            name: str,
-            dictionary_obj: Dict,
-            create_dict_matches: List,
-            field_info: FieldInfo,
-            fld_data: List
+        self,
+        connection: Connection,
+        name: str,
+        dictionary_obj: dict,
+        create_dict_matches: list,
+        field_info: FieldInfo,
+        fld_data: list,
     ) -> dict:
         if not fld_data:
             self.context.logger.debug(
-                f"---> Process[{name}]: Check sensitive skipped cause field {field_info.nspname}.{field_info.relname}.{field_info.column_name} has not data"
+                "---> Process[%s]: Check sensitive skipped cause field %s.%s.%s has not data",
+                name, field_info.nspname, field_info.relname, field_info.column_name,
             )
             return {}
 
-        self.context.logger.debug(f"---> Process[{name}]: Started check sensitive data in field - {field_info.nspname}.{field_info.relname}.{field_info.column_name}. ({len(fld_data)} values)")
+        self.context.logger.debug(
+            "---> Process[%s]: Started check sensitive data in field - %s.%s.%s. (%s values)",
+            name, field_info.nspname, field_info.relname, field_info.column_name, len(fld_data),
+        )
         result = {field_info.obj_id: field_info}
         matched = False
 
@@ -421,10 +433,16 @@ class CreateDictMode:
             matched = True
 
         if matched:
-            self.context.logger.debug(f"<--- Process[{name}]: Finished check sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name} - is SENSITIVE")
+            self.context.logger.debug(
+                "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is SENSITIVE",
+                name, field_info.nspname, field_info.relname, field_info.column_name,
+            )
             return result
 
-        self.context.logger.debug(f"<--- Process[{name}]: Finished check sensitive data in field {field_info.nspname}.{field_info.relname}.{field_info.column_name} - is INSENSITIVE")
+        self.context.logger.debug(
+            "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is INSENSITIVE",
+            name, field_info.nspname, field_info.relname, field_info.column_name,
+        )
         return {}
 
     def _field_can_be_sensitive_by_type(self, dictionary_obj, field_info: FieldInfo):
@@ -432,10 +450,7 @@ class CreateDictMode:
             return True
 
         base_field_type = get_base_field_type(field_info)
-        if base_field_type in dictionary_obj["sens_pg_types"]:
-            return True
-
-        return False
+        return base_field_type in dictionary_obj["sens_pg_types"]
 
     async def _scan_obj_func(
         self,
@@ -446,13 +461,16 @@ class CreateDictMode:
         dictionary_obj,
         scan_partial_rows,
     ):
+        field_full_name = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name}"
 
-        self.context.logger.debug(f"====>>> Process[{name}]: Started scan task for field {field_info.nspname}.{field_info.relname}.{field_info.column_name} ({field_info})")
+        self.context.logger.debug(
+            "====>>> Process[%s]: Started scan task for field %s (%s)", name, field_full_name, field_info
+        )
 
         start_t = time.time()
         if not self._field_can_be_sensitive_by_type(dictionary_obj, field_info):
             self.context.logger.debug(
-                f"Process[%s]: Field {field_info.nspname}.{field_info.nspname}.{field_info.column_name} is INSENSITIVE by type {field_info.type}"
+                "Process[%s]: Field %s is INSENSITIVE by type %s", name, field_full_name, field_info.type
             )
             return None
 
@@ -465,15 +483,13 @@ class CreateDictMode:
                 table=field_info.relname,
             )
             if rule:
-                condition = rule.get('sql_condition')
+                condition = rule.get("sql_condition")
 
         try:
             async with pool.acquire() as db_conn:
                 if scan_mode == ScanMode.PARTIAL:
                     query = get_data_from_field_query(
-                        field_info=field_info,
-                        limit=scan_partial_rows,
-                        condition=condition
+                        field_info=field_info, limit=scan_partial_rows, condition=condition
                     )
                     fld_data = await db_conn.fetch(query)
                     res = await self._check_sensitive_data_in_fld(
@@ -485,11 +501,8 @@ class CreateDictMode:
                         fld_data=setof_to_list(fld_data),
                     )
                 elif scan_mode == ScanMode.FULL:
-                    async with db_conn.transaction(isolation='repeatable_read', readonly=True):
-                        query = get_data_from_field_query(
-                            field_info=field_info,
-                            condition=condition
-                        )
+                    async with db_conn.transaction(isolation="repeatable_read", readonly=True):
+                        query = get_data_from_field_query(field_info=field_info, condition=condition)
                         cursor = await db_conn.cursor(query)
                         next_rows = True
                         while next_rows:
@@ -506,36 +519,37 @@ class CreateDictMode:
                                 break
 
         except Exception as ex:
-            field = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name} (type={field_info.type})"
-            self.context.logger.error(f"Exception in scan_obj_func:\n{field}\n" + exception_helper())
-            raise PgAnonError(ErrorCode.SCAN_FIELD_ERROR, "Can't execute task for field %s. Error: %s" % (field, ex.message))
+            field = f"{field_full_name} (type={field_info.type})"
+            self.context.logger.exception("Exception in scan_obj_func:\n%s", field)
+            raise PgAnonError(
+                ErrorCode.SCAN_FIELD_ERROR, f"Can't execute task for field {field}. Error: {ex.message}"
+            ) from ex
 
         end_t = time.time()
-        if end_t - start_t > 10:
+        if end_t - start_t > 10:  # noqa: PLR2004
             self.context.logger.debug(
-                "Process[%s]: scan_obj_func took %s sec. Task %s"
-                % (name, str(round(end_t - start_t, 2)), str(field_info))
+                "Process[%s]: scan_obj_func took %s sec. Task %s",
+                name, round(end_t - start_t, 2), field_info
             )
 
         self.context.logger.debug(
-            "<<<<==== Process[%s]: Found %s items(s) Finished task %s "
-            % (name, str(len(res)), str(field_info))
+            "<<<<==== Process[%s]: Found %s items(s) Finished task %s ", name, len(res), field_info
         )
         return res
 
-    def _process_create_dict(
+    def _process_create_dict(  # noqa: C901, PLR0915
         self,
         name: str,
         queue: AioQueue,
-        fields_info_chunk: List[FieldInfo],
-        stop_event: Optional[multiprocessing.Event] = None
+        fields_info_chunk: list[FieldInfo],
+        stop_event: multiprocessing.Event,
     ):
         tasks_res = []
 
         status_ratio = 10
-        if len(fields_info_chunk) > 1000:
+        if len(fields_info_chunk) > 1000:  # noqa: PLR2004
             status_ratio = 100
-        if len(fields_info_chunk) > 50000:
+        if len(fields_info_chunk) > 50000:  # noqa: PLR2004
             status_ratio = 1000
 
         def _should_stop():
@@ -545,7 +559,7 @@ class CreateDictMode:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
             if _should_stop():
-                self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                self.context.logger.info("Process [%s] received stop signal, terminating", name)
                 return None
 
             for done_task in done:
@@ -559,21 +573,17 @@ class CreateDictMode:
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
                 min_size=self.context.options.db_connections_per_process,
-                max_size=self.context.options.db_connections_per_process
+                max_size=self.context.options.db_connections_per_process,
             )
             tasks = set()
 
-            self.context.logger.info(
-                "============> Started collecting list_tagged_fields in mode: create-dict"
-            )
-            self.context.logger.info(
-                "<============ Finished collecting list_tagged_fields in mode: create-dict"
-            )
+            self.context.logger.info("============> Started collecting list_tagged_fields in mode: create-dict")
+            self.context.logger.info("<============ Finished collecting list_tagged_fields in mode: create-dict")
 
             try:
                 for idx, field_info in enumerate(fields_info_chunk):
                     if _should_stop():
-                        self.context.logger.info(f"Process [{name}] received stop signal, terminating")
+                        self.context.logger.info("Process [%s] received stop signal, terminating", name)
                         return
 
                     while len(tasks) >= self.context.options.db_connections_per_process:
@@ -596,7 +606,7 @@ class CreateDictMode:
 
                     if idx % status_ratio == 0:
                         progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
-                        self.context.logger.info(f"Process [{name}] Progress {progress_percents}%")
+                        self.context.logger.info("Process [%s] Progress %d%", name, progress_percents)
 
                 while tasks:
                     tasks = await _wait_and_check(tasks)
@@ -611,21 +621,18 @@ class CreateDictMode:
             asyncio.set_event_loop(loop)
             loop.run_until_complete(_process_run())
 
-            tasks_res_final = []
-            for task in tasks_res:
-                if task.result() is not None and len(task.result()) > 0:
-                    tasks_res_final.append(task.result())
+            tasks_res_final = [r for task in tasks_res if (r := task.result()) is not None and len(r) > 0]
 
             queue.put(tasks_res_final)
         except Exception as ex:
-            self.context.logger.error(f"================> Process [{name}]: {ex}")
+            self.context.logger.exception("================> Process [%s]", name)
             queue.put([ex])
         finally:
-            self.context.logger.debug(f"================> Process [{name}] closing")
+            self.context.logger.debug("================> Process [%s] closing", name)
             loop.close()
             queue.put(None)  # Shut down the worker
             queue.close()
-            self.context.logger.debug(f"================> Process [{name}] closed")
+            self.context.logger.debug("================> Process [%s] closed", name)
 
     def _prepare_sens_dict_rule(self, meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
         hash_func = field_info.rule
@@ -637,7 +644,7 @@ class CreateDictMode:
             elif base_field_type in meta_dictionary_obj["funcs"]:
                 hash_func = meta_dictionary_obj["funcs"][base_field_type]
             else:
-                hash_func = meta_dictionary_obj["funcs"].get('default', DEFAULT_HASH_FUNC)
+                hash_func = meta_dictionary_obj["funcs"].get("default", DEFAULT_HASH_FUNC)
 
         if hash_func.find("%s") != -1:
             hash_func = hash_func % field_info.column_name
@@ -649,9 +656,7 @@ class CreateDictMode:
                 "fields": {field_info.column_name: hash_func},
             }
         else:
-            prepared_sens_dict_rules[field_info.tbl_id]["fields"].update(
-                {field_info.column_name: hash_func}
-            )
+            prepared_sens_dict_rules[field_info.tbl_id]["fields"].update({field_info.column_name: hash_func})
         return prepared_sens_dict_rules
 
     def _prepare_no_sens_dict_rule(self, field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
@@ -665,12 +670,14 @@ class CreateDictMode:
             prepared_no_sens_dict_rules[field_info.tbl_id]["fields"].append(field_info.column_name)
         return prepared_no_sens_dict_rules
 
-    async def _create_dict(self):
-        fields_info: Dict[str, FieldInfo] = await self._get_fields_for_scan()
+    async def _create_dict(self):  # noqa: C901, PLR0912
+        fields_info: dict[str, FieldInfo] = await self._get_fields_for_scan()
         if not fields_info:
             raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_SCAN, "No objects for scan!")
 
-        self._scan_fields_by_names(fields_info)  # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
+        self._scan_fields_by_names(
+            fields_info
+        )  # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
 
         # create output dict
         prepared_sens_dict_rules = {}
@@ -742,32 +749,28 @@ class CreateDictMode:
         output_dir = output_sens_dict_filename.parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(output_sens_dict_filename, "w", encoding='utf-8') as file:
+        with output_sens_dict_filename.open("w", encoding="utf-8") as file:
             file.write(json.dumps(output_sens_dict, indent=4, ensure_ascii=False))
 
         if need_prepare_no_sens_dict:
             prepared_no_sens_dict_rules = {}
 
             for field_info in self.context.create_dict_no_sens_matches.values():
-                prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(
-                    field_info, prepared_no_sens_dict_rules
-                )
+                prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(field_info, prepared_no_sens_dict_rules)
 
             for field_info in fields_info.values():
-                prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(
-                    field_info, prepared_no_sens_dict_rules
-                )
+                prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(field_info, prepared_no_sens_dict_rules)
 
             output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}
             output_no_sens_dict_file_name = Path.cwd() / self.context.options.output_no_sens_dict_file
-            with open(output_no_sens_dict_file_name, "w", encoding='utf-8') as file:
+            with output_no_sens_dict_file_name.open("w", encoding="utf-8") as file:
                 file.write(json.dumps(output_no_sens_dict, indent=4, ensure_ascii=False))
 
     def _save_input_dicts_to_run_dir(self):
         if not self.context.options.save_dicts:
             return
 
-        input_dicts_dir = Path(self.context.options.run_dir) / 'input'
+        input_dicts_dir = Path(self.context.options.run_dir) / "input"
         input_dicts_dir.mkdir(parents=True, exist_ok=True)
 
         input_dict_files = self.context.options.meta_dict_files
@@ -783,24 +786,23 @@ class CreateDictMode:
         if not self.context.options.save_dicts:
             return
 
-        output_dicts_dir = Path(self.context.options.run_dir) / 'output'
+        output_dicts_dir = Path(self.context.options.run_dir) / "output"
         output_dicts_dir.mkdir(parents=True, exist_ok=True)
 
         shutil.copy2(
             self.context.options.output_sens_dict_file,
-            output_dicts_dir / Path(self.context.options.output_sens_dict_file).name
+            output_dicts_dir / Path(self.context.options.output_sens_dict_file).name,
         )
 
         if self.context.options.output_no_sens_dict_file:
             shutil.copy2(
                 self.context.options.output_no_sens_dict_file,
-                output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name
+                output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name,
             )
 
     async def _check_available_connections(self):
         connection = await create_connection(
-            self.context.connection_params,
-            server_settings=self.context.server_settings
+            self.context.connection_params, server_settings=self.context.server_settings
         )
         try:
             required_connections = self.context.options.processes * self.context.options.db_connections_per_process
@@ -822,8 +824,6 @@ class CreateDictMode:
 
             self._save_output_dicts_to_run_dir()
             self.context.logger.info("<------------- Finished create_dict mode")
-        except Exception as ex:
-            raise ex
         finally:
             if self.context.options.save_dicts:
                 save_dicts_info_file(self.context.options)

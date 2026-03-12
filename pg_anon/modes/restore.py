@@ -2,28 +2,35 @@ import asyncio
 import gzip
 import json
 import os
-import shlex
 import re
+import shlex
 import shutil
 import subprocess
 from copy import copy
 from pathlib import Path
-from typing import Optional, List
 
 import asyncpg
 from asyncpg import Connection
 
-from pg_anon.common.db_queries import get_check_constraint_query, get_sequences_max_value_init_query, get_db_params
-from pg_anon.common.db_utils import create_connection, create_pool, check_db_is_empty, run_query_in_pool, \
-    get_available_extensions_map, check_required_connections, get_available_schemas
+from pg_anon.common.db_queries import get_check_constraint_query, get_db_params, get_sequences_max_value_init_query
+from pg_anon.common.db_utils import (
+    check_db_is_empty,
+    check_required_connections,
+    create_connection,
+    create_pool,
+    get_available_extensions_map,
+    get_available_schemas,
+    run_query_in_pool,
+)
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
-    exception_helper,
     get_major_version,
     get_pg_util_version,
-    pretty_size, save_dicts_info_file, resolve_dependencies
+    pretty_size,
+    resolve_dependencies,
+    save_dicts_info_file,
 )
 from pg_anon.context import Context
 
@@ -42,19 +49,19 @@ class RestoreMode:
     input_dir: Path
 
     metadata: Metadata
-    metadata_file_name: str = 'metadata.json'
+    metadata_file_name: str = "metadata.json"
     metadata_file_path: Path
 
-    _toc_list_pre_data_file_name: str = 'toc_pre_data_filtered.list'
-    _toc_list_pre_data_file_path: Optional[Path] = None
-    _toc_list_post_data_file_name: str = 'toc_post_data_filtered.list'
-    _toc_list_post_data_file_path: Optional[Path] = None
+    _toc_list_pre_data_file_name: str = "toc_pre_data_filtered.list"
+    _toc_list_pre_data_file_path: Path | None = None
+    _toc_list_post_data_file_name: str = "toc_post_data_filtered.list"
+    _toc_list_post_data_file_path: Path | None = None
 
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
     _skip_post_data_restore: bool = False
 
-    _restored_schemas: List[str]
+    _restored_schemas: list[str]
 
     @property
     def _whitelist_active(self) -> bool:
@@ -71,18 +78,16 @@ class RestoreMode:
 
         self._load_metadata()
 
-        self._db_must_be_empty = (
-                self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
-                and not (self.context.options.clean_db or self.context.options.drop_db)
+        self._db_must_be_empty = self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE) and not (
+            self.context.options.clean_db or self.context.options.drop_db
         )
         self._skip_pre_data_restore = (
-                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
-                or self.metadata.dbg_stage_2_validate_data
+            self.context.options.mode == AnonMode.SYNC_DATA_RESTORE or self.metadata.dbg_stage_2_validate_data
         )
         self._skip_post_data_restore = (
-                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
-                or self.metadata.dbg_stage_2_validate_data
-                or self.metadata.dbg_stage_3_validate_full
+            self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
+            or self.metadata.dbg_stage_2_validate_data
+            or self.metadata.dbg_stage_3_validate_full
         )
 
     def _load_metadata(self):
@@ -92,7 +97,7 @@ class RestoreMode:
 
     def _generate_analyze_queries(self):
         analyze_queries = []
-        for file_name, target in self.metadata.files.items():
+        for target in self.metadata.files.values():
             schema = target["schema"]
             table = target["table"]
             if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
@@ -101,9 +106,7 @@ class RestoreMode:
             if self._whitelist_active and (schema, table) not in self.context.white_listed_tables:
                 continue
 
-            analyze_queries.append(
-                f'analyze "{schema}"."{table}"'
-            )
+            analyze_queries.append(f'analyze "{schema}"."{table}"')
         return analyze_queries
 
     def _check_utils_version_for_dump(self):
@@ -119,13 +122,13 @@ class RestoreMode:
         if target_postgres_version < source_postgres_version:
             raise PgAnonError(
                 ErrorCode.VERSION_INCOMPATIBLE,
-                f"Target PostgreSQL major version {target_postgres_version} is below than source {source_postgres_version}!"
+                f"Target PostgreSQL major version {target_postgres_version} is below than source {source_postgres_version}!",
             )
 
         if target_pg_restore_version < source_pg_dump_version:
             raise PgAnonError(
                 ErrorCode.VERSION_INCOMPATIBLE,
-                f"pg_restore major version {target_pg_restore_version} is below than source pg_dump version {source_pg_dump_version}!"
+                f"pg_restore major version {target_pg_restore_version} is below than source pg_dump version {source_pg_dump_version}!",
             )
 
     async def _check_db_is_empty(self, connection: Connection):
@@ -133,7 +136,9 @@ class RestoreMode:
             return
 
         if not await check_db_is_empty(connection=connection):
-            raise PgAnonError(ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!")
+            raise PgAnonError(
+                ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!"
+            )
 
     async def _check_free_disk_space(self, connection: Connection):
         data_directory_location = await connection.fetchval(
@@ -147,90 +152,110 @@ class RestoreMode:
         free_disk_space = pretty_size(disk_size.free)
         required_disk_space = pretty_size(int(self.metadata.total_tables_size) * 1.5)
 
-        self.context.logger.info(f"Free disk space: {free_disk_space}")
-        self.context.logger.info(f"Required disk space: {required_disk_space}")
+        self.context.logger.info("Free disk space: %s", free_disk_space)
+        self.context.logger.info("Required disk space: %s", required_disk_space)
 
         if disk_size.free < int(self.metadata.total_tables_size) * 1.5:
             raise PgAnonError(
                 ErrorCode.INSUFFICIENT_DISK_SPACE,
-                f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}"
+                f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}",
             )
 
-    def _make_filtered_toc_list(self):
+    def _make_filtered_toc_list(self):  # noqa: C901, PLR0912, PLR0915
         whitelist = []
         blacklist = []
 
         for schema, table in self.context.black_listed_tables:
             # Make blacklist for TABLE, DEFAULT, TRIGGER, RULE
-            blacklist.append(re.compile(fr".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
+            blacklist.append(re.compile(rf".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
             # Update blacklist for CONSTRAINT
-            blacklist.append(re.compile(fr"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
+            blacklist.append(re.compile(rf"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
 
         for schema, table in self.context.white_listed_tables:
             # Make whitelist for TABLE, DEFAULT, CONSTRAINT, FK CONSTRAINT, TRIGGER, RULE
-            whitelist.append(re.compile(fr".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
+            whitelist.append(re.compile(rf".*(TABLE|DEFAULT|TRIGGER|RULE) {re.escape(schema)} {re.escape(table)}"))
             # Update whitelist for CONSTRAINT
-            whitelist.append(re.compile(fr"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
+            whitelist.append(re.compile(rf"(?<!FK )CONSTRAINT {re.escape(schema)} {re.escape(table)}"))
 
         if self.metadata.sequences_last_values:
             for seq in self.metadata.sequences_last_values.values():
                 # Update blacklist for SEQUENCE, SEQUENCE OWNED BY
-                if seq['is_excluded'] or (seq['schema'], seq['table']) in self.context.black_listed_tables:
+                if seq["is_excluded"] or (seq["schema"], seq["table"]) in self.context.black_listed_tables:
                     blacklist.append(
-                        re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                        re.compile(rf".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
                     )
 
                 # Update whitelist for SEQUENCE, SEQUENCE OWNED BY
-                if not seq['is_excluded'] and (seq['schema'], seq['table']) in self.context.white_listed_tables:
+                if not seq["is_excluded"] and (seq["schema"], seq["table"]) in self.context.white_listed_tables:
                     whitelist.append(
-                        re.compile(fr".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
+                        re.compile(rf".*SEQUENCE.*{re.escape(seq['schema'])} {re.escape(seq['seq_name'])}")
                     )
 
         if self.metadata.indexes:
             for index in self.metadata.indexes.values():
                 # Update blacklist for INDEX
-                if index['is_excluded'] or (index['schema'], index['table']) in self.context.black_listed_tables:
+                if index["is_excluded"] or (index["schema"], index["table"]) in self.context.black_listed_tables:
                     blacklist.append(
-                        re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                        re.compile(rf".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
                     )
 
                 # Update whitelist for INDEX
-                if not index['is_excluded'] and (index['schema'], index['table']) in self.context.white_listed_tables:
+                if not index["is_excluded"] and (index["schema"], index["table"]) in self.context.white_listed_tables:
                     whitelist.append(
-                        re.compile(fr".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                        re.compile(rf".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
                     )
 
         if self.metadata.views:
             for view in self.metadata.views.values():
                 # Update blacklist for VIEW, MATERIALIZED VIEW
-                if view['is_excluded'] or (view['table_schema'], view['table_name']) in self.context.black_listed_tables:
+                if (
+                    view["is_excluded"]
+                    or (view["table_schema"], view["table_name"]) in self.context.black_listed_tables
+                ):
                     blacklist.append(
-                        re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                        re.compile(rf".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
                     )
 
                 # Update whitelist for VIEW, MATERIALIZED VIEW
-                if not view['is_excluded'] and (view['table_schema'], view['table_name']) in self.context.white_listed_tables:
+                if (
+                    not view["is_excluded"]
+                    and (view["table_schema"], view["table_name"]) in self.context.white_listed_tables
+                ):
                     whitelist.append(
-                        re.compile(fr".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
+                        re.compile(rf".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
                     )
 
         if self.metadata.constraints:
             for constraint in self.metadata.constraints.values():
-                constraint_table_to = (constraint['table_schema_to'], constraint['table_name_to'])
-                constraint_table_from = (constraint['table_schema_from'], constraint['table_name_from'])
-                one_of_constraint_tables_in_black_list = constraint_table_to in self.context.black_listed_tables or constraint_table_from in self.context.black_listed_tables
-                if constraint['is_excluded'] or one_of_constraint_tables_in_black_list:
+                constraint_table_to = (constraint["table_schema_to"], constraint["table_name_to"])
+                constraint_table_from = (constraint["table_schema_from"], constraint["table_name_from"])
+                one_of_constraint_tables_in_black_list = (
+                    constraint_table_to in self.context.black_listed_tables
+                    or constraint_table_from in self.context.black_listed_tables
+                )
+                if constraint["is_excluded"] or one_of_constraint_tables_in_black_list:
                     # Update blacklist for FK CONSTRAINT
-                    blacklist.extend([
-                        re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
-                    ])
+                    blacklist.extend(
+                        [
+                            re.compile(
+                                rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}"
+                            )
+                        ]
+                    )
 
-                constraint_tables_both_in_white_list = constraint_table_to in self.context.white_listed_tables and constraint_table_from in self.context.white_listed_tables
-                if not constraint['is_excluded'] and constraint_tables_both_in_white_list:
+                constraint_tables_both_in_white_list = (
+                    constraint_table_to in self.context.white_listed_tables
+                    and constraint_table_from in self.context.white_listed_tables
+                )
+                if not constraint["is_excluded"] and constraint_tables_both_in_white_list:
                     # Update whitelist for FK CONSTRAINT
-                    whitelist.extend([
-                        re.compile(fr".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}")
-                    ])
+                    whitelist.extend(
+                        [
+                            re.compile(
+                                rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}"
+                            )
+                        ]
+                    )
 
         if self._restored_schemas:
             blacklist.extend([
@@ -265,24 +290,24 @@ class RestoreMode:
 
             proc = subprocess.Popen(command, stdout=subprocess.PIPE)
             toc_bytes, _ = proc.communicate()
-            toc_lines = toc_bytes.decode('utf-8', errors='replace')
-            with open(toc_file_path, "w", encoding="utf-8") as f:
+            toc_lines = toc_bytes.decode("utf-8", errors="replace")
+            with toc_file_path.open("w", encoding="utf-8") as f:
                 for toc_line in toc_lines.split("\n"):
-                    if toc_line.startswith(';'):
+                    if toc_line.startswith(";"):
                         continue
 
                     is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
                     if is_blacklisted:
-                        self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by blacklist - "{toc_line}" ')
+                        self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by blacklist - "%s" ', toc_line)
                         continue
 
                     is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)
                     is_allowed_custom_object = not has_custom_ddl and _CUSTOM_OBJECTS_TOC_RE.match(toc_line)
                     if is_skipped_by_whitelist and not is_allowed_custom_object:
-                        self.context.logger.debug(f'PARTIAL RESTORE MODE. TOC: Skip by whitelist - "{toc_line}" ')
+                        self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by whitelist - "%s" ', toc_line)
                         continue
 
-                    f.write(f'{toc_line}\n')
+                    f.write(f"{toc_line}\n")
 
     def _remove_toc_lists(self):
         if self.context.options.debug:
@@ -312,25 +337,29 @@ class RestoreMode:
             str((self.input_dir / section.replace("-", "_")).with_suffix(".backup")),
         ]
         if not self.context.options.db_host:
-            del command[command.index("-h"): command.index("-h") + 2]
+            del command[command.index("-h") : command.index("-h") + 2]
 
         if not self.context.options.db_user:
-            del command[command.index("-U"): command.index("-U") + 2]
+            del command[command.index("-U") : command.index("-U") + 2]
 
         if self.context.options.clean_db:
-            command.extend([
-                "--clean",
-                "--if-exists",
-            ])
+            command.extend(
+                [
+                    "--clean",
+                    "--if-exists",
+                ]
+            )
 
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
         if self._toc_list_pre_data_file_path:
-            command.extend([
-                '-L',
-                self._toc_list_pre_data_file_path if section == 'pre-data' else self._toc_list_post_data_file_path
-            ])
+            command.extend(
+                [
+                    "-L",
+                    self._toc_list_pre_data_file_path if section == "pre-data" else self._toc_list_post_data_file_path,
+                ]
+            )
 
         if self.context.options.pg_restore_options:
             command.extend(shlex.split(self.context.options.pg_restore_options))
@@ -340,7 +369,7 @@ class RestoreMode:
         # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
         # pg_restore put logs into stderr
         _, pg_restore_logs_bytes = proc.communicate()
-        pg_restore_logs = pg_restore_logs_bytes.decode('utf-8', errors='replace')
+        pg_restore_logs = pg_restore_logs_bytes.decode("utf-8", errors="replace")
 
         for log_line in pg_restore_logs.split("\n"):
             self.context.logger.info(log_line)
@@ -360,10 +389,10 @@ class RestoreMode:
             await connection.execute(query)
         else:
             for sequence_data in self.metadata.sequences_last_values.values():
-                if sequence_data['is_excluded']:
+                if sequence_data["is_excluded"]:
                     continue
 
-                sequence_relation = (sequence_data['schema'], sequence_data['table'])
+                sequence_relation = (sequence_data["schema"], sequence_data["table"])
 
                 if self.context.black_listed_tables and sequence_relation in self.context.black_listed_tables:
                     continue
@@ -394,14 +423,14 @@ class RestoreMode:
 
         schemas = set()
         schema_re = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+(\S+)")
-        for line in toc_bytes.decode('utf-8', errors='replace').split("\n"):
+        for line in toc_bytes.decode("utf-8", errors="replace").split("\n"):
             match = schema_re.match(line)
             if match:
                 schemas.add(match.group(1))
         return schemas
 
     async def _create_schemas_for_partial_mode(self, connection: Connection):
-        self._restored_schemas = list()
+        self._restored_schemas = []
 
         if self.metadata.partial_dump_schemas:
             self._restored_schemas = copy(self.metadata.partial_dump_schemas)
@@ -415,10 +444,10 @@ class RestoreMode:
 
         for schema in self._restored_schemas:
             query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
-            self.context.logger.info("PARTIAL RESTORE MODE: " + query)
+            self.context.logger.info("PARTIAL RESTORE MODE: %s", query)
             await connection.execute(query)
 
-    async def _create_extensions_for_partial_mode(self, connection: Connection):
+    async def _create_extensions_for_partial_mode(self, connection: Connection):  # noqa: C901, PLR0912
         if not self.metadata.extensions:
             return
 
@@ -426,29 +455,37 @@ class RestoreMode:
         available_schemas = await get_available_schemas(connection)
 
         for extension_name, extension_data in self.metadata.extensions.items():
-            query_parts = [f'CREATE EXTENSION IF NOT EXISTS {extension_name}']
+            query_parts = [f"CREATE EXTENSION IF NOT EXISTS {extension_name}"]
 
             # Check necessary schemas exists or extension can be relocatable
-            if extension_data['schema'] not in available_schemas or extension_data['is_excluded_by_schema']:
-                if not extension_data['relocatable']:
-                    raise PgAnonError(ErrorCode.EXTENSION_ERROR, f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists')
-                self.context.logger.warn(f'EXTENSION "{extension_name}" will restored into default schema, cause SCHEMA "{extension_data["schema"]}" is not exists')
+            if extension_data["schema"] not in available_schemas or extension_data["is_excluded_by_schema"]:
+                if not extension_data["relocatable"]:
+                    raise PgAnonError(
+                        ErrorCode.EXTENSION_ERROR,
+                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists',
+                    )
+                self.context.logger.warning(
+                    'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is not exists',
+                    extension_name, extension_data["schema"],
+                )
             else:
-                query_parts.append(f'SCHEMA {extension_data["schema"]}')
+                query_parts.append(f"SCHEMA {extension_data['schema']}")
 
             # Check extension exists in system
             available_extension_versions = available_extensions.get(extension_name)
             if not available_extension_versions:
-                raise PgAnonError(ErrorCode.EXTENSION_ERROR, f'Required EXTENSION "{extension_name}" is not available for creating')
+                raise PgAnonError(
+                    ErrorCode.EXTENSION_ERROR, f'Required EXTENSION "{extension_name}" is not available for creating'
+                )
 
             extension_already_installed = False
             version_specified = None
             for available_extension_version in available_extension_versions:
-                if available_extension_version['installed']:
+                if available_extension_version["installed"]:
                     extension_already_installed = True
                     break
 
-                if available_extension_version['version'] == extension_data['version']:
+                if available_extension_version["version"] == extension_data["version"]:
                     version_specified = available_extension_version
                     break
 
@@ -457,26 +494,29 @@ class RestoreMode:
 
             if not version_specified:
                 version_specified = available_extension_versions[0]
-                self.context.logger.warn(
-                    f'EXTENSION "{extension_name}" will restored by default version "{version_specified["default_version"]}", cause target version "{extension_data["version"]}" is not exists'
+                self.context.logger.warning(
+                    'EXTENSION "%s" will restored by default version "%s", cause target version "%s" is not exists',
+                    extension_name, version_specified["default_version"], extension_data["version"],
                 )
 
             query_parts.append(f"VERSION '{version_specified['default_version']}'")
 
             queries = []
-            if version_specified['requires']:
-                for dependencies_extension in version_specified['requires']:
-                    queries.extend([
-                        f'CREATE EXTENSION IF NOT EXISTS {extension}'
-                        for extension in resolve_dependencies(dependencies_extension, available_extensions)
-                    ])
+            if version_specified["requires"]:
+                for dependencies_extension in version_specified["requires"]:
+                    queries.extend(
+                        [
+                            f"CREATE EXTENSION IF NOT EXISTS {extension}"
+                            for extension in resolve_dependencies(dependencies_extension, available_extensions)
+                        ]
+                    )
 
-            queries.append(' '.join(query_parts))
+            queries.append(" ".join(query_parts))
             for extension_dependency_query in queries:
-                self.context.logger.info("PARTIAL RESTORE MODE: " + extension_dependency_query)
+                self.context.logger.info("PARTIAL RESTORE MODE: %s", extension_dependency_query)
                 await connection.execute(extension_dependency_query)
 
-    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection):
+    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection):  # noqa: C901
         ddl_list = []
 
         if self.metadata.partial_dump_types:
@@ -502,12 +542,10 @@ class RestoreMode:
             failed = []
             for query in remaining:
                 try:
-                    self.context.logger.info("PARTIAL RESTORE MODE: " + query)
+                    self.context.logger.info("PARTIAL RESTORE MODE: %s", query)
                     await connection.execute(query)
                 except Exception as ex:
-                    self.context.logger.warning(
-                        f"PARTIAL RESTORE MODE: DDL failed, will retry: {ex}"
-                    )
+                    self.context.logger.warning("PARTIAL RESTORE MODE: DDL failed, will retry: %s", ex)
                     failed.append((query, ex))
 
             if not failed:
@@ -516,27 +554,21 @@ class RestoreMode:
             if len(failed) == len(remaining):
                 error_details = "; ".join(f"{ex}" for _, ex in failed)
                 raise PgAnonError(
-                    ErrorCode.RESTORE_FAILED,
-                    f"Failed to execute {len(failed)} DDL statement(s): {error_details}"
+                    ErrorCode.RESTORE_FAILED, f"Failed to execute {len(failed)} DDL statement(s): {error_details}"
                 )
 
             remaining = [query for query, _ in failed]
-            self.context.logger.info(
-                f"PARTIAL RESTORE MODE: Retrying {len(remaining)} failed DDL(s)"
-            )
+            self.context.logger.info("PARTIAL RESTORE MODE: Retrying %s failed DDL(s)", len(remaining))
 
     async def _drop_constraints(self, connection: Connection):
-        """
-        Drop all CHECK constrains containing user-defined procedures to avoid
+        """Drop all CHECK constrains containing user-defined procedures to avoid
         performance degradation at the data loading stage
         :param connection: Active database connection
         """
         if not self.context.options.drop_custom_check_constr:
             return
 
-        check_constraints = await connection.fetch(
-            get_check_constraint_query()
-        )
+        check_constraints = await connection.fetch(get_check_constraint_query())
 
         if not check_constraints:
             return
@@ -546,31 +578,31 @@ class RestoreMode:
             table = check_constraint[1]
             constraint = check_constraint[2]
 
-            self.context.logger.info(f"Removing constraints: {schema}.{table} -> {constraint}")
+            self.context.logger.info("Removing constraints: %s.%s -> %s", schema, table, constraint)
             query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
             await connection.execute(query)
 
     @staticmethod
     def _extract_file(src_path: Path, dst_path: Path):
-        with gzip.open(src_path, "rb") as src_file, open(dst_path, "wb") as trg_file:
+        with gzip.open(src_path, "rb") as src_file, dst_path.open("wb") as trg_file:
             trg_file.writelines(src_file)
 
     async def _restore_table_data(
-            self,
-            pool: asyncpg.Pool,
-            dump_file: Path,
-            schema_name: str,
-            table_name: str,
-            transaction_snapshot_id: str,
+        self,
+        pool: asyncpg.Pool,
+        dump_file: Path,
+        schema_name: str,
+        table_name: str,
+        transaction_snapshot_id: str,
     ):
-        self.context.logger.info(f"{'>':=>20} Started task copy_to_table {schema_name}.{table_name}")
+        self.context.logger.info("%s Started task copy_to_table %s.%s", ">" * 20, schema_name, table_name)
         extracted_file = Path(dump_file.stem)
 
         await asyncio.to_thread(self._extract_file, dump_file, extracted_file)
 
         try:
             async with pool.acquire() as connection:
-                async with connection.transaction(isolation='repeatable_read'):
+                async with connection.transaction(isolation="repeatable_read"):
                     await connection.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
 
                     result = await connection.copy_to_table(
@@ -581,25 +613,22 @@ class RestoreMode:
                     )
                     self.context.total_rows += int(re.findall(r"(\d+)", result)[0])
                     await connection.execute("COMMIT;")
-        except Exception as exc:
-            self.context.logger.error(
-                f"Exception in RestoreMode._restore_table_data:"
-                f" {schema_name=}"
-                f" {table_name=}"
-                f" {extracted_file=}"
-                f"\n{exc=}"
+        except Exception:
+            self.context.logger.exception(
+                "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s extracted_file=%s",
+                schema_name, table_name, extracted_file
             )
         finally:
             extracted_file.unlink()
 
-        self.context.logger.info(f"{'>':=>20} Finished task {schema_name}.{str(table_name)}")
+        self.context.logger.info("%s Finished task %s.%s", ">" * 20, schema_name, table_name)
 
     async def _process_restore_data(self, transaction_snapshot_id: str):
         pool = await create_pool(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             min_size=self.context.options.db_connections_per_process,
-            max_size=self.context.options.db_connections_per_process
+            max_size=self.context.options.db_connections_per_process,
         )
 
         try:
@@ -609,13 +638,19 @@ class RestoreMode:
                 table_name_full = f'"{target["schema"]}"."{target["table"]}"'
 
                 # black list has the highest priority for pg_dump / pg_restore
-                if self.context.black_listed_tables and (target["schema"], target["table"]) in self.context.black_listed_tables:
-                    self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
+                if (
+                    self.context.black_listed_tables
+                    and (target["schema"], target["table"]) in self.context.black_listed_tables
+                ):
+                    self.context.logger.info("Skipping restore data of table: %s", table_name_full)
                     continue
 
                 # white list has the second priority for pg_dump / pg_restore
-                if self._whitelist_active and (target["schema"], target["table"]) not in self.context.white_listed_tables:
-                    self.context.logger.info("Skipping restore data of table: " + str(table_name_full))
+                if (
+                    self._whitelist_active
+                    and (target["schema"], target["table"]) not in self.context.white_listed_tables
+                ):
+                    self.context.logger.info("Skipping restore data of table: %s", table_name_full)
                     continue
 
                 full_path = self.input_dir / file_name
@@ -648,7 +683,7 @@ class RestoreMode:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
-        async with connection.transaction(isolation='repeatable_read'):
+        async with connection.transaction(isolation="repeatable_read"):
             await connection.execute("SET CONSTRAINTS ALL DEFERRED;")
             transaction_snapshot_id = await connection.fetchval("select pg_export_snapshot()")
             await self._process_restore_data(transaction_snapshot_id)
@@ -660,7 +695,7 @@ class RestoreMode:
             dumped_rows = 0
 
             for table_data in self.metadata.files.values():
-                table_name = (table_data['schema'], table_data['table'])
+                table_name = (table_data["schema"], table_data["table"])
 
                 if self.context.black_listed_tables and table_name in self.context.black_listed_tables:
                     continue
@@ -668,7 +703,7 @@ class RestoreMode:
                 if self._whitelist_active and table_name not in self.context.white_listed_tables:
                     continue
 
-                dumped_rows += int(table_data['rows'])
+                dumped_rows += int(table_data["rows"])
         else:
             dumped_rows = int(self.metadata.total_rows)
 
@@ -676,7 +711,7 @@ class RestoreMode:
         if restored_rows != dumped_rows:
             raise PgAnonError(
                 ErrorCode.ROW_COUNT_MISMATCH,
-                f"The number of restored rows ({restored_rows}) is different from the metadata ({dumped_rows})"
+                f"The number of restored rows ({restored_rows}) is different from the metadata ({dumped_rows})",
             )
 
     async def _restore_pre_data(self):
@@ -742,7 +777,7 @@ class RestoreMode:
         if not self.context.options.save_dicts:
             return
 
-        input_dicts_dir = Path(self.context.options.run_dir) / 'input'
+        input_dicts_dir = Path(self.context.options.run_dir) / "input"
         input_dicts_dir.mkdir(parents=True, exist_ok=True)
 
         input_dict_files = []
@@ -754,12 +789,12 @@ class RestoreMode:
         for dict_file in input_dict_files:
             shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
 
-
     async def run_analyze(self):
-        if (self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
-                or self.metadata.dbg_stage_2_validate_data
-                or self.metadata.dbg_stage_3_validate_full):
-
+        if (
+            self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
+            or self.metadata.dbg_stage_2_validate_data
+            or self.metadata.dbg_stage_3_validate_full
+        ):
             self.context.logger.info("-------------> Skipped analyze")
             return
 
@@ -768,7 +803,7 @@ class RestoreMode:
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             min_size=self.context.options.db_connections_per_process,
-            max_size=self.context.options.db_connections_per_process
+            max_size=self.context.options.db_connections_per_process,
         )
 
         queries = self._generate_analyze_queries()
@@ -782,11 +817,7 @@ class RestoreMode:
                     await pool.close()
                     raise exception
 
-            tasks.add(
-                loop.create_task(
-                    run_query_in_pool(pool, query)
-                )
-            )
+            tasks.add(loop.create_task(run_query_in_pool(pool, query)))
 
         # Wait for the remaining queries to finish
         await asyncio.wait(tasks)
@@ -799,8 +830,8 @@ class RestoreMode:
 
         try:
             context.read_prepared_dict()
-        except:
-            context.logger.error(exception_helper(show_traceback=True))
+        except Exception:
+            context.logger.exception("Failed to read prepared dict")
             return [], {}
 
         if "validate_tables" in context.prepared_dictionary_obj:
@@ -817,30 +848,24 @@ class RestoreMode:
             """
             )
             await connection.close()
-            tables_in_target_db = []
-            for item in db_objs:
-                tables_in_target_db.append(item[0] + "." + item[1])
+            tables_in_target_db = [item[0] + "." + item[1] for item in db_objs]
 
-            tables_in_dict = []
-            for d in context.prepared_dictionary_obj["validate_tables"]:
-                tables_in_dict.append(d["schema"] + "." + d["table"])
+            tables_in_dict = [
+                d["schema"] + "." + d["table"] for d in context.prepared_dictionary_obj["validate_tables"]
+            ]
 
             diff_l = list(set(tables_in_target_db) - set(tables_in_dict))
             diff_r = list(set(tables_in_dict) - set(tables_in_target_db))
 
             if len(diff_r) > 0:
-                msg = (
-                    "validate_tables: in target DB not found tables:\n%s"
-                    % json.dumps(diff_r, indent=4)
-                )
+                msg = f"validate_tables: in target DB not found tables:\n{json.dumps(diff_r, indent=4)}"
                 context.logger.error(msg)
                 raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
 
             if len(diff_l) > 0:
                 msg = (
-                    """validate_tables: non-empty tables were found in target database that
-                    are not described in the dictionary:\n%s"""
-                    % json.dumps(diff_l, indent=4)
+                    "validate_tables: non-empty tables were found in target database that"
+                    f" are not described in the dictionary:\n{json.dumps(diff_l, indent=4)}"
                 )
                 context.logger.error(msg)
                 raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
@@ -850,6 +875,7 @@ class RestoreMode:
             raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
 
         context.logger.info("<------------- Finished validate_restore")
+        return None
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started restore")
@@ -860,8 +886,7 @@ class RestoreMode:
 
             await self._drop_database()
             connection = await create_connection(
-                self.context.connection_params,
-                server_settings=self.context.server_settings
+                self.context.connection_params, server_settings=self.context.server_settings
             )
 
             await check_required_connections(connection, self.context.options.db_connections_per_process)
@@ -889,8 +914,6 @@ class RestoreMode:
             self._remove_toc_lists()
 
             self.context.logger.info("<------------- Finished restore")
-        except Exception as ex:
-            raise ex
         finally:
             if connection:
                 await connection.close()

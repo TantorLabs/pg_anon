@@ -1,28 +1,28 @@
+from __future__ import annotations
+
 import queue
-import multiprocessing
 import time
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING
 
 import aioprocessing
 
 from pg_anon.common.constants import QUEUE_POLL_TIMEOUT
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.errors import ErrorCode, PgAnonError
+
+if TYPE_CHECKING:
+    import multiprocessing
+    from collections.abc import Callable
+
+    from pg_anon.context import Context
 
 
 async def init_process(
-    name: str,
-    ctx,
-    target_func: Callable,
-    tasks: List,
-    stop_event: Optional[multiprocessing.Event] = None,
-    *args,
-    **kwargs
+    name: str, ctx, target_func: Callable, tasks: list, stop_event: multiprocessing.Event, *args, **kwargs
 ):
-    from pg_anon.context import Context
     ctx: Context
 
     start_t = time.time()
-    ctx.logger.info(f"================> Process [{name}] started. Input items: {len(tasks)}")
+    ctx.logger.info("================> Process [%s] started. Input items: %s", name, len(tasks))
     aio_queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(
@@ -41,8 +41,8 @@ async def init_process(
                 if not p.is_alive():
                     raise PgAnonError(
                         ErrorCode.OPERATION_FAILED,
-                        f"Process [{name}] terminated unexpectedly (exit code: {p.exitcode})"
-                    )
+                        f"Process [{name}] terminated unexpectedly (exit code: {p.exitcode})",
+                    ) from None
                 continue
 
             if result is None:
@@ -60,6 +60,9 @@ async def init_process(
     elapsed = round(end_t - start_t, 2)
     result_item_log = str(len(res)) if res is not None else "0"
     ctx.logger.info(
-        f"<================ Process [{name}] finished, elapsed: {elapsed} sec. Result {result_item_log} item(s)"
+        "<================ Process [%s] finished, elapsed: %s sec. Result %s item(s)",
+        name,
+        elapsed,
+        result_item_log,
     )
     return res

@@ -3,12 +3,11 @@ import asyncio
 import sys
 import uuid
 from datetime import datetime
-from typing import Optional, List
 
 from pg_anon import PgAnonApp
 from pg_anon.common.constants import RUNS_BASE_DIR
 from pg_anon.common.dto import PgAnonResult, RunOptions
-from pg_anon.common.enums import AnonMode, VerboseOptions, ScanMode, ResultCode
+from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
 from pg_anon.common.utils import parse_comma_separated_list
 from pg_anon.version import __version__
 
@@ -67,7 +66,7 @@ def common_parser():
         "--db-ssl-ca-file",
         type=str,
         default="",
-        help="""Path to the CA certificate used to verify the server’s certificate""",
+        help="""Path to the CA certificate used to verify the server's certificate""",
     )
     parser.add_argument(
         "--config",
@@ -83,7 +82,7 @@ def common_parser():
     parser.add_argument(
         "--verbose",
         dest="verbose",
-        choices=list(v.value for v in VerboseOptions),
+        choices=[v.value for v in VerboseOptions],
         default=VerboseOptions.INFO.value,
         help="""Sets the log verbosity level: "info", "debug", "error". (default: %(default)s)""",
     )
@@ -157,7 +156,7 @@ def scan_parser():
 
     p.add_argument(
         "--scan-mode",
-        choices=list(v.value for v in ScanMode),
+        choices=[v.value for v in ScanMode],
         default=ScanMode.PARTIAL.value,
         help="""Defines whether to scan all data or only part of it ["full", "partial"] (default: %(default)s)""",
     )
@@ -520,18 +519,18 @@ def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
             new_argv.append(arg)
 
     if mode:
-        return [mode] + new_argv
+        return [mode, *new_argv]
 
     return argv
 
 
-def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
+def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
     if cli_run_params is None:
         cli_run_params = sys.argv[1:]
 
     # Handle --version before subcommand parsing
     if "--version" in cli_run_params:
-        print("Version %s" % __version__)
+        print(f"Version {__version__}")
         sys.exit(0)
 
     cli_run_params = normalize_legacy_mode_args(cli_run_params)
@@ -544,11 +543,11 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
         args_dict["debug"] = True
         args_dict["verbose"] = VerboseOptions.DEBUG.value
 
-    if args_dict.get('scan_mode'):
-        args_dict['scan_mode'] = ScanMode(args_dict['scan_mode'])
+    if args_dict.get("scan_mode"):
+        args_dict["scan_mode"] = ScanMode(args_dict["scan_mode"])
 
-    if args_dict.get('verbose'):
-        args_dict['verbose'] = VerboseOptions(args_dict['verbose'])
+    if args_dict.get("verbose"):
+        args_dict["verbose"] = VerboseOptions(args_dict["verbose"])
 
     internal_operation_id = str(uuid.uuid4())
     start_date = datetime.today()
@@ -561,28 +560,26 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
     )
 
     args_dict.update({
-        'pg_anon_version': __version__,
-        'internal_operation_id': internal_operation_id,
-        'run_dir': run_dir,
-        'mode': AnonMode(args_dict['mode']),
+        "pg_anon_version": __version__,
+        "internal_operation_id": internal_operation_id,
+        "run_dir": run_dir,
+        "mode": AnonMode(args_dict["mode"]),
     })
     return RunOptions(**args_dict)
 
 
-async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
-    """
-    Run pg_anon
+async def run_pg_anon(cli_run_params: list[str] | None = None) -> PgAnonResult:
+    """Run pg_anon
     :param cli_run_params: list of params in command line format
     :return: result of pg_anon
     """
     options = build_run_options(cli_run_params)
 
     if options.version:
-        print("Version %s" % options.pg_anon_version)
+        print(f"Version {options.pg_anon_version}")
         sys.exit(0)
 
-    result = await PgAnonApp(options).run()
-    return result
+    return await PgAnonApp(options).run()
 
 
 def main(argv=None):

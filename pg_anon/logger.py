@@ -16,16 +16,16 @@ class Logger:
             return cls._instance
 
         cls._instance = super().__new__(cls)
-        cls._instance.logger = logging.getLogger('pg_anon.logger')
+        cls._instance.logger = logging.getLogger("pg_anon.logger")
         cls._instance.logger.setLevel(logging.INFO)
 
-        cls._instance._formatter = logging.Formatter(
+        cls._instance._formatter = logging.Formatter(  # noqa: SLF001
             datefmt="%Y-%m-%d %H:%M:%S",
             fmt="%(asctime)s,%(msecs)03d - %(levelname)8s - %(message)s",
         )
 
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(cls._instance._formatter)
+        handler.setFormatter(cls._instance._formatter)  # noqa: SLF001
         cls._instance.logger.addHandler(handler)
 
         return cls._instance

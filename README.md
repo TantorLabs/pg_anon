@@ -62,8 +62,8 @@ git clone https://github.com/TantorLabs/pg_anon.git pg_anon
 cd pg_anon
 virtualenv venv
 source venv/bin/activate
-pip install -r requirements.txt
-python3 -m pg_anon --version
+pip install .
+pg_anon --version
 ```
 
 ### 2. Preparing DB environment
@@ -110,7 +110,7 @@ sudo su - postgres -c "psql -p 5432 -d pg_anon_quick_start_source_db -U postgres
 
 ### 3. Initializing the service schema for pg_anon
 ```bash
-python3 -m pg_anon --mode=init \
+pg_anon init \
 	--db-user=anon_test_user \
 	--db-user-password=mYy5RexGsZ \
 	--db-name=pg_anon_quick_start_source_db \
@@ -121,7 +121,7 @@ python3 -m pg_anon --mode=init \
 
 ### 4. Scan your source database
 ```bash
-python3 -m pg_anon --mode=create-dict \
+pg_anon create-dict \
 	--db-user=anon_test_user \
 	--db-user-password=mYy5RexGsZ \
 	--db-name=pg_anon_quick_start_source_db \
@@ -138,7 +138,7 @@ python3 -m pg_anon --mode=create-dict \
 Run pg_anon in `view-fields` mode to see which fields will be anonymized and which fields will be dumped as-is.
 
 ```bash
-python3 -m pg_anon --mode=view-fields \
+pg_anon view-fields \
 	--db-host=127.0.0.1 \
 	--db-user=anon_test_user \
 	--db-user-password=mYy5RexGsZ \
@@ -150,7 +150,7 @@ python3 -m pg_anon --mode=view-fields \
 
 Run pg_anon in `view-data` mode to preview anonymized data in a specific table.
 ```bash
-python3 -m pg_anon --mode=view-data \
+pg_anon view-data \
 	--db-host=127.0.0.1 \
 	--db-user=anon_test_user \
 	--db-user-password=mYy5RexGsZ \
@@ -165,7 +165,7 @@ python3 -m pg_anon --mode=view-data \
 
 ### 6. Create an anonymized backup
 ```bash
-python3 -m pg_anon --mode=dump \
+pg_anon dump \
 	--db-host=127.0.0.1 \
 	--db-user=anon_test_user \
 	--db-user-password=mYy5RexGsZ \
@@ -178,7 +178,7 @@ python3 -m pg_anon --mode=dump \
 
 ### 7. Restore the anonymized backup into the target DB
 ```bash
-python3 -m pg_anon --mode=restore \
+pg_anon restore \
 	--db-host=127.0.0.1 \
 	--db-port=5432 \
 	--db-user=anon_test_user \

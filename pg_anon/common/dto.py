@@ -1,13 +1,14 @@
 import json
 import time
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable, Dict, List, Union, Any
+from typing import Any
 
 from pg_anon.common.constants import SECRET_RUN_OPTIONS
-from pg_anon.common.enums import ResultCode, AnonMode, VerboseOptions, ScanMode
+from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
 
 
 @dataclass
@@ -21,47 +22,47 @@ class RunOptions:
     db_port: int
     db_name: str
     db_user: str
-    db_user_password: Optional[str] = None
-    db_passfile: Optional[str] = None
-    db_ssl_key_file: Optional[str] = None
-    db_ssl_cert_file: Optional[str] = None
-    db_ssl_ca_file: Optional[str] = None
+    db_user_password: str | None = None
+    db_passfile: str | None = None
+    db_ssl_key_file: str | None = None
+    db_ssl_cert_file: str | None = None
+    db_ssl_ca_file: str | None = None
 
-    config: Optional[str] = None
-    application_name_suffix: Optional[str] = None
+    config: str | None = None
+    application_name_suffix: str | None = None
     debug: bool = False
     verbose: VerboseOptions = VerboseOptions.INFO
     version: bool = False
 
     # I/O options (create-dict, dump, restore)
-    db_connections_per_process: Optional[int] = None
-    processes: Optional[int] = None
+    db_connections_per_process: int | None = None
+    processes: int | None = None
     save_dicts: bool = False
 
     # create-dict options
-    meta_dict_files: Optional[List[str]] = None
-    prepared_no_sens_dict_files: Optional[List[str]] = None
-    output_sens_dict_file: Optional[str] = None
-    output_no_sens_dict_file: Optional[str] = None
-    scan_mode: Optional[ScanMode] = None
-    scan_partial_rows: Optional[int] = None
+    meta_dict_files: list[str] | None = None
+    prepared_no_sens_dict_files: list[str] | None = None
+    output_sens_dict_file: str | None = None
+    output_no_sens_dict_file: str | None = None
+    scan_mode: ScanMode | None = None
+    scan_partial_rows: int | None = None
 
     # dump options
-    prepared_sens_dict_files: Optional[List[str]] = None
-    pg_dump: Optional[str] = None
-    pg_dump_options: Optional[str] = None
-    output_dir: Optional[str] = None
+    prepared_sens_dict_files: list[str] | None = None
+    pg_dump: str | None = None
+    pg_dump_options: str | None = None
+    output_dir: str | None = None
     clear_output_dir: bool = False
     dbg_stage_1_validate_dict: bool = False
     dbg_stage_2_validate_data: bool = False
     dbg_stage_3_validate_full: bool = False
-    partial_tables_dict_files: Optional[List[str]] = None
-    partial_tables_exclude_dict_files: Optional[List[str]] = None
+    partial_tables_dict_files: list[str] | None = None
+    partial_tables_exclude_dict_files: list[str] | None = None
 
     # restore options
-    input_dir: Optional[str] = None
-    pg_restore: Optional[str] = None
-    pg_restore_options: Optional[str] = None
+    input_dir: str | None = None
+    pg_restore: str | None = None
+    pg_restore_options: str | None = None
     drop_custom_check_constr: bool = False
     seq_init_by_max_value: bool = False
     disable_checks: bool = False
@@ -73,24 +74,22 @@ class RunOptions:
 
     # view-fields options
     view_only_sensitive_fields: bool = False
-    fields_count: Optional[int] = None
-    schema_name: Optional[str] = None
-    schema_mask: Optional[str] = None
-    table_name: Optional[str] = None
-    table_mask: Optional[str] = None
+    fields_count: int | None = None
+    schema_name: str | None = None
+    schema_mask: str | None = None
+    table_name: str | None = None
+    table_mask: str | None = None
 
     # view-data options
-    limit: Optional[int] = None
-    offset: Optional[int] = None
+    limit: int | None = None
+    offset: int | None = None
 
     # view-fields, view-data options
     json: bool = False
 
     def to_dict(self):
         return {
-            k: v.value if isinstance(v, Enum) else v
-            for k, v in asdict(self).items()
-            if k not in SECRET_RUN_OPTIONS
+            k: v.value if isinstance(v, Enum) else v for k, v in asdict(self).items() if k not in SECRET_RUN_OPTIONS
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -113,8 +112,8 @@ class PgAnonResult:
         self.run_options = run_options
         self.start_time = time.time()
 
-    def fail(self, exception: Exception = None):
-        from pg_anon.common.utils import exception_to_str
+    def fail(self, exception: Exception | None = None):
+        from pg_anon.common.utils import exception_to_str  # noqa: PLC0415
 
         self.end_time = time.time()
         self.result_code = ResultCode.FAIL
@@ -140,35 +139,35 @@ class PgAnonResult:
 
             self._elapsed = round(self.end_time - self.start_time, 2)
         return self._elapsed
-    
+
     @property
     def start_date(self) -> datetime:
         if not self._start_date:
-            self._start_date = datetime.fromtimestamp(self.start_time, tz=timezone.utc)
+            self._start_date = datetime.fromtimestamp(self.start_time, tz=UTC)
         return self._start_date
-    
+
     @property
-    def end_date(self) -> Optional[datetime]:
+    def end_date(self) -> datetime | None:
         if not self._end_date:
             if self.end_time is None:
                 return None
-            self._end_date = datetime.fromtimestamp(self.end_time, tz=timezone.utc)
+            self._end_date = datetime.fromtimestamp(self.end_time, tz=UTC)
         return self._end_date
 
     @property
-    def internal_operation_id(self) -> Optional[str]:
+    def internal_operation_id(self) -> str | None:
         if not self.run_options:
             return None
         return self.run_options.internal_operation_id
 
     @property
-    def exception(self) -> Optional[Exception]:
+    def exception(self) -> Exception | None:
         if not self._exception:
             return None
         return self._exception
 
     @property
-    def error_message(self) -> Optional[str]:
+    def error_message(self) -> str | None:
         if not self._traceback:
             return None
 
@@ -185,8 +184,8 @@ class FieldInfo:
     attnum: int
     obj_id: str
     tbl_id: str
-    rule: Optional[Callable] = None  # uses for --mode=create-dict with --prepared-sens-dict-file
-    dict_file_name: Optional[str] = None  # uses for --mode=view-fields
+    rule: Callable | None = None  # uses for --mode=create-dict with --prepared-sens-dict-file
+    dict_file_name: str | None = None  # uses for --mode=view-fields
 
 
 class ConnectionParams:
@@ -195,20 +194,28 @@ class ConnectionParams:
     port: int
     user: str
 
-    password: Optional[str] = None
-    passfile: Optional[str] = None
+    password: str | None = None
+    passfile: str | None = None
 
-    ssl_cert_file: Optional[str] = None
-    ssl_key_file: Optional[str] = None
-    ssl_ca_file: Optional[str] = None
+    ssl_cert_file: str | None = None
+    ssl_key_file: str | None = None
+    ssl_ca_file: str | None = None
 
-    ssl: Optional[str] = None
-    ssl_min_protocol_version: Optional[str] = None
+    ssl: str | None = None
+    ssl_min_protocol_version: str | None = None
 
-    def __init__(self, host: str, port: int, database: str, user: str,
-                 password: Optional[str] = None, passfile: Optional[str] = None,
-                 ssl_cert_file: Optional[str] = None, ssl_key_file: Optional[str] = None,
-                 ssl_ca_file: Optional[str] = None):
+    def __init__(  # noqa: PLR0913
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str | None = None,
+        passfile: str | None = None,
+        ssl_cert_file: str | None = None,
+        ssl_key_file: str | None = None,
+        ssl_ca_file: str | None = None,
+    ):
         self.host = host
         self.port = port
         self.database = database
@@ -232,141 +239,140 @@ class Metadata:
     pg_version: str
     pg_dump_version: str
 
-    dictionary_content_hash: Dict[str, str]
+    dictionary_content_hash: dict[str, str]
     prepared_sens_dict_files: str
     dbg_stage_2_validate_data: bool = False
     dbg_stage_3_validate_full: bool = False
 
     # only in data dumps cases
-    sequences_last_values: Optional[Dict] = None
-    views: Optional[Dict] = None
-    indexes: Optional[Dict] = None
-    constraints: Optional[Dict] = None
+    sequences_last_values: dict | None = None
+    views: dict | None = None
+    indexes: dict | None = None
+    constraints: dict | None = None
 
-    files: Optional[Dict[str, Dict[str, str]]] = None
-    total_tables_size: Optional[int] = None
-    total_rows: Optional[int] = None
-    db_size: Optional[int] = None
+    files: dict[str, dict[str, str]] | None = None
+    total_tables_size: int | None = None
+    total_rows: int | None = None
+    db_size: int | None = None
 
     # only in black and white lists cases
-    partial_dump_schemas: Optional[List[str]] = None
-    extensions: Optional[Dict[str, Dict[str, Any]]] = None
-    partial_dump_types: Optional[List[str]] = None
-    partial_dump_domains: Optional[List[str]] = None
-    partial_dump_functions: Optional[List[str]] = None
-    partial_dump_casts: Optional[List[str]] = None
-    partial_dump_operators: Optional[List[str]] = None
-    partial_dump_aggregates: Optional[List[str]] = None
+    partial_dump_schemas: list[str] | None = None
+    extensions: dict[str, dict[str, Any]] | None = None
+    partial_dump_types: list[str] | None = None
+    partial_dump_domains: list[str] | None = None
+    partial_dump_functions: list[str] | None = None
+    partial_dump_casts: list[str] | None = None
+    partial_dump_operators: list[str] | None = None
+    partial_dump_aggregates: list[str] | None = None
 
-    def _serialize_data(self) -> Dict:
+    def _serialize_data(self) -> dict:  # noqa: C901, PLR0912
         data = {
-            'created': self.created,
-            'pg_version': self.pg_version,
-            'pg_dump_version': self.pg_dump_version,
-            'dictionary_content_hash': self.dictionary_content_hash,
-            'prepared_sens_dict_files': self.prepared_sens_dict_files,
-            'dbg_stage_2_validate_data': self.dbg_stage_2_validate_data,
-            'dbg_stage_3_validate_full': self.dbg_stage_3_validate_full,
-
-            'seq_lastvals': self.sequences_last_values,
-            'views': self.views,
-            'indexes': self.indexes,
-            'constraints': self.constraints,
-
-            'files': self.files,
-            'total_tables_size': self.total_tables_size,
-            'total_rows': self.total_rows,
-            'db_size': self.db_size,
-
-            'partial_dump_schemas': self.partial_dump_schemas,
-            'extensions': self.extensions,
-            'partial_dump_types': self.partial_dump_types,
-            'partial_dump_domains': self.partial_dump_domains,
-            'partial_dump_functions': self.partial_dump_functions,
-            'partial_dump_casts': self.partial_dump_casts,
-            'partial_dump_operators': self.partial_dump_operators,
-            'partial_dump_aggregates': self.partial_dump_aggregates,
+            "created": self.created,
+            "pg_version": self.pg_version,
+            "pg_dump_version": self.pg_dump_version,
+            "dictionary_content_hash": self.dictionary_content_hash,
+            "prepared_sens_dict_files": self.prepared_sens_dict_files,
+            "dbg_stage_2_validate_data": self.dbg_stage_2_validate_data,
+            "dbg_stage_3_validate_full": self.dbg_stage_3_validate_full,
+            "seq_lastvals": self.sequences_last_values,
+            "views": self.views,
+            "indexes": self.indexes,
+            "constraints": self.constraints,
+            "files": self.files,
+            "total_tables_size": self.total_tables_size,
+            "total_rows": self.total_rows,
+            "db_size": self.db_size,
+            "partial_dump_schemas": self.partial_dump_schemas,
+            "extensions": self.extensions,
+            "partial_dump_types": self.partial_dump_types,
+            "partial_dump_domains": self.partial_dump_domains,
+            "partial_dump_functions": self.partial_dump_functions,
+            "partial_dump_casts": self.partial_dump_casts,
+            "partial_dump_operators": self.partial_dump_operators,
+            "partial_dump_aggregates": self.partial_dump_aggregates,
         }
 
         if self.sequences_last_values is None:
-            del data['seq_lastvals']
+            del data["seq_lastvals"]
         if self.views is None:
-            del data['views']
+            del data["views"]
         if self.indexes is None:
-            del data['indexes']
+            del data["indexes"]
         if self.constraints is None:
-            del data['constraints']
+            del data["constraints"]
 
         if self.files is None:
-            del data['files']
+            del data["files"]
         if self.total_tables_size is None:
-            del data['total_tables_size']
+            del data["total_tables_size"]
         if self.total_rows is None:
-            del data['total_rows']
+            del data["total_rows"]
         if self.db_size is None:
-            del data['db_size']
+            del data["db_size"]
 
         if self.partial_dump_schemas is None:
-            del data['partial_dump_schemas']    
+            del data["partial_dump_schemas"]
         if self.extensions is None:
-            del data['extensions']    
+            del data["extensions"]
         if self.partial_dump_types is None:
-            del data['partial_dump_types']
+            del data["partial_dump_types"]
         if self.partial_dump_domains is None:
-            del data['partial_dump_domains']
+            del data["partial_dump_domains"]
         if self.partial_dump_functions is None:
-            del data['partial_dump_functions']
+            del data["partial_dump_functions"]
         if self.partial_dump_casts is None:
-            del data['partial_dump_casts']
+            del data["partial_dump_casts"]
         if self.partial_dump_operators is None:
-            del data['partial_dump_operators']
+            del data["partial_dump_operators"]
         if self.partial_dump_aggregates is None:
-            del data['partial_dump_aggregates']
+            del data["partial_dump_aggregates"]
 
         return data
 
-    def _serialize_tables(self) -> Dict:
+    def _serialize_tables(self) -> dict:
         data = [{k: v for k, v in table_data.items() if k in ("schema", "table")} for table_data in self.files.values()]
         return {"tables": data}
 
-    def _deserialize_data(self, data: Dict):
-        self.created = data.get('created')
-        self.pg_version = data.get('pg_version')
-        self.pg_dump_version = data.get('pg_dump_version')
-        self.db_size = data.get('db_size')
-        self.dictionary_content_hash = data.get('dictionary_content_hash')
-        self.prepared_sens_dict_files = data.get('prepared_sens_dict_files')
-        self.dbg_stage_2_validate_data = data.get('dbg_stage_2_validate_data')
-        self.dbg_stage_3_validate_full = data.get('dbg_stage_3_validate_full')
+    def _deserialize_data(self, data: dict):
+        self.created = data.get("created")
+        self.pg_version = data.get("pg_version")
+        self.pg_dump_version = data.get("pg_dump_version")
+        self.db_size = data.get("db_size")
+        self.dictionary_content_hash = data.get("dictionary_content_hash")
+        self.prepared_sens_dict_files = data.get("prepared_sens_dict_files")
+        self.dbg_stage_2_validate_data = data.get("dbg_stage_2_validate_data")
+        self.dbg_stage_3_validate_full = data.get("dbg_stage_3_validate_full")
 
-        self.sequences_last_values = data.get('seq_lastvals')
-        self.views = data.get('views')
-        self.indexes = data.get('indexes')
-        self.constraints = data.get('constraints')
+        self.sequences_last_values = data.get("seq_lastvals")
+        self.views = data.get("views")
+        self.indexes = data.get("indexes")
+        self.constraints = data.get("constraints")
 
-        self.files = data.get('files')
-        self.total_tables_size = data.get('total_tables_size')
-        self.total_rows = data.get('total_rows')
+        self.files = data.get("files")
+        self.total_tables_size = data.get("total_tables_size")
+        self.total_rows = data.get("total_rows")
 
-        self.extensions = data.get('extensions')
-        self.partial_dump_schemas = data.get('partial_dump_schemas')
-        self.partial_dump_types = data.get('partial_dump_types')
-        self.partial_dump_domains = data.get('partial_dump_domains')
-        self.partial_dump_functions = data.get('partial_dump_functions')
-        self.partial_dump_casts = data.get('partial_dump_casts')
-        self.partial_dump_operators = data.get('partial_dump_operators')
-        self.partial_dump_aggregates = data.get('partial_dump_aggregates')
+        self.extensions = data.get("extensions")
+        self.partial_dump_schemas = data.get("partial_dump_schemas")
+        self.partial_dump_types = data.get("partial_dump_types")
+        self.partial_dump_domains = data.get("partial_dump_domains")
+        self.partial_dump_functions = data.get("partial_dump_functions")
+        self.partial_dump_casts = data.get("partial_dump_casts")
+        self.partial_dump_operators = data.get("partial_dump_operators")
+        self.partial_dump_aggregates = data.get("partial_dump_aggregates")
 
     def save_into_file(self, file_path: Path):
-        from pg_anon.common.utils import save_json_file
+        from pg_anon.common.utils import save_json_file  # noqa: PLC0415
+
         save_json_file(file_path, self._serialize_data())
 
     def save_dumped_tables_into_file(self, file_path: Path):
-        from pg_anon.common.utils import save_json_file
+        from pg_anon.common.utils import save_json_file  # noqa: PLC0415
+
         save_json_file(file_path, self._serialize_tables())
 
-    def load_from_file(self, file_name: Union[str, Path]):
+    def load_from_file(self, file_name: str | Path):
         file_name = Path(file_name)
-        with open(file_name, "r") as metadata_file:
+        with file_name.open() as metadata_file:
             data = json.loads(metadata_file.read())
             self._deserialize_data(data)

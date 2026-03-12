@@ -10,8 +10,8 @@ class InitMode:
     async def run(self) -> None:
         self.context.logger.info("-------------> Started init mode")
 
-        async def handle_notice(connection, message):
-            self.context.logger.info("NOTICE: %s" % message)
+        async def handle_notice(_connection, message):
+            self.context.logger.info("NOTICE: %s", message)
 
         db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
         db_conn.add_log_listener(handle_notice)
@@ -20,14 +20,14 @@ class InitMode:
         await tr.start()
 
         try:
-            with open(BASE_DIR / "init.sql", "r") as f:
+            with (BASE_DIR / "init.sql").open() as f:
                 data = f.read()
             await db_conn.execute(data)
             await tr.commit()
 
             self.context.logger.info("<------------- Finished init mode")
-        except Exception as ex:
+        except Exception:
             await tr.rollback()
-            raise ex
+            raise
         finally:
             await db_conn.close()

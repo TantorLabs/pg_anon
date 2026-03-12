@@ -1,14 +1,7 @@
 {
     "skip_rules": [
-        {
-            "schema_mask": "*",
-            "table": "customer_company",
-            "fields": ["inn"]
-        },
-        {
-            "schema_mask": "mask",
-            "fields": ["val"]
-        },
+        {"schema_mask": "*", "table": "customer_company", "fields": ["inn"]},
+        {"schema_mask": "mask", "fields": ["val"]},
         {
             "schema_mask": "*",
             "table_mask": "complex",
@@ -16,10 +9,7 @@
         },
     ],
     "include_rules": [
-        {
-            "schema_mask": "*",
-            "fields": ["email", "inn", "phone", "val", "site"]
-        },
+        {"schema_mask": "*", "fields": ["email", "inn", "phone", "val", "site"]},
         {
             "schema_mask": "*",
             "table": "_TBL.$complex#имя;@&* a'",
@@ -32,5 +22,5 @@
             "schema": "schm_other_2",
             "table_mask": "anon",
         },
-    ]
+    ],
 }

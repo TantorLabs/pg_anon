@@ -1,14 +1,12 @@
 {
-	"include_rules": [
-		{
-			"schema": "schm_other_3",
-			"table": "data_types_test",
-		}
-	],
-	"field": {
-		"rules": [".*"]
-	},
-	"funcs": {
+    "include_rules": [
+        {
+            "schema": "schm_other_3",
+            "table": "data_types_test",
+        }
+    ],
+    "field": {"rules": [".*"]},
+    "funcs": {
         "default": "anon_funcs.digest(\"%s\", 'default', 'md5')",
         "bit": "anon_funcs.digest(\"%s\", 'bit', 'md5')",
         "varbit": "anon_funcs.digest(\"%s\", 'varbit', 'md5')",
@@ -58,5 +56,5 @@
         "timetz(2)": "anon_funcs.digest(\"%s\", 'timetz(2)', 'md5')",
         "timetz(3)": "anon_funcs.digest(\"%s\", 'timetz(3)', 'md5')",
         "timetz(4)": "anon_funcs.digest(\"%s\", 'timetz(4)', 'md5')",
-    }
+    },
 }

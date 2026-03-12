@@ -3,10 +3,9 @@
         {
             "schema": "schm_customer",
             "table": "customer_company",
-            "sql_condition":
-            """
+            "sql_condition": """
             WHERE inn is null
-            """
+            """,
         }
     ]
 }

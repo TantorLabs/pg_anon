@@ -1,8 +1,1 @@
-{
-    "data_const": {
-        "constants": [
-            "CompanyNameWordSens",
-            "include CompanyNamePhrase"
-        ]
-    }
-}
+{"data_const": {"constants": ["CompanyNameWordSens", "include CompanyNamePhrase"]}}

@@ -24,8 +24,8 @@
                 "field_type_timetz": "anon_funcs.digest(\"field_type_timetz\", 'default', 'md5')",
                 "field_type_timetz_p": "anon_funcs.digest(\"field_type_timetz_p\", 'timetz(3)', 'md5')",
                 "field_type_varbit": "anon_funcs.digest(\"field_type_varbit\", 'varbit(5)', 'md5')",
-                "field_type_varchar": "anon_funcs.digest(\"field_type_varchar\", 'varchar(20)', 'md5')"
-            }
+                "field_type_varchar": "anon_funcs.digest(\"field_type_varchar\", 'varchar(20)', 'md5')",
+            },
         }
     ]
 }

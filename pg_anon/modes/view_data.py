@@ -1,11 +1,10 @@
 import json
-from typing import List, Dict, Optional
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db_utils import get_fields_list, create_connection, get_rows_count, get_dump_query
-from pg_anon.common.errors import PgAnonError, ErrorCode
-from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
+from pg_anon.common.db_utils import create_connection, get_dump_query, get_fields_list, get_rows_count
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 
 
@@ -15,14 +14,14 @@ class ViewDataMode:
     _offset: int
     _schema_name: str
     _table_name: str
-    table_rule: Dict
-    raw_field_names: List[str] = None
-    field_names: List[str] = None
+    table_rule: dict
+    raw_field_names: list[str] = None
+    field_names: list[str] = None
     rows_count: int = 0
     query: str
-    data: List[List[str]] = None
-    raw_query: Optional[str] = None
-    raw_data: Optional[List[List[str]]] = None
+    data: list[list[str]] = None
+    raw_query: str | None = None
+    raw_data: list[list[str]] | None = None
     table: PrettyTable = None
     _need_raw_data: bool = False
 
@@ -39,42 +38,41 @@ class ViewDataMode:
         self._need_raw_data = need_raw_data
 
     async def _get_fields_for_view(self) -> None:
-        """
-        Get field names and all fields for view-data mode
-        """
+        """Get field names and all fields for view-data mode"""
         fields_list = await get_fields_list(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             table_schema=self._schema_name,
-            table_name=self._table_name
+            table_name=self._table_name,
         )
 
         if not fields_list:
-            raise PgAnonError(ErrorCode.TABLE_NOT_FOUND, f"Table \"{self._schema_name}.{self._table_name}\" hasn't exists!")
+            raise PgAnonError(
+                ErrorCode.TABLE_NOT_FOUND, f'Table "{self._schema_name}.{self._table_name}" hasn\'t exists!'
+            )
 
         for field in fields_list:
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
 
             if self.table_rule and field_name in self.table_rule["fields"]:
-                self.field_names.append('* ' + field_name)
+                self.field_names.append("* " + field_name)
             else:
                 self.field_names.append(field_name)
 
-    async def _get_data_for_view(self, query: str) -> List[List[str]]:
+    async def _get_data_for_view(self, query: str) -> list[list[str]]:
         db_conn = await create_connection(self.context.connection_params, server_settings=self.context.server_settings)
         table_result = await db_conn.fetch(query)
         await db_conn.close()
-        
-        data = [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
-        return data
+
+        return [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
 
     async def get_rows_count(self):
         self.rows_count = await get_rows_count(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
             schema_name=self._schema_name,
-            table_name=self._table_name
+            table_name=self._table_name,
         )
         return self.rows_count
 
@@ -88,10 +86,10 @@ class ViewDataMode:
         result = {field: [] for field in self.field_names}
 
         for field_values in self.data:
-            for field, value in zip(self.field_names, field_values):
+            for field, value in zip(self.field_names, field_values, strict=False):
                 result[field].append(value)
 
-        self.json = json.dumps(result, default=lambda x: str(x), ensure_ascii=False)
+        self.json = json.dumps(result, default=str, ensure_ascii=False)
 
     async def _output_fields(self) -> None:
         await self._get_fields_for_view()
@@ -114,10 +112,10 @@ class ViewDataMode:
             table_schema=self._schema_name,
             table_name=self._table_name,
             table_rule=self.table_rule,
-            nulls_last=True
+            nulls_last=True,
         )
         if not query_without_limit:
-            raise PgAnonError(ErrorCode.TABLE_EXCLUDED, f"Table \"{self._schema_name}.{self._table_name}\" excluded!")
+            raise PgAnonError(ErrorCode.TABLE_EXCLUDED, f'Table "{self._schema_name}.{self._table_name}" excluded!')
 
         self.query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
@@ -127,29 +125,28 @@ class ViewDataMode:
                 table_schema=self._schema_name,
                 table_name=self._table_name,
                 table_rule=None,
-                nulls_last=True
+                nulls_last=True,
             )
             self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started view_data mode")
 
-        try:
-            if self._limit < 1:
-                raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
-            if self._offset < 0:
-                raise PgAnonError(ErrorCode.INVALID_OFFSET, "Processing fields offset must be greater than zero or equals to zero!")
-
-            self.context.read_prepared_dict()
-            self.table_rule = get_dict_rule_for_table(
-                dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
-                schema=self._schema_name,
-                table=self._table_name,
+        if self._limit < 1:
+            raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
+        if self._offset < 0:
+            raise PgAnonError(
+                ErrorCode.INVALID_OFFSET, "Processing fields offset must be greater than zero or equals to zero!"
             )
 
-            await self._prepare_queries()
-            await self._output_fields()
+        self.context.read_prepared_dict()
+        self.table_rule = get_dict_rule_for_table(
+            dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
+            schema=self._schema_name,
+            table=self._table_name,
+        )
 
-            self.context.logger.info("<------------- Finished view_fields mode")
-        except Exception as ex:
-            raise ex
+        await self._prepare_queries()
+        await self._output_fields()
+
+        self.context.logger.info("<------------- Finished view_fields mode")

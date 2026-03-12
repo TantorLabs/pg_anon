@@ -1,16 +1,19 @@
-from typing import List, Dict
-
-from pg_anon.common.db_utils import get_schemas, create_connection, get_tables_with_fields
-from pg_anon.common.dto import PgAnonResult, ConnectionParams
-from pg_anon.common.utils import read_dict_data, get_dict_rule_for_table
-from rest_api.pydantic_models import PreviewSchemasRequest, PreviewSchemaTablesRequest, PreviewTableContent, PreviewFieldContent
+from pg_anon.common.db_utils import create_connection, get_schemas, get_tables_with_fields
+from pg_anon.common.dto import ConnectionParams, PgAnonResult
+from pg_anon.common.utils import get_dict_rule_for_table, read_dict_data
+from rest_api.pydantic_models import (
+    PreviewFieldContent,
+    PreviewSchemasRequest,
+    PreviewSchemaTablesRequest,
+    PreviewTableContent,
+)
 
 
 class PreviewRunner:
     result: PgAnonResult = None
 
     @classmethod
-    async def get_schemas(cls, request: PreviewSchemasRequest) -> List[str]:
+    async def get_schemas(cls, request: PreviewSchemasRequest) -> list[str]:
         connection_params = ConnectionParams(
             host=request.db_connection_params.host,
             port=request.db_connection_params.port,
@@ -28,7 +31,7 @@ class PreviewRunner:
         return schemas
 
     @staticmethod
-    def _prepare_sens_dicts(sens_dict_contents) -> Dict[str, List[Dict[str, str]]]:
+    def _prepare_sens_dicts(sens_dict_contents) -> dict[str, list[dict[str, str]]]:
         sens_dict_data = {
             "dictionary": [],
             "dictionary_exclude": [],
@@ -44,7 +47,7 @@ class PreviewRunner:
         return sens_dict_data
 
     @classmethod
-    async def get_schema_tables(cls, schema: str, request: PreviewSchemaTablesRequest) -> List[PreviewTableContent]:
+    async def get_schema_tables(cls, schema: str, request: PreviewSchemaTablesRequest) -> list[PreviewTableContent]:
         sens_dict_data = cls._prepare_sens_dicts(request.sens_dict_contents)
 
         connection_params = ConnectionParams(
@@ -70,17 +73,25 @@ class PreviewRunner:
 
         result = []
         for table_name, fields in table_fields.items():
-            include_rule = get_dict_rule_for_table(
-                dictionary_rules=sens_dict_data["dictionary"],
-                schema=schema,
-                table=table_name,
-            ) if sens_dict_data["dictionary"] else None
+            include_rule = (
+                get_dict_rule_for_table(
+                    dictionary_rules=sens_dict_data["dictionary"],
+                    schema=schema,
+                    table=table_name,
+                )
+                if sens_dict_data["dictionary"]
+                else None
+            )
 
-            exclude_rule = get_dict_rule_for_table(
-                dictionary_rules=sens_dict_data["dictionary_exclude"],
-                schema=schema,
-                table=table_name,
-            ) if sens_dict_data["dictionary_exclude"] else None
+            exclude_rule = (
+                get_dict_rule_for_table(
+                    dictionary_rules=sens_dict_data["dictionary_exclude"],
+                    schema=schema,
+                    table=table_name,
+                )
+                if sens_dict_data["dictionary_exclude"]
+                else None
+            )
 
             is_excluded = exclude_rule is not None and include_rule is None
             is_sensitive = include_rule is not None
@@ -94,25 +105,29 @@ class PreviewRunner:
                 field_rule = None
 
                 if include_rule:
-                    if field_name in include_rule.get('fields', {}):
+                    if field_name in include_rule.get("fields", {}):
                         field_is_sensitive = True
-                        field_rule = str(include_rule['fields'][field_name])
-                    elif include_rule.get('raw_sql'):
+                        field_rule = str(include_rule["fields"][field_name])
+                    elif include_rule.get("raw_sql"):
                         field_is_sensitive = True
-                        field_rule = str(include_rule['raw_sql'])
+                        field_rule = str(include_rule["raw_sql"])
 
-                preview_fields.append(PreviewFieldContent(
-                    field_name=field_name,
-                    type=field_type,
-                    is_sensitive=field_is_sensitive,
-                    rule=field_rule,
-                ))
+                preview_fields.append(
+                    PreviewFieldContent(
+                        field_name=field_name,
+                        type=field_type,
+                        is_sensitive=field_is_sensitive,
+                        rule=field_rule,
+                    )
+                )
 
-            result.append(PreviewTableContent(
-                table_name=table_name,
-                is_sensitive=is_sensitive,
-                is_excluded=is_excluded,
-                fields=preview_fields,
-            ))
+            result.append(
+                PreviewTableContent(
+                    table_name=table_name,
+                    is_sensitive=is_sensitive,
+                    is_excluded=is_excluded,
+                    fields=preview_fields,
+                )
+            )
 
         return result

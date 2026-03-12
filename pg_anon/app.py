@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SAVED_RUN_STATUS_FILE_NAME, SAVED_RUN_OPTIONS_FILE_NAME
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SAVED_RUN_OPTIONS_FILE_NAME, SAVED_RUN_STATUS_FILE_NAME
 from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, get_pg_version
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode
-from pg_anon.common.errors import PgAnonError, ErrorCode
-from pg_anon.common.utils import check_pg_util, exception_helper, save_json_file
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.common.utils import check_pg_util, save_json_file
 from pg_anon.context import Context
 from pg_anon.modes.create_dict import CreateDictMode
 from pg_anon.modes.dump import DumpMode
@@ -17,7 +17,6 @@ from pg_anon.version import __version__
 
 
 class PgAnonApp:
-
     def __init__(self, options: RunOptions):
         run_dir = Path(options.run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -34,8 +33,7 @@ class PgAnonApp:
 
     def _bootstrap(self):
         self.context.logger.info(
-            "============> Started pg_anon (v%s) in mode: %s"
-            % (__version__, self.context.options.mode.value)
+            "============> Started pg_anon (v%s) in mode: %s", __version__, self.context.options.mode.value
         )
         if self.context.options.debug:
             params_info = "#--------------- Run options\n"
@@ -46,38 +44,37 @@ class PgAnonApp:
     async def _set_postgres_utils(self):
         pg_version = await get_pg_version(self.context.connection_params, server_settings=self.context.server_settings)
         self.context.set_postgres_version(pg_version)
-        self.context.logger.info(f"Target DB version: {pg_version}")
-        self.context.logger.info(f"pg_dump path: {self.context.pg_dump}")
-        self.context.logger.info(f"pg_restore path: {self.context.pg_restore}")
+        self.context.logger.info("Target DB version: %s", pg_version)
+        self.context.logger.info("pg_dump path: %s", self.context.pg_dump)
+        self.context.logger.info("pg_restore path: %s", self.context.pg_restore)
 
     def _check_postgres_utils(self):
         if self._skip_check_postgres_utils:
-            self.context.logger.info(f"Skip postgres utils exists check")
+            self.context.logger.info("Skip postgres utils exists check")
             return
 
-        self.context.logger.info(f"Postgres utils exists checking")
+        self.context.logger.info("Postgres utils exists checking")
 
         pg_dump_exists = check_pg_util(self.context, self.context.pg_dump, "pg_dump")
         pg_restore_exists = check_pg_util(self.context, self.context.pg_restore, "pg_restore")
 
         if not pg_dump_exists or not pg_restore_exists:
-            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, 'pg_dump or pg_restore not found')
+            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump or pg_restore not found")
 
     async def _check_initialization(self):
         if self.context.options.mode in (
-                AnonMode.CREATE_DICT,
-                AnonMode.DUMP,
-                AnonMode.SYNC_DATA_DUMP,
-                AnonMode.SYNC_STRUCT_DUMP,
+            AnonMode.CREATE_DICT,
+            AnonMode.DUMP,
+            AnonMode.SYNC_DATA_DUMP,
+            AnonMode.SYNC_STRUCT_DUMP,
         ):
             anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
-                connection_params=self.context.connection_params,
-                server_settings=self.context.server_settings
+                connection_params=self.context.connection_params, server_settings=self.context.server_settings
             )
             if not anon_utils_schema_exists:
                 raise PgAnonError(
                     ErrorCode.SCHEMA_NOT_INITIALIZED,
-                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'"
+                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'",
                 )
 
     def _get_mode(self):
@@ -113,17 +110,20 @@ class PgAnonApp:
             self.result.result_data = await mode.run()
             self.result.complete()
         except Exception as exc:
-            self.context.logger.error(f"<============ {self.context.options.mode.value} failed\n{exception_helper(show_traceback=True)}")
-            self.result.fail(exc)
-        finally:
-            self.context.logger.info(
-                f"<============ Finished pg_anon in mode: {self.context.options.mode.value}, "
-                f"result_code = {self.result.result_code.value}, "
-                f"elapsed: {self.result.elapsed} sec"
+            self.context.logger.exception(
+                "<============ %s failed", self.context.options.mode.value
             )
-            save_json_file(Path(self.context.options.run_dir) / SAVED_RUN_STATUS_FILE_NAME, self.result.to_dict())
+            self.result.fail(exc)
 
-            return self.result
+        self.context.logger.info(
+            "<============ Finished pg_anon in mode: %s, result_code = %s, elapsed: %s sec",
+            self.context.options.mode.value,
+            self.result.result_code.value,
+            self.result.elapsed,
+        )
+        save_json_file(Path(self.context.options.run_dir) / SAVED_RUN_STATUS_FILE_NAME, self.result.to_dict())
+
+        return self.result
 
     async def validate_target_tables(self) -> PgAnonResult:
         result = PgAnonResult()
@@ -132,8 +132,8 @@ class PgAnonApp:
         try:
             await RestoreMode.validate_restore(self.context)
             result.complete()
-        except:
-            self.context.logger.error(exception_helper(show_traceback=True))
+        except Exception:
+            self.context.logger.exception("Validate target tables failed")
             result.fail()
-        finally:
-            return result
+
+        return result
