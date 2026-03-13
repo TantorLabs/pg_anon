@@ -54,6 +54,7 @@ class BaseRunner:
         self._prepare_config()
 
     async def run(self) -> PgAnonResult:
+        """Execute the pg_anon operation in a subprocess and return the result."""
         if not self.mode:
             raise PgAnonError(ErrorCode.UNKNOWN_MODE, "Mode is not set")
 

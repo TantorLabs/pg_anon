@@ -1172,7 +1172,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         passed_stages.append("test_02_dump_and_restore_with_clean_db")
 
     async def test_03_dump_and_wrong_restore_with_clean_db(self) -> None:
-        """Second restore must be failed, because in target DB will be added tables, what not include in dump"""
+        """Second restore must be failed, because in target DB will be added tables, what not include in dump."""
         self.assertTrue("init_env" in passed_stages)
         output_dir = self.get_test_output_path("PGAnonRestoreCleanTest.test_03_dump_and_wrong_restore_with_clean_db")
 
@@ -1831,11 +1831,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         )
 
     def assert_sens_dicts(self, prepared_sens_dict: str | Path, prepared_sens_dict_expected: str | Path) -> None:
-        """Comparing sens dicts
-        :param prepared_sens_dict: output prepared sens dict
-        :param prepared_sens_dict_expected: prepared sens dict for comparison
-        :raise AssertError: if dicts are not identical
-        """
+        """Comparing sens dicts."""
         with (
             Path(prepared_sens_dict).open(encoding="utf-8") as file1,
             Path(prepared_sens_dict_expected).open(encoding="utf-8") as file2,
@@ -1881,11 +1877,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     def assert_no_sens_dicts(
         self, prepared_no_sens_dict: str | Path, prepared_no_sens_dict_expected: str | Path
     ) -> bool:
-        """Comparing no sens dicts
-        :param prepared_no_sens_dict: output prepared no sens dict
-        :param prepared_no_sens_dict_expected: prepared no sens dict for comparison
-        :raise AssertError: if dicts are not identical
-        """
+        """Comparing no sens dicts."""
         print(f"============> Started comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
         # Checking no-sens dict
         with (
@@ -1911,11 +1903,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         print(f"<============ Finished comparison of {prepared_no_sens_dict} and {prepared_no_sens_dict_expected}")
 
     def assert_meta_dicts(self, meta_dict: str | Path, meta_dict_expected: str | Path) -> bool:
-        """Comparing meta dicts
-        :param meta_dict: input prepared meta dict
-        :param meta_dict_expected: prepared meta dict for comparison
-        :raise AssertError: if dicts are not identical
-        """
+        """Comparing meta dicts."""
         print(f"============> Started comparison of {meta_dict} and {meta_dict_expected}")
         # Checking no-sens dict
         with Path(meta_dict).open(encoding="utf-8") as file1, Path(meta_dict_expected).open(encoding="utf-8") as file2:

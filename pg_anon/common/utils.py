@@ -38,12 +38,14 @@ TYPE_PATTERN = re.compile(
 
 
 def get_pg_util_version(util_name: str) -> str:
+    """Return the version string of a PostgreSQL utility."""
     command = [util_name, "--version"]
     res = subprocess.run(command, capture_output=True, text=True, check=False)
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
 
 
 def check_pg_util(ctx: Context, util_name: str, output_util_res: str) -> bool:
+    """Check that a PostgreSQL utility exists and matches the expected version."""
     if not Path(util_name).is_file():
         ctx.logger.error("ERROR: program %s is not exists!", util_name)
         return False
@@ -58,11 +60,13 @@ def check_pg_util(ctx: Context, util_name: str, output_util_res: str) -> bool:
 
 
 def exception_helper(show_traceback: bool = True) -> str:
+    """Format the current exception as a string."""
     exc_type, exc_value, exc_traceback = sys.exc_info()
     return "\n".join(list(traceback.format_exception(exc_type, exc_value, exc_traceback if show_traceback else None)))
 
 
 def exception_handler(func: Callable) -> Callable:
+    """Decorate a function to print and re-raise any exception."""
     def f(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
         try:
             func(*args, **kwargs)
@@ -74,10 +78,12 @@ def exception_handler(func: Callable) -> Callable:
 
 
 def get_major_version(str_version: str) -> str:
+    """Extract the major version number from a version string."""
     return re.findall(r"(\d+)", str_version)[0]
 
 
 def pretty_size(bytes_v: int) -> str:
+    """Format a byte count as a human-readable size string."""
     if bytes_v < 1024:  # noqa: PLR2004
         if bytes_v == 1:
             return "1 byte"
@@ -94,15 +100,18 @@ def pretty_size(bytes_v: int) -> str:
 
 
 def chunkify(lst: list, n: int) -> list:
+    """Split a list into n interleaved chunks."""
     result = [lst[i::n] for i in range(n)]
     return [x for x in result if x]  # clear empty lists
 
 
 def recordset_to_list_flat(rs: list) -> list:
+    """Convert a recordset to a list of flat value lists."""
     return [list(dict(rec).values()) for rec in rs]
 
 
 def setof_to_list(rs: list) -> list:
+    """Flatten a set-of recordset into a single list of values."""
     res = []
     for rec in rs:
         res.extend(dict(rec).values())
@@ -110,6 +119,7 @@ def setof_to_list(rs: list) -> list:
 
 
 def to_json(obj, formatted: bool = False) -> str | bytes:  # noqa: ANN001
+    """Serialize an object to JSON string or UTF-8 bytes."""
     def type_adapter(o) -> float | None:  # noqa: ANN001
         if isinstance(o, decimal.Decimal):
             return float(o)
@@ -121,6 +131,7 @@ def to_json(obj, formatted: bool = False) -> str | bytes:  # noqa: ANN001
 
 
 def parse_comma_separated_list(value: str | None = None) -> list[str] | None:
+    """Parse a comma-separated string into a list of strings."""
     if not value:
         return None
 
@@ -128,12 +139,7 @@ def parse_comma_separated_list(value: str | None = None) -> list[str] | None:
 
 
 def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: str) -> list[dict] | dict | None:
-    """Find matches rules for field in prepared dictionary
-    :param dictionary_rules: prepared dictionary rules
-    :param schema: schema of table which needs to be checked
-    :param table: table name which needs to be checked
-    :return: last matched rule
-    """
+    """Find matching rules for a table in the prepared dictionary."""
     result = None
 
     for rule in dictionary_rules:
@@ -172,6 +178,7 @@ def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: st
 
 
 def validate_exists_mode(mode: str) -> bool:
+    """Check whether the given mode string is a valid AnonMode."""
     from pg_anon.common.enums import AnonMode  # noqa: PLC0415
 
     try:
@@ -183,11 +190,13 @@ def validate_exists_mode(mode: str) -> bool:
 
 
 def get_file_size(file_path: str | Path) -> int:
+    """Return the size of a file in bytes, or 0 if it does not exist."""
     path = Path(file_path)
     return path.stat().st_size if path.exists() else 0
 
 
 def get_folder_size(folder_path: str | Path) -> int:
+    """Calculate the total size of all files in a folder recursively."""
     total_size = 0
     folder_path = Path(folder_path)
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -201,10 +210,12 @@ def get_folder_size(folder_path: str | Path) -> int:
 
 
 def simple_slugify(value: str) -> str:
+    """Convert a string to a URL-friendly slug."""
     return re.sub(r"\W+", "-", value).strip("-").lower()
 
 
 def read_yaml(file_path: str | Path) -> dict:
+    """Read and parse a YAML file, returning its contents as a dictionary."""
     path = Path(file_path)
     if path.suffix not in (".yml", ".yaml"):
         raise PgAnonError(ErrorCode.INVALID_FILE_FORMAT, "File must be .yml or .yaml")
@@ -214,10 +225,12 @@ def read_yaml(file_path: str | Path) -> dict:
 
 
 def get_base_field_type(field_info: FieldInfo) -> str:
+    """Extract the base type name from a field info, stripping parenthesized parts."""
     return PARENS_PATTERN.sub("", field_info.type)
 
 
 def normalize_data_type(data_type: str) -> str:
+    """Normalize a PostgreSQL data type string to a canonical lowercase form."""
     clean_field_type = data_type.strip().lower()
     pattern_match = TYPE_PATTERN.match(clean_field_type)
     if not pattern_match:
@@ -267,6 +280,7 @@ def normalize_data_type(data_type: str) -> str:
 
 
 def split_constants_to_words_and_phrases(constants: list[str]) -> tuple[set, set]:
+    """Split a list of string constants into single-word and multi-word sets."""
     single_words = set()
     multi_words = set()
 
@@ -284,6 +298,7 @@ def split_constants_to_words_and_phrases(constants: list[str]) -> tuple[set, set
 
 
 def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
+    """Format an exception traceback as a string, limited to the last N lines."""
     tb_exc = traceback.TracebackException.from_exception(exc)
     lines = list(tb_exc.format())
     return "".join(lines[-limit:])
@@ -294,6 +309,7 @@ def filter_db_tables(
     white_list_rules: list[dict] | None = None,
     black_list_rules: list[dict] | None = None,
 ) -> tuple[list[tuple[str, str]], set[tuple[str, str]], set[tuple[str, str]]]:
+    """Filter database tables by whitelist and blacklist rules."""
     filtered_tables = []
     black_listed_tables = set()
     white_listed_tables = set()
@@ -322,6 +338,7 @@ def filter_db_tables(
 
 
 def resolve_dependencies(extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None) -> set | None:
+    """Recursively resolve all dependencies for a PostgreSQL extension."""
     if seen is None:
         seen = set()
 
@@ -341,6 +358,7 @@ def resolve_dependencies(extension_name: str, extensions_map: dict[str, list[dic
 
 
 def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
+    """Compile a regex pattern, returning a never-matching pattern on error."""
     try:
         return re.compile(pattern, flags)
     except re.error:
@@ -349,11 +367,13 @@ def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
 
 
 def save_json_file(file_path: str | Path, data: dict) -> None:
+    """Write a dictionary to a JSON file with pretty formatting."""
     with Path(file_path).open("w", encoding="utf-8") as out_file:
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
 
 def read_dict_data(data: str, dict_name: str) -> dict[str, Any] | None:
+    """Parse a string as a Python literal and validate it is a dictionary."""
     try:
         dict_data = ast.literal_eval(data)
     except Exception as ex:
@@ -369,6 +389,7 @@ def read_dict_data(data: str, dict_name: str) -> dict[str, Any] | None:
 
 
 def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | None:
+    """Read and parse dictionary data from a file."""
     with dictionary_file_path.open() as dictionary_file:
         data = dictionary_file.read().strip()
 
@@ -379,6 +400,7 @@ def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | Non
 
 
 def save_dicts_info_file(options: RunOptions) -> None:
+    """Serialize all dictionary file contents and save them as a JSON info file."""
     def serialize_dict(file_path: str) -> dict[str, Any] | None:
         file_path = Path(file_path)
         if not file_path.exists():

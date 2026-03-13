@@ -411,8 +411,10 @@ class RestoreMode:
                 await connection.execute(query)
 
     def _extract_schemas_from_toc(self) -> set:
-        """Extract schema names from pre_data backup TOC for cases
-        when partial_dump_schemas is not available in metadata (e.g. full dump + partial restore)."""
+        """Extract schema names from pre_data backup TOC.
+
+        Used when partial_dump_schemas is not available in metadata (e.g. full dump + partial restore).
+        """
         pre_data_backup = self.input_dir / "pre_data.backup"
         if not pre_data_backup.exists():
             return set()
@@ -561,10 +563,7 @@ class RestoreMode:
             self.context.logger.info("PARTIAL RESTORE MODE: Retrying %s failed DDL(s)", len(remaining))
 
     async def _drop_constraints(self, connection: Connection) -> None:
-        """Drop all CHECK constrains containing user-defined procedures to avoid
-        performance degradation at the data loading stage
-        :param connection: Active database connection
-        """
+        """Drop all CHECK constraints containing user-defined procedures."""
         if not self.context.options.drop_custom_check_constr:
             return
 
@@ -790,6 +789,7 @@ class RestoreMode:
             shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
 
     async def run_analyze(self) -> None:
+        """Run ANALYZE on restored tables to update statistics."""
         if (
             self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
             or self.metadata.dbg_stage_2_validate_data
@@ -826,6 +826,7 @@ class RestoreMode:
 
     @staticmethod
     async def validate_restore(context: Context) -> None:
+        """Validate the restored data against the source database."""
         context.logger.info("-------------> Started validate_restore")
 
         try:
@@ -878,6 +879,7 @@ class RestoreMode:
         return
 
     async def run(self) -> None:
+        """Run the restore mode to import data into the target database."""
         self.context.logger.info("-------------> Started restore")
         connection = None
 

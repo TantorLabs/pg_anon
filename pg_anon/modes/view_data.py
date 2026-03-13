@@ -38,7 +38,7 @@ class ViewDataMode:
         self._need_raw_data = need_raw_data
 
     async def _get_fields_for_view(self) -> None:
-        """Get field names and all fields for view-data mode"""
+        """Get field names and all fields for view-data mode."""
         fields_list = await get_fields_list(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
@@ -68,6 +68,7 @@ class ViewDataMode:
         return [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
 
     async def get_rows_count(self) -> int:
+        """Retrieve the total row count for the target table."""
         self.rows_count = await get_rows_count(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
@@ -130,6 +131,7 @@ class ViewDataMode:
             self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
     async def run(self) -> None:
+        """Run the view_data mode to display anonymized table rows."""
         self.context.logger.info("-------------> Started view_data mode")
 
         if self._limit < 1:

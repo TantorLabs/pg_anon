@@ -51,6 +51,7 @@ app = FastAPI(title="Stateless web service for pg_anon")
 
 @app.exception_handler(PgAnonError)
 async def pganon_error_handler(request: Request, exc: PgAnonError) -> JSONResponse:  # noqa: ARG001
+    """Handle PgAnonError exceptions and return a 400 JSON response."""
     return JSONResponse(
         status_code=400,
         content=jsonable_encoder(ErrorResponse(error_code=exc.code, message=exc.message)),
@@ -59,6 +60,7 @@ async def pganon_error_handler(request: Request, exc: PgAnonError) -> JSONRespon
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: ARG001
+    """Handle uncaught exceptions and return a 500 JSON response."""
     return JSONResponse(
         status_code=500,
         content=jsonable_encoder(ErrorResponse(error_code=ErrorCode.INTERNAL_ERROR, message=str(exc))),
@@ -66,6 +68,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 
 def generate_openapi_doc_file() -> None:
+    """Generate and write the OpenAPI schema to a JSON file."""
     output_path = Path(__file__).parent / "openapi.json"
     with Path.open(output_path, "w") as f:
         json.dump(app.openapi(), f, indent=2)
@@ -83,6 +86,7 @@ def generate_openapi_doc_file() -> None:
     },
 )
 async def db_connection_check(request: DbConnectionParams) -> JSONResponse | None:
+    """Verify database connectivity using the provided credentials."""
     connection_is_ok = await check_db_connection(
         connection_params=ConnectionParams(
             host=request.host,
@@ -115,6 +119,7 @@ async def db_connection_check(request: DbConnectionParams) -> JSONResponse | Non
     },
 )
 async def stateless_scan_start(request: ScanRequest, background_tasks: BackgroundTasks) -> None:
+    """Start a scanning operation as a background task."""
     background_tasks.add_task(scan_callback, request)
 
 
@@ -129,6 +134,7 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
     },
 )
 async def stateless_view_fields(request: ViewFieldsRequest) -> ViewFieldsResponse:
+    """Render a preview of anonymization rules by database fields."""
     runner = ViewFieldsRunner(request)
     data = await runner.run()
 
@@ -148,6 +154,7 @@ async def stateless_view_fields(request: ViewFieldsRequest) -> ViewFieldsRespons
     },
 )
 async def stateless_preview_schemas(request: PreviewSchemasRequest) -> PreviewSchemasResponse:
+    """Return a list of database schemas for preview."""
     data = await PreviewRunner.get_schemas(request)
 
     return PreviewSchemasResponse(
@@ -166,6 +173,7 @@ async def stateless_preview_schemas(request: PreviewSchemasRequest) -> PreviewSc
     },
 )
 async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTablesRequest) -> PreviewSchemaTablesResponse:
+    """Return tables and their fields for a given schema with sensitivity info."""
     data = await PreviewRunner.get_schema_tables(schema, request)
 
     return PreviewSchemaTablesResponse(
@@ -184,6 +192,7 @@ async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTab
     },
 )
 async def stateless_view_data(request: ViewDataRequest) -> ViewDataResponse:
+    """Render a preview of anonymized data for a given table."""
     runner = ViewDataRunner(request)
     data = await runner.run()
 
@@ -204,6 +213,7 @@ async def stateless_view_data(request: ViewDataRequest) -> ViewDataResponse:
     },
 )
 async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks) -> None:
+    """Start a dump operation as a background task."""
     background_tasks.add_task(dump_callback, request)
 
 
@@ -219,6 +229,7 @@ async def stateless_dump_start(request: DumpRequest, background_tasks: Backgroun
     },
 )
 async def stateless_restore_start(request: RestoreRequest, background_tasks: BackgroundTasks) -> None:
+    """Start a restore operation as a background task."""
     background_tasks.add_task(restore_callback, request)
 
 
@@ -233,6 +244,7 @@ async def stateless_restore_start(request: RestoreRequest, background_tasks: Bac
     summary="List of operations",
 )
 async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_filter)]) -> list[str]:  # noqa: C901
+    """List saved operations, optionally filtered by date range."""
     date_before = filters["date_before"]
     date_after = filters["date_after"]
 
@@ -282,6 +294,7 @@ async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_
     },
 )
 async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)]) -> dict:
+    """Return detailed information about a specific operation run."""
     saved_dicts_info_file_path = operation_run_dir / SAVED_DICTS_INFO_FILE_NAME
     run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
     run_status_file_path = operation_run_dir / SAVED_RUN_STATUS_FILE_NAME
@@ -329,6 +342,7 @@ async def stateless_operation_logs(
     operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)],
     tail_lines: Annotated[int, Query(1000, gt=0, description="Number of log lines to read from the end of the file")],
 ) -> list[str]:
+    """Return the tail of log files for a specific operation."""
     logs_file_path = operation_run_dir / LOGS_DIR_NAME
     return read_logs_from_tail(logs_file_path, tail_lines)
 
@@ -347,6 +361,7 @@ async def stateless_operation_logs(
 async def remove_operation(
     background_tasks: BackgroundTasks, operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)]
 ) -> None:
+    """Delete operation data and associated dump files in the background."""
     run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
     run_options_data = read_json_file(run_options_file_path)
 
@@ -371,6 +386,7 @@ async def remove_operation(
     summary="List of task statuses",
 )
 async def task_statuses() -> list[TaskStatus]:
+    """Return the list of available task statuses."""
     return [
         TaskStatus(
             id=1,
@@ -396,6 +412,7 @@ async def task_statuses() -> list[TaskStatus]:
     summary="List of dump types",
 )
 async def dump_types() -> list[DumpType]:
+    """Return the list of available dump types."""
     return [
         DumpType(
             title="Полный",
@@ -418,6 +435,7 @@ async def dump_types() -> list[DumpType]:
     summary="List of restore types",
 )
 async def restore_types() -> list[RestoreType]:
+    """Return the list of available restore types."""
     return [
         RestoreType(
             title="Полный",
@@ -440,6 +458,7 @@ async def restore_types() -> list[RestoreType]:
     summary="List of scan types",
 )
 async def scan_types() -> list[ScanType]:
+    """Return the list of available scan types."""
     return [
         ScanType(
             title="Полное сканирование",

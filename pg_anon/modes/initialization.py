@@ -10,6 +10,7 @@ class InitMode:
         self.context = context
 
     async def run(self) -> None:
+        """Run the initialization mode to prepare the target database."""
         self.context.logger.info("-------------> Started init mode")
 
         async def handle_notice(_connection: Connection, message: str) -> None:

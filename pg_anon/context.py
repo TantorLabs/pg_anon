@@ -72,8 +72,7 @@ class Context:
         )
 
     def _check_meta_dict_types(self, meta_dict: dict) -> None:
-        """Checking expected types in meta dict fields
-        """
+        """Check expected types in meta dict fields."""
         if not (
             isinstance(meta_dict["field"]["rules"], list) and
             isinstance(meta_dict["field"]["constants"], list) and
@@ -92,8 +91,7 @@ class Context:
             raise PgAnonError(ErrorCode.INVALID_META_DICT, "Meta dict does not have expected types")
 
     def _make_meta_dict(self, meta_dict_data: dict | None = None) -> dict:
-        """Making meta dict in expected format, from meta dict data
-        """
+        """Make meta dict in expected format, from meta dict data."""
         constants = (meta_dict_data or {}).get("data_const", {}).get("constants", [])
         constants_words, constants_phrases = split_constants_to_words_and_phrases(constants)
 
@@ -122,8 +120,7 @@ class Context:
         }
 
     def _append_meta_dict(self, meta_dict: dict) -> None:  # noqa: C901, PLR0912
-        """Appending meta dict to existing meta dict
-        """
+        """Append meta dict to existing meta dict."""
         self._check_meta_dict_types(meta_dict)
 
         if meta_dict["field"]["rules"]:
@@ -185,6 +182,7 @@ class Context:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
 
     def read_meta_dict(self) -> None:
+        """Read and compile meta dictionary files into a single merged object."""
         self.meta_dictionary_obj = self._make_meta_dict()
         dict_files_list = self.options.meta_dict_files
 
@@ -197,6 +195,7 @@ class Context:
                 self._append_meta_dict(self._make_meta_dict(dict_data))
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False) -> None:
+        """Read prepared sensitive dictionary files into a merged object."""
         if not self.options.prepared_sens_dict_files:
             raise PgAnonError(ErrorCode.NO_DICT_FILES, "No prepared sens dict files specified")
 
@@ -224,6 +223,7 @@ class Context:
             self.prepared_dictionary_obj["validate_tables"].extend(dict_data.get("validate_tables", []))
 
     def read_partial_tables_dicts(self) -> None:
+        """Read partial table inclusion and exclusion dictionary files."""
         if self.options.partial_tables_dict_files:
             for dict_file in self.options.partial_tables_dict_files:
                 if dict_data := read_dict_data_from_file(Path.cwd() / dict_file):
@@ -235,6 +235,7 @@ class Context:
                     self.excluded_tables_rules.extend(dict_data.get("tables", []))
 
     def set_postgres_version(self, pg_version: str) -> None:
+        """Set the PostgreSQL version and resolve pg_dump/pg_restore paths from config."""
         self.pg_version = pg_version
         pg_major_version = int(pg_version.split(".", maxsplit=1)[0])
 
@@ -261,6 +262,7 @@ class Context:
         self.pg_restore = pg_restore
 
     def setup_logger(self) -> None:
+        """Configure the application logger with appropriate level and file handler."""
         log_level = logging.NOTSET
 
         if self.options.mode not in (AnonMode.VIEW_FIELDS, AnonMode.VIEW_DATA):
@@ -281,6 +283,7 @@ class Context:
         self.logger = get_logger()
 
     def set_tables_lists(self, tables: list[tuple[str, str]]) -> None:
+        """Filter and assign table lists based on inclusion and exclusion rules."""
         self.tables, self.black_listed_tables, self.white_listed_tables = filter_db_tables(
             tables=tables,
             white_list_rules=self.included_tables_rules,

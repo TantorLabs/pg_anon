@@ -406,6 +406,7 @@ class DumpRequest(StatelessRunnerRequest):
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
+        """Validate and resolve the output path."""
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.output_path:
@@ -423,6 +424,7 @@ class DumpDeleteRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
+        """Validate and resolve the dump path."""
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.path:
@@ -450,6 +452,7 @@ class RestoreRequest(StatelessRunnerRequest):
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:
+        """Validate restore options and resolve the input path."""
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.clean_db and self.drop_db:

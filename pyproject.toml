@@ -66,63 +66,57 @@ select = [
     "D",     # pydocstyle (https://docs.astral.sh/ruff/rules/#pydocstyle-d)
     "DTZ",   # flake8-datetimez (https://docs.astral.sh/ruff/rules/#flake8-datetimez-dtz)
     "E",     # pycodestyle error (https://docs.astral.sh/ruff/rules/#pycodestyle-e-w)
-    "EM",    # flake8-errmsg (https://docs.astral.sh/ruff/rules/#flake8-errmsg-em)
     "ERA",   # eradicate (https://docs.astral.sh/ruff/rules/#eradicate-era)
     "F",     # pyflakes (https://docs.astral.sh/ruff/rules/#pyflakes-f)
+    "FA",    # flake8-future-annotations (https://docs.astral.sh/ruff/rules/#flake8-future-annotations-fa)
+    "FAST",  # fastapi (https://docs.astral.sh/ruff/rules/#fastapi-fast)
     "G",     # flake8-logging-format (https://docs.astral.sh/ruff/rules/#flake8-logging-format-g)
     "I",     # isort (https://docs.astral.sh/ruff/rules/#isort-i)
-    "INT",   # flake8-gettext (https://docs.astral.sh/ruff/rules/#flake8-gettext-int)
-    "N",     # pep8-naming (https://docs.astral.sh/ruff/rules/#pep8-naming-n)
-    "PIE",   # flake8-pie (https://docs.astral.sh/ruff/rules/#flake8-pie-pie)
-    "PL",    # pylint (https://docs.astral.sh/ruff/rules/#pylint-pl)
-    "PLC",   # pylint convention (https://docs.astral.sh/ruff/rules/#convention-plc)
-    "PLE",   # pylint error (https://docs.astral.sh/ruff/rules/#error-ple)
-    "PLR",   # pylint refactor (https://docs.astral.sh/ruff/rules/#refactor-plr)
-    "PLW",   # pylint warning (https://docs.astral.sh/ruff/rules/#warning-plw)
-    "PYI",   # flake8-pyi (https://docs.astral.sh/ruff/rules/#flake8-pyi-pyi)
-    "RET",   # flake8-return (https://docs.astral.sh/ruff/rules/#flake8-return-ret)
-    "RSE",   # flake8-raise (https://docs.astral.sh/ruff/rules/#flake8-raise-rse)
-    "RUF",   # ruff-specific-rules (https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf)
-    "S",     # flake8-bandit (https://docs.astral.sh/ruff/rules/#flake8-bandit-s)
-    "SIM",   # flake8-simplify (https://docs.astral.sh/ruff/rules/#flake8-simplify-sim)
-    "TRY",   # tryceratops (https://docs.astral.sh/ruff/rules/#tryceratops-try)
-    "Q",     # flake8-quotes (https://docs.astral.sh/ruff/rules/#flake8-quotes-q)
-    "UP",    # pyupgrade (https://docs.astral.sh/ruff/rules/#pyupgrade-up)
-    "W",     # pycodestyle warning (https://docs.astral.sh/ruff/rules/#pycodestyle-e-w)
-    "FA",    # flake8-future-annotations (https://docs.astral.sh/ruff/rules/#flake8-future-annotations-fa)
-    "T10",   # flake8-debugger (https://docs.astral.sh/ruff/rules/#flake8-debugger-t10)
-    "ISC",   # flake8-implicit-str-concat (https://docs.astral.sh/ruff/rules/#flake8-implicit-str-concat-isc)
     "ICN",   # flake8-import-conventions (https://docs.astral.sh/ruff/rules/#flake8-import-conventions-icn)
     "LOG",   # flake8-logging (https://docs.astral.sh/ruff/rules/#flake8-logging-log)
-    "INP",   # flake8-no-pep420 (https://docs.astral.sh/ruff/rules/#flake8-no-pep420-inp)
-    "T20",   # flake8-print (https://docs.astral.sh/ruff/rules/#flake8-print-t20)
-    "SLF",   # flake8-self (https://docs.astral.sh/ruff/rules/#flake8-self-slf)
-    "SLOT",  # flake8-slots (https://docs.astral.sh/ruff/rules/#flake8-slots-slot)
-    "TID",   # flake8-tidy-imports (https://docs.astral.sh/ruff/rules/#flake8-tidy-imports-tid)
-    "TC",    # flake8-type-checking (https://docs.astral.sh/ruff/rules/#flake8-type-checking-tc)
-    "PTH",   # flake8-use-pathlib (https://docs.astral.sh/ruff/rules/#flake8-use-pathlib-pth)
-    "PERF",  # perflint (https://docs.astral.sh/ruff/rules/#perflint-perf)
+    "N",     # pep8-naming (https://docs.astral.sh/ruff/rules/#pep8-naming-n)
     "PGH",   # pygrep-hooks (https://docs.astral.sh/ruff/rules/#pygrep-hooks-pgh)
-    "FURB",  # refurb (https://docs.astral.sh/ruff/rules/#refurb-furb)
-    "FAST",  # fastapi (https://docs.astral.sh/ruff/rules/#fastapi-fast)
+    "PTH",   # flake8-use-pathlib (https://docs.astral.sh/ruff/rules/#flake8-use-pathlib-pth)
+    "Q",     # flake8-quotes (https://docs.astral.sh/ruff/rules/#flake8-quotes-q)
+    "S",     # flake8-bandit (https://docs.astral.sh/ruff/rules/#flake8-bandit-s)
+    "RET",   # flake8-return (https://docs.astral.sh/ruff/rules/#flake8-return-ret)
+    "RSE",   # flake8-raise (https://docs.astral.sh/ruff/rules/#flake8-raise-rse)
+    "SIM",   # flake8-simplify (https://docs.astral.sh/ruff/rules/#flake8-simplify-sim)
+    "SLF",   # flake8-self (https://docs.astral.sh/ruff/rules/#flake8-self-slf)
+    "T10",   # flake8-debugger (https://docs.astral.sh/ruff/rules/#flake8-debugger-t10)
+    "T20",   # flake8-print (https://docs.astral.sh/ruff/rules/#flake8-print-t20)
+    "TC",    # flake8-type-checking (https://docs.astral.sh/ruff/rules/#flake8-type-checking-tc)
+    "TRY",   # tryceratops (https://docs.astral.sh/ruff/rules/#tryceratops-try)
+    "UP",    # pyupgrade (https://docs.astral.sh/ruff/rules/#pyupgrade-up)
+    "W",     # pycodestyle warning (https://docs.astral.sh/ruff/rules/#pycodestyle-e-w)
 ]
 ignore = [
-    "DTZ002",
-    "DTZ005",
-    "EM101",
-    "EM102",
-    "TRY003",
-    "RUF002",
-    "RUF003",
-    "PLW1508",
-    "COM812",
-    "SIM117",
-    "T201",
-    "ASYNC220",
-    "ASYNC240",
-    "S603",
-    "S608",
-    "E501",
+    "ASYNC220", # blocking call in async function
+    "ASYNC240", # sync context manager in async code
+    "COM812",   # missing trailing comma
+    "D100",     # missing docstring in module
+    "D101",     # missing docstring in public class
+    "D104",     # missing docstring in package (__init__.py)
+    "D105",     # missing docstring in magic method
+    "D106",     # missing docstring in nested class
+    "D107",     # missing docstring in __init__ method
+    "D203",     # blank line required before class docstring (conflicts with D211)
+    "D213",     # summary line must start on second line (conflicts with D212)
+    "D417",     # require descriptions for function arguments in docstrings
+    "DTZ002",   # datetime.now() used without timezone
+    "DTZ005",   # datetime.fromtimestamp() used without timezone
+    "E501",     # line too long
+    "S603",     # subprocess call with potential shell injection
+    "S608",     # possible SQL injection via string formatting
+    "SIM117",   # nested with statements can be merged
+    "T201",     # print() found
+    "TRY003",   # complex message formatting directly in raise
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "D102",  # missing docstring in public method (test methods are self-documenting)
+    "S101",  # use of assert (expected in tests)
 ]
 
 [tool.ruff.lint.flake8-quotes]

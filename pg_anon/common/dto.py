@@ -88,11 +88,13 @@ class RunOptions:
     json: bool = False
 
     def to_dict(self) -> dict:
+        """Convert run options to a dictionary, excluding secret fields."""
         return {
             k: v.value if isinstance(v, Enum) else v for k, v in asdict(self).items() if k not in SECRET_RUN_OPTIONS
         }
 
     def to_json(self, indent: int = 2) -> str:
+        """Serialize run options to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
 
@@ -109,10 +111,12 @@ class PgAnonResult:
     _traceback = None
 
     def start(self, run_options: RunOptions) -> None:
+        """Record start time and associate run options with this result."""
         self.run_options = run_options
         self.start_time = time.time()
 
     def fail(self, exception: Exception | None = None) -> None:
+        """Mark the result as failed and capture the exception traceback."""
         from pg_anon.common.utils import exception_to_str  # noqa: PLC0415
 
         self.end_time = time.time()
@@ -121,10 +125,12 @@ class PgAnonResult:
         self._traceback = exception_to_str(self._exception)
 
     def complete(self) -> None:
+        """Mark the result as successfully completed."""
         self.end_time = time.time()
         self.result_code = ResultCode.DONE
 
     def to_dict(self) -> dict:
+        """Convert the result to a dictionary with code and timestamps."""
         return {
             "result_code": self.result_code.value,
             "started": self.start_time,
@@ -133,6 +139,7 @@ class PgAnonResult:
 
     @property
     def elapsed(self) -> float | None:
+        """Return elapsed time in seconds, or None if not yet finished."""
         if not self._elapsed:
             if self.start_time is None or self.end_time is None:
                 return None
@@ -142,12 +149,14 @@ class PgAnonResult:
 
     @property
     def start_date(self) -> datetime:
+        """Return the start time as a UTC datetime."""
         if not self._start_date:
             self._start_date = datetime.fromtimestamp(self.start_time, tz=UTC)
         return self._start_date
 
     @property
     def end_date(self) -> datetime | None:
+        """Return the end time as a UTC datetime, or None if not yet finished."""
         if not self._end_date:
             if self.end_time is None:
                 return None
@@ -156,18 +165,21 @@ class PgAnonResult:
 
     @property
     def internal_operation_id(self) -> str | None:
+        """Return the internal operation ID from run options, or None."""
         if not self.run_options:
             return None
         return self.run_options.internal_operation_id
 
     @property
     def exception(self) -> Exception | None:
+        """Return the captured exception, or None if no failure occurred."""
         if not self._exception:
             return None
         return self._exception
 
     @property
     def error_message(self) -> str | None:
+        """Return the formatted traceback string, or None if no failure occurred."""
         if not self._traceback:
             return None
 
@@ -231,6 +243,7 @@ class ConnectionParams:
             self.ssl_ca_file = ssl_ca_file
 
     def as_dict(self) -> dict:
+        """Return connection parameters as a dictionary."""
         return self.__dict__
 
 
@@ -362,16 +375,19 @@ class Metadata:
         self.partial_dump_aggregates = data.get("partial_dump_aggregates")
 
     def save_into_file(self, file_path: Path) -> None:
+        """Serialize and save metadata to a JSON file."""
         from pg_anon.common.utils import save_json_file  # noqa: PLC0415
 
         save_json_file(file_path, self._serialize_data())
 
     def save_dumped_tables_into_file(self, file_path: Path) -> None:
+        """Save the list of dumped tables to a JSON file."""
         from pg_anon.common.utils import save_json_file  # noqa: PLC0415
 
         save_json_file(file_path, self._serialize_tables())
 
     def load_from_file(self, file_name: str | Path) -> None:
+        """Load metadata from a JSON file."""
         file_name = Path(file_name)
         with file_name.open() as metadata_file:
             data = json.loads(metadata_file.read())

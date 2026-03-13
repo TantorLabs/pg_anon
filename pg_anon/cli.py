@@ -13,6 +13,7 @@ from pg_anon.version import __version__
 
 
 def common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with common database connection options."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--db-host",
@@ -101,6 +102,7 @@ def common_parser() -> argparse.ArgumentParser:
 
 
 def multiprocessing_common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with multiprocessing options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--db-connections-per-process",
@@ -119,6 +121,7 @@ def multiprocessing_common_parser() -> argparse.ArgumentParser:
 
 
 def scan_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with scan-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -177,6 +180,7 @@ def scan_parser() -> argparse.ArgumentParser:
 
 
 def dump_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with dump-specific options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--prepared-sens-dict-file",
@@ -251,6 +255,7 @@ def dump_parser() -> argparse.ArgumentParser:
 
 
 def restore_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with restore-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -340,6 +345,7 @@ def restore_parser() -> argparse.ArgumentParser:
 
 
 def view_fields_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with view-fields-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -394,6 +400,7 @@ def view_fields_parser() -> argparse.ArgumentParser:
 
 
 def view_data_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with view-data-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -437,6 +444,7 @@ def view_data_parser() -> argparse.ArgumentParser:
 
 
 def get_arg_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="pg_anon",
         description="PostgreSQL database anonymization tool",
@@ -498,6 +506,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
 
 def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
+    """Convert legacy --mode flag syntax to subcommand-style arguments."""
     if "--mode" not in argv and not any(a.startswith("--mode=") for a in argv):
         return argv
 
@@ -525,6 +534,7 @@ def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
 
 
 def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
+    """Parse CLI arguments and construct a RunOptions instance."""
     if cli_run_params is None:
         cli_run_params = sys.argv[1:]
 
@@ -569,10 +579,7 @@ def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
 
 
 async def run_pg_anon(cli_run_params: list[str] | None = None) -> PgAnonResult:
-    """Run pg_anon
-    :param cli_run_params: list of params in command line format
-    :return: result of pg_anon
-    """
+    """Run pg_anon."""
     options = build_run_options(cli_run_params)
 
     if options.version:
@@ -583,6 +590,7 @@ async def run_pg_anon(cli_run_params: list[str] | None = None) -> PgAnonResult:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Entry point for the pg_anon CLI."""
     result = asyncio.run(run_pg_anon(argv))
     if result.result_code == ResultCode.FAIL:
         sys.exit(1)

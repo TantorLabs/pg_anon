@@ -63,4 +63,5 @@ class PgAnonError(Exception):
         super().__init__(message)
 
     def __reduce__(self) -> tuple:
-        return (self.__class__, (self.code, self.message))
+        """Return pickling instructions for serialization across processes."""
+        return self.__class__, (self.code, self.message)

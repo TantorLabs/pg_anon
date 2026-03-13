@@ -62,9 +62,7 @@ class ViewFieldsMode:
         )
 
     async def _get_fields_for_view(self) -> list[FieldInfo]:
-        """Get scanning fields for view mode
-        :return: list of fields for view mode
-        """
+        """Get scanning fields for view mode."""
         fields_list = await get_scan_fields_list(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
@@ -189,6 +187,7 @@ class ViewFieldsMode:
             print(self.table)
 
     async def run(self) -> None:
+        """Run the view_fields mode to display table field details."""
         self.context.logger.info("-------------> Started view_fields mode")
 
         if self._processing_fields_limit < 1:

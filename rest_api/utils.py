@@ -16,6 +16,7 @@ from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 
 def get_full_dump_path(dump_path: str) -> str:
+    """Resolve and validate a dump path against the storage base directory."""
     full_dump_path = Path(DUMP_STORAGE_BASE_DIR / dump_path.lstrip("/")).resolve()
     if not str(full_dump_path).startswith(str(DUMP_STORAGE_BASE_DIR)) or full_dump_path == DUMP_STORAGE_BASE_DIR:
         raise PgAnonError(ErrorCode.INVALID_PATH, f"Invalid path: {dump_path}")
@@ -26,6 +27,7 @@ def get_full_dump_path(dump_path: str) -> str:
 def write_dictionary_contents(
     dictionary_contents: list[DictionaryContent], base_dir: Path
 ) -> dict[str, DictionaryMetadata]:
+    """Write dictionary contents to files and return a mapping of paths to metadata."""
     file_names = {}
     base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -43,16 +45,19 @@ def write_dictionary_contents(
 
 
 def read_dictionary_contents(file_path: str | Path) -> str:
+    """Read and return the full text content of a dictionary file."""
     with Path(file_path).open() as dictionary_file:
         return dictionary_file.read()
 
 
 def read_json_file(file_path: str | Path) -> dict:
+    """Read and parse a JSON file into a dictionary."""
     with Path(file_path).open() as file:
         return json.loads(file.read())
 
 
 def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
+    """Read the last N lines from rotated log files in a directory."""
     def log_sort_key(file_path: Path) -> int:
         parts = file_path.name.split(".")
         try:
@@ -96,6 +101,7 @@ def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
 
 
 def delete_folder(folder_path: Path) -> None:
+    """Recursively delete a folder and log the result."""
     try:
         shutil.rmtree(folder_path)
         print(f"Folder {folder_path} deleted successfully.")
@@ -104,6 +110,7 @@ def delete_folder(folder_path: Path) -> None:
 
 
 def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params: list[str]) -> None:
+    """Run pg_anon in a subprocess event loop and put the result into a queue."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -122,6 +129,7 @@ def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params
 
 
 async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[str]) -> PgAnonResult | None:
+    """Spawn a pg_anon worker process and await its result via an async queue."""
     if not validate_exists_mode(mode):
         raise PgAnonError(ErrorCode.UNKNOWN_MODE, f"Invalid mode: {mode}")
 
@@ -158,6 +166,7 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
 
 
 def normalize_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    """Normalize header keys to lowercase and ensure content-type is set."""
     if not headers:
         return None
 

@@ -14,6 +14,7 @@ class PreviewRunner:
 
     @classmethod
     async def get_schemas(cls, request: PreviewSchemasRequest) -> list[str]:
+        """Retrieve the list of schemas from the database."""
         connection_params = ConnectionParams(
             host=request.db_connection_params.host,
             port=request.db_connection_params.port,
@@ -48,6 +49,7 @@ class PreviewRunner:
 
     @classmethod
     async def get_schema_tables(cls, schema: str, request: PreviewSchemaTablesRequest) -> list[PreviewTableContent]:
+        """Retrieve tables with fields and sensitivity rules for a given schema."""
         sens_dict_data = cls._prepare_sens_dicts(request.sens_dict_contents)
 
         connection_params = ConnectionParams(

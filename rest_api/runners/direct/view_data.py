@@ -100,6 +100,7 @@ class ViewDataRunner:
         )
 
     async def run(self) -> ViewDataContent:
+        """Execute the view-data operation and return formatted content."""
         await self._executor.run()
         await self._executor.get_rows_count()
         return self._format_output()

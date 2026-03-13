@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 async def init_process(
     name: str, ctx: Context, target_func: Callable, tasks: list, stop_event: multiprocessing.Event, *args, **kwargs  # noqa: ANN002, ANN003
 ) -> list | None:
+    """Start a subprocess and collect its results via an async queue."""
     start_t = time.time()
     ctx.logger.info("================> Process [%s] started. Input items: %s", name, len(tasks))
     aio_queue = aioprocessing.AioQueue()

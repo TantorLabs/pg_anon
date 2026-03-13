@@ -143,6 +143,7 @@ class DumpMode:
 
     @property
     def output_dir_is_empty(self) -> bool:
+        """Check whether the output directory is empty."""
         return not any(self.output_dir.iterdir())
 
     async def _count_totals(self, connection: Connection) -> None:
@@ -380,6 +381,7 @@ class DumpMode:
             raise
 
     async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
+        """Compress the specified file asynchronously."""
         return await asyncio.to_thread(
             self._compress_file,
             file_path,
@@ -787,6 +789,7 @@ class DumpMode:
             shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
 
     async def run(self) -> None:
+        """Run the dump mode to export anonymized database data."""
         self.context.logger.info("-------------> Started dump")
         connection = None
 

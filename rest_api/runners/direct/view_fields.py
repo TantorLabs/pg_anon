@@ -120,5 +120,6 @@ class ViewFieldsRunner:
         return result
 
     async def run(self) -> list[ViewFieldsContent]:
+        """Execute the view-fields operation and return formatted content."""
         await self._executor.run()
         return self._format_output()

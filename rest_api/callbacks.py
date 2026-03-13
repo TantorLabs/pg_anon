@@ -36,6 +36,7 @@ async def send_webhook(
     max_retries: int = 5,
     base_delay: float = 1,
 ) -> None:
+    """Send a webhook POST request with exponential backoff retries."""
     payload = response_body.model_dump(by_alias=True)
     logger.info("Starting webhook request to %s with payload: %s", url, payload)
 
@@ -66,6 +67,7 @@ async def send_webhook(
 
 
 async def scan_callback(request: ScanRequest) -> None:
+    """Execute a scan operation and send status webhooks on progress and completion."""
     logger.debug("Run scan callback")
     scan_runner = None
     try:
@@ -154,6 +156,7 @@ async def scan_callback(request: ScanRequest) -> None:
 
 
 async def dump_callback(request: DumpRequest) -> None:
+    """Execute a dump operation and send status webhooks on progress and completion."""
     logger.debug("Run dump callback")
     dump_runner = None
     try:
@@ -234,6 +237,7 @@ async def dump_callback(request: DumpRequest) -> None:
 
 
 async def restore_callback(request: RestoreRequest) -> None:
+    """Execute a restore operation and send status webhooks on progress and completion."""
     logger.debug("Run scan callback")
     restore_runner = None
     try:

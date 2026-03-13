@@ -11,6 +11,7 @@ def date_range_filter(
     date_before: Annotated[date | None, Query(None, description="Filter: operations before this date")],
     date_after: Annotated[date | None, Query(None, description="Filter: operations after this date")],
 ) -> dict:
+    """Validate and return date range query parameters."""
     if date_before and date_after and date_after > date_before:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -20,6 +21,7 @@ def date_range_filter(
 
 
 def get_operation_run_dir(internal_operation_id: str) -> Path:
+    """Resolve the run directory for a given operation ID or raise 404."""
     for run_dir in RUNS_BASE_DIR.glob(f"*/*/*/{internal_operation_id}"):
         return run_dir
 

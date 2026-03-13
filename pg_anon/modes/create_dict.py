@@ -93,9 +93,7 @@ class CreateDictMode:
         return False
 
     async def _get_fields_for_scan(self) -> dict[str, FieldInfo]:
-        """Get scanning fields for create dictionary mode
-        :return: dict of fields with key by obj_id for create dictionary mode
-        """
+        """Get scanning fields for create dictionary mode."""
         fields_list = await get_scan_fields_list(
             connection_params=self.context.connection_params, server_settings=self.context.server_settings
         )
@@ -107,7 +105,7 @@ class CreateDictMode:
         }
 
     def _scan_fields_by_names(self, fields_info: dict[str, FieldInfo]) -> None:  # noqa: C901, PLR0912
-        """Scanning fields by names and removes matches according to dict rules
+        """Scan fields by names and remove matches according to dict rules.
 
         Priorities of rules:
             - prepared-sens-dict-file
@@ -811,6 +809,7 @@ class CreateDictMode:
             await connection.close()
 
     async def run(self) -> None:
+        """Run the create_dict mode to scan and build the sensitive data dictionary."""
         self.context.logger.info("-------------> Started create_dict mode")
 
         try:
