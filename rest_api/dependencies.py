@@ -10,7 +10,7 @@ from pg_anon.common.constants import RUNS_BASE_DIR
 def date_range_filter(
     date_before: Annotated[date | None, Query(None, description="Filter: operations before this date")],
     date_after: Annotated[date | None, Query(None, description="Filter: operations after this date")],
-):
+) -> dict:
     if date_before and date_after and date_after > date_before:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

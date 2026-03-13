@@ -10,11 +10,11 @@ class DumpRunner(BaseRunner):
     request: DumpRequest
     full_dump_path: str
 
-    def __init__(self, request: DumpRequest):
+    def __init__(self, request: DumpRequest) -> None:
         super().__init__(request)
         self._set_mode()
 
-    def _set_mode(self):
+    def _set_mode(self) -> None:
         if self.request.type == DumpMode.FULL:
             self.mode = AnonMode.DUMP.value
         elif self.request.type == DumpMode.STRUCT:
@@ -22,7 +22,7 @@ class DumpRunner(BaseRunner):
         elif self.request.type == DumpMode.DATA:
             self.mode = AnonMode.SYNC_DATA_DUMP.value
 
-    def _prepare_dictionaries_cli_params(self):
+    def _prepare_dictionaries_cli_params(self) -> None:
         input_sens_dict_file_names = list(
             write_dictionary_contents(self.request.sens_dict_contents, self.base_tmp_dir).keys()
         )
@@ -49,7 +49,7 @@ class DumpRunner(BaseRunner):
                 ]
             )
 
-    def _prepare_dump_path_cli_params(self):
+    def _prepare_dump_path_cli_params(self) -> None:
         self.full_dump_path = self.request.validated_output_path
         self.cli_params.extend(
             [
@@ -58,14 +58,14 @@ class DumpRunner(BaseRunner):
             ]
         )
 
-    def _prepare_parallelization_cli_params(self):
+    def _prepare_parallelization_cli_params(self) -> None:
         if self.request.proc_count:
             self.cli_params.append(f"--processes={self.request.proc_count}")
 
         if self.request.proc_conn_count:
             self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
 
-    def _prepare_pg_dump_cli_params(self):
+    def _prepare_pg_dump_cli_params(self) -> None:
         if self.request.pg_dump_path:
             self.cli_params.append(f"--pg-dump={self.request.pg_dump_path}")
 
@@ -75,7 +75,7 @@ class DumpRunner(BaseRunner):
         if self.request.pg_dump_options:
             self.cli_params.append(f"--pg-dump-options={self.request.pg_dump_options}")
 
-    def _prepare_cli_params(self):
+    def _prepare_cli_params(self) -> None:
         super()._prepare_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_dump_path_cli_params()

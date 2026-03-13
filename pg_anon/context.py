@@ -27,7 +27,7 @@ from pg_anon.logger import get_logger, logger_add_file_handler, logger_set_log_l
 
 class Context:
     @exception_handler
-    def __init__(self, options: RunOptions):
+    def __init__(self, options: RunOptions) -> None:
         self.options = options
         self.config = read_yaml(options.config) if options.config else None
         self.pg_version = None
@@ -71,7 +71,7 @@ class Context:
             ssl_ca_file=options.db_ssl_ca_file,
         )
 
-    def _check_meta_dict_types(self, meta_dict: dict):
+    def _check_meta_dict_types(self, meta_dict: dict) -> None:
         """Checking expected types in meta dict fields
         """
         if not (
@@ -121,7 +121,7 @@ class Context:
           "no_sens_dictionary": (meta_dict_data or {}).get("no_sens_dictionary", []),
         }
 
-    def _append_meta_dict(self, meta_dict):  # noqa: C901, PLR0912
+    def _append_meta_dict(self, meta_dict: dict) -> None:  # noqa: C901, PLR0912
         """Appending meta dict to existing meta dict
         """
         self._check_meta_dict_types(meta_dict)
@@ -184,7 +184,7 @@ class Context:
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
 
-    def read_meta_dict(self):
+    def read_meta_dict(self) -> None:
         self.meta_dictionary_obj = self._make_meta_dict()
         dict_files_list = self.options.meta_dict_files
 
@@ -196,7 +196,7 @@ class Context:
             if dict_data:
                 self._append_meta_dict(self._make_meta_dict(dict_data))
 
-    def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False):
+    def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False) -> None:
         if not self.options.prepared_sens_dict_files:
             raise PgAnonError(ErrorCode.NO_DICT_FILES, "No prepared sens dict files specified")
 
@@ -223,7 +223,7 @@ class Context:
             self.prepared_dictionary_obj["dictionary_exclude"].extend(dict_data.get("dictionary_exclude", []))
             self.prepared_dictionary_obj["validate_tables"].extend(dict_data.get("validate_tables", []))
 
-    def read_partial_tables_dicts(self):
+    def read_partial_tables_dicts(self) -> None:
         if self.options.partial_tables_dict_files:
             for dict_file in self.options.partial_tables_dict_files:
                 if dict_data := read_dict_data_from_file(Path.cwd() / dict_file):
@@ -234,7 +234,7 @@ class Context:
                 if dict_data := read_dict_data_from_file(Path.cwd() / dict_file):
                     self.excluded_tables_rules.extend(dict_data.get("tables", []))
 
-    def set_postgres_version(self, pg_version: str):
+    def set_postgres_version(self, pg_version: str) -> None:
         self.pg_version = pg_version
         pg_major_version = int(pg_version.split(".", maxsplit=1)[0])
 
@@ -260,7 +260,7 @@ class Context:
         self.pg_dump = pg_dump
         self.pg_restore = pg_restore
 
-    def setup_logger(self):
+    def setup_logger(self) -> None:
         log_level = logging.NOTSET
 
         if self.options.mode not in (AnonMode.VIEW_FIELDS, AnonMode.VIEW_DATA):
@@ -280,7 +280,7 @@ class Context:
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()
 
-    def set_tables_lists(self, tables: list[tuple[str, str]]):
+    def set_tables_lists(self, tables: list[tuple[str, str]]) -> None:
         self.tables, self.black_listed_tables, self.white_listed_tables = filter_db_tables(
             tables=tables,
             white_list_rules=self.included_tables_rules,

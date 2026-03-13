@@ -10,11 +10,11 @@ class RestoreRunner(BaseRunner):
     request: RestoreRequest
     full_input_path: str
 
-    def __init__(self, request: RestoreRequest):
+    def __init__(self, request: RestoreRequest) -> None:
         super().__init__(request)
         self._set_mode()
 
-    def _set_mode(self):
+    def _set_mode(self) -> None:
         if self.request.type == RestoreMode.FULL:
             self.mode = AnonMode.RESTORE.value
         elif self.request.type == RestoreMode.STRUCT:
@@ -22,7 +22,7 @@ class RestoreRunner(BaseRunner):
         elif self.request.type == RestoreMode.DATA:
             self.mode = AnonMode.SYNC_DATA_RESTORE.value
 
-    def _prepare_dictionaries_cli_params(self):
+    def _prepare_dictionaries_cli_params(self) -> None:
         if self.request.partial_tables_dict_contents:
             input_partial_tables_dict_file_names = list(
                 write_dictionary_contents(self.request.partial_tables_dict_contents, self.base_tmp_dir).keys()
@@ -44,7 +44,7 @@ class RestoreRunner(BaseRunner):
                 ]
             )
 
-    def _prepare_input_dump_path_cli_params(self):
+    def _prepare_input_dump_path_cli_params(self) -> None:
         self.full_input_path = self.request.validated_input_path
         self.cli_params.extend(
             [
@@ -52,11 +52,11 @@ class RestoreRunner(BaseRunner):
             ]
         )
 
-    def _prepare_parallelization_cli_params(self):
+    def _prepare_parallelization_cli_params(self) -> None:
         if self.request.proc_conn_count:
             self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
 
-    def _prepare_pg_restore_cli_params(self):
+    def _prepare_pg_restore_cli_params(self) -> None:
         if self.request.pg_restore_path:
             self.cli_params.append(f"--pg-restore={self.request.pg_restore_path}")
 
@@ -66,7 +66,7 @@ class RestoreRunner(BaseRunner):
         if self.request.pg_restore_options:
             self.cli_params.append(f"--pg-restore-options={self.request.pg_restore_options}")
 
-    def _prepare_additional_cli_params(self):
+    def _prepare_additional_cli_params(self) -> None:
         if self.request.drop_custom_check_constr:
             self.cli_params.append("--drop-custom-check-constr")
         if self.request.clean_db:
@@ -74,7 +74,7 @@ class RestoreRunner(BaseRunner):
         if self.request.drop_db:
             self.cli_params.append("--drop-db")
 
-    def _prepare_cli_params(self):
+    def _prepare_cli_params(self) -> None:
         super()._prepare_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_input_dump_path_cli_params()

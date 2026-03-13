@@ -3,7 +3,7 @@ import sys
 from uvicorn.main import main as uvicorn_main
 
 
-def main():
+def main() -> None:
     sys.argv = ["uvicorn", "rest_api.api:app", *sys.argv[1:]]
     uvicorn_main()
 

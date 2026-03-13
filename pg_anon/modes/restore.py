@@ -67,7 +67,7 @@ class RestoreMode:
     def _whitelist_active(self) -> bool:
         return bool(self.context.included_tables_rules)
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
         self.input_dir = Path.cwd() / self.context.options.input_dir
 
@@ -90,12 +90,12 @@ class RestoreMode:
             or self.metadata.dbg_stage_3_validate_full
         )
 
-    def _load_metadata(self):
+    def _load_metadata(self) -> None:
         self.metadata_file_path = self.input_dir / self.metadata_file_name
         self.metadata = Metadata()
         self.metadata.load_from_file(self.metadata_file_path)
 
-    def _generate_analyze_queries(self):
+    def _generate_analyze_queries(self) -> list[str]:
         analyze_queries = []
         for target in self.metadata.files.values():
             schema = target["schema"]
@@ -109,7 +109,7 @@ class RestoreMode:
             analyze_queries.append(f'analyze "{schema}"."{table}"')
         return analyze_queries
 
-    def _check_utils_version_for_dump(self):
+    def _check_utils_version_for_dump(self) -> None:
         if self.context.options.disable_checks:
             return
 
@@ -131,7 +131,7 @@ class RestoreMode:
                 f"pg_restore major version {target_pg_restore_version} is below than source pg_dump version {source_pg_dump_version}!",
             )
 
-    async def _check_db_is_empty(self, connection: Connection):
+    async def _check_db_is_empty(self, connection: Connection) -> None:
         if not self._db_must_be_empty:
             return
 
@@ -140,7 +140,7 @@ class RestoreMode:
                 ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!"
             )
 
-    async def _check_free_disk_space(self, connection: Connection):
+    async def _check_free_disk_space(self, connection: Connection) -> None:
         data_directory_location = await connection.fetchval(
             """
             SELECT setting
@@ -161,7 +161,7 @@ class RestoreMode:
                 f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}",
             )
 
-    def _make_filtered_toc_list(self):  # noqa: C901, PLR0912, PLR0915
+    def _make_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
         whitelist = []
         blacklist = []
 
@@ -309,14 +309,14 @@ class RestoreMode:
 
                     f.write(f"{toc_line}\n")
 
-    def _remove_toc_lists(self):
+    def _remove_toc_lists(self) -> None:
         if self.context.options.debug:
             return
 
         self._toc_list_pre_data_file_path.unlink(missing_ok=True)
         self._toc_list_post_data_file_path.unlink(missing_ok=True)
 
-    async def _run_pg_restore(self, section: str):
+    async def _run_pg_restore(self, section: str) -> None:
         os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
         command = [
@@ -379,7 +379,7 @@ class RestoreMode:
             self.context.logger.error(msg)
             raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
 
-    async def _sequences_init(self, connection: Connection):
+    async def _sequences_init(self, connection: Connection) -> None:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
@@ -429,7 +429,7 @@ class RestoreMode:
                 schemas.add(match.group(1))
         return schemas
 
-    async def _create_schemas_for_partial_mode(self, connection: Connection):
+    async def _create_schemas_for_partial_mode(self, connection: Connection) -> None:
         self._restored_schemas = []
 
         if self.metadata.partial_dump_schemas:
@@ -447,7 +447,7 @@ class RestoreMode:
             self.context.logger.info("PARTIAL RESTORE MODE: %s", query)
             await connection.execute(query)
 
-    async def _create_extensions_for_partial_mode(self, connection: Connection):  # noqa: C901, PLR0912
+    async def _create_extensions_for_partial_mode(self, connection: Connection) -> None:  # noqa: C901, PLR0912
         if not self.metadata.extensions:
             return
 
@@ -516,7 +516,7 @@ class RestoreMode:
                 self.context.logger.info("PARTIAL RESTORE MODE: %s", extension_dependency_query)
                 await connection.execute(extension_dependency_query)
 
-    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection):  # noqa: C901
+    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection) -> None:  # noqa: C901
         ddl_list = []
 
         if self.metadata.partial_dump_types:
@@ -560,7 +560,7 @@ class RestoreMode:
             remaining = [query for query, _ in failed]
             self.context.logger.info("PARTIAL RESTORE MODE: Retrying %s failed DDL(s)", len(remaining))
 
-    async def _drop_constraints(self, connection: Connection):
+    async def _drop_constraints(self, connection: Connection) -> None:
         """Drop all CHECK constrains containing user-defined procedures to avoid
         performance degradation at the data loading stage
         :param connection: Active database connection
@@ -583,7 +583,7 @@ class RestoreMode:
             await connection.execute(query)
 
     @staticmethod
-    def _extract_file(src_path: Path, dst_path: Path):
+    def _extract_file(src_path: Path, dst_path: Path) -> None:
         with gzip.open(src_path, "rb") as src_file, dst_path.open("wb") as trg_file:
             trg_file.writelines(src_file)
 
@@ -594,7 +594,7 @@ class RestoreMode:
         schema_name: str,
         table_name: str,
         transaction_snapshot_id: str,
-    ):
+    ) -> None:
         self.context.logger.info("%s Started task copy_to_table %s.%s", ">" * 20, schema_name, table_name)
         extracted_file = Path(dump_file.stem)
 
@@ -623,7 +623,7 @@ class RestoreMode:
 
         self.context.logger.info("%s Finished task %s.%s", ">" * 20, schema_name, table_name)
 
-    async def _process_restore_data(self, transaction_snapshot_id: str):
+    async def _process_restore_data(self, transaction_snapshot_id: str) -> None:
         pool = await create_pool(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
@@ -679,7 +679,7 @@ class RestoreMode:
         finally:
             await pool.close()
 
-    async def _restore_data(self, connection: Connection):
+    async def _restore_data(self, connection: Connection) -> None:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
@@ -690,7 +690,7 @@ class RestoreMode:
 
         self._compare_rows_count()
 
-    def _compare_rows_count(self):
+    def _compare_rows_count(self) -> None:
         if self.context.black_listed_tables or self._whitelist_active:
             dumped_rows = 0
 
@@ -714,7 +714,7 @@ class RestoreMode:
                 f"The number of restored rows ({restored_rows}) is different from the metadata ({dumped_rows})",
             )
 
-    async def _restore_pre_data(self):
+    async def _restore_pre_data(self) -> None:
         if self._skip_pre_data_restore:
             self.context.logger.info("-------------> Skipped restore pre-data (pg_restore)")
             return
@@ -723,7 +723,7 @@ class RestoreMode:
         await self._run_pg_restore("pre-data")
         self.context.logger.info("<------------- Finished restore pre-data (pg_restore)")
 
-    async def _restore_post_data(self):
+    async def _restore_post_data(self) -> None:
         if self._skip_post_data_restore:
             self.context.logger.info("-------------> Skipped restore post-data (pg_restore)")
             return
@@ -732,7 +732,7 @@ class RestoreMode:
         await self._run_pg_restore("post-data")
         self.context.logger.info("<------------- Finished restore post-data (pg_restore)")
 
-    async def _drop_database(self):
+    async def _drop_database(self) -> None:
         if not self.context.options.drop_db:
             return
 
@@ -760,7 +760,7 @@ class RestoreMode:
 
         await connection.close()
 
-    def _prepare_tables_lists(self):
+    def _prepare_tables_lists(self) -> None:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
@@ -773,7 +773,7 @@ class RestoreMode:
                 "None of the requested tables match the dump contents"
             )
 
-    def _save_input_dicts_to_run_dir(self):
+    def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
             return
 
@@ -789,7 +789,7 @@ class RestoreMode:
         for dict_file in input_dict_files:
             shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
 
-    async def run_analyze(self):
+    async def run_analyze(self) -> None:
         if (
             self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
             or self.metadata.dbg_stage_2_validate_data
@@ -825,14 +825,14 @@ class RestoreMode:
         self.context.logger.info("<------------- Finished analyze")
 
     @staticmethod
-    async def validate_restore(context: Context):
+    async def validate_restore(context: Context) -> None:
         context.logger.info("-------------> Started validate_restore")
 
         try:
             context.read_prepared_dict()
         except Exception:
             context.logger.exception("Failed to read prepared dict")
-            return [], {}
+            return
 
         if "validate_tables" in context.prepared_dictionary_obj:
             connection = await create_connection(context.connection_params, server_settings=context.server_settings)
@@ -875,7 +875,7 @@ class RestoreMode:
             raise PgAnonError(ErrorCode.VALIDATION_FAILED, msg)
 
         context.logger.info("<------------- Finished validate_restore")
-        return None
+        return
 
     async def run(self) -> None:
         self.context.logger.info("-------------> Started restore")

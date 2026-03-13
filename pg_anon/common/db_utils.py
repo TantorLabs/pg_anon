@@ -154,7 +154,7 @@ async def get_db_size(connection_params: ConnectionParams, db_name: str, server_
     return result
 
 
-async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
+async def exec_data_scan_func_query(connection: Connection, scan_func: str, value: Any, field_info: FieldInfo) -> bool:  # noqa: ANN401
     """Execute scan in row by custom DB function
     :param connection: Active connection to db
     :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
@@ -257,7 +257,7 @@ async def get_available_extensions_map(connection: Connection) -> dict[str, list
     return dict(extensions_map)
 
 
-async def get_available_schemas(connection: Connection):
+async def get_available_schemas(connection: Connection) -> list[str]:
     query = "SELECT nspname FROM pg_namespace"
     result = await connection.fetch(query)
     return [row[0] for row in result]
@@ -631,7 +631,7 @@ async def check_db_is_empty(connection: Connection) -> bool:
         )
 
 
-async def run_query_in_pool(pool: Pool, query: str):
+async def run_query_in_pool(pool: Pool, query: str) -> None:
     logger.info("================> Started query %s", query)
 
     try:
@@ -645,7 +645,7 @@ async def run_query_in_pool(pool: Pool, query: str):
     logger.info("<================ Finished query %s", query)
 
 
-async def get_pg_version(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS):
+async def get_pg_version(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> str:
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     pg_version = await db_conn.fetchval("select version()")
     await db_conn.close()
@@ -702,7 +702,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
         table_rule: dict | None = None,
         nulls_last: bool = False,
         files: dict | None = None
-):
+) -> str | None:
     table_name_full = f'"{table_schema}"."{table_name}"'
 
     # black list has the highest priority for pg_dump / pg_restore

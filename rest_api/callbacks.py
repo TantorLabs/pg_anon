@@ -4,6 +4,7 @@ import logging
 import aiohttp
 from pydantic import BaseModel
 
+from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatus
@@ -21,7 +22,7 @@ from rest_api.utils import normalize_headers, read_dictionary_contents
 logger = logging.getLogger(__name__)
 
 
-def _raise_if_failed(result):
+def _raise_if_failed(result: PgAnonResult) -> None:
     """Re-raise stored exception from background runner result."""
     if result.exception is not None:
         raise result.exception
@@ -64,7 +65,7 @@ async def send_webhook(
     logger.error("All %s webhook attempts to %s have failed", max_retries, url)
 
 
-async def scan_callback(request: ScanRequest):
+async def scan_callback(request: ScanRequest) -> None:
     logger.debug("Run scan callback")
     scan_runner = None
     try:
@@ -152,7 +153,7 @@ async def scan_callback(request: ScanRequest):
     )
 
 
-async def dump_callback(request: DumpRequest):
+async def dump_callback(request: DumpRequest) -> None:
     logger.debug("Run dump callback")
     dump_runner = None
     try:
@@ -232,7 +233,7 @@ async def dump_callback(request: DumpRequest):
     )
 
 
-async def restore_callback(request: RestoreRequest):
+async def restore_callback(request: RestoreRequest) -> None:
     logger.debug("Run scan callback")
     restore_runner = None
     try:

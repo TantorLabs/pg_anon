@@ -15,13 +15,13 @@ class BaseRunner:
     cli_params: list[str] = None
     result: PgAnonResult = None
 
-    def __init__(self, request: StatelessRunnerRequest):
+    def __init__(self, request: StatelessRunnerRequest) -> None:
         self.request = request
         self.operation_id = request.operation_id
         self.base_tmp_dir = BASE_TEMP_DIR / f"{self.operation_id}__{uuid.uuid4()}"
         self._prepare_cli_params()
 
-    def _prepare_db_credentials_cli_params(self):
+    def _prepare_db_credentials_cli_params(self) -> None:
         self.cli_params.extend(
             [
                 f"--db-host={self.request.db_connection_params.host}",
@@ -32,7 +32,7 @@ class BaseRunner:
             ]
         )
 
-    def _prepare_config(self):
+    def _prepare_config(self) -> None:
         config_file_path = BASE_DIR / "config.yml"
         if config_file_path.exists():
             self.cli_params.extend(
@@ -41,19 +41,19 @@ class BaseRunner:
                 ]
             )
 
-    def _prepare_verbosity_cli_params(self):
+    def _prepare_verbosity_cli_params(self) -> None:
         self.cli_params.extend(
             [
                 "--debug",
             ]
         )
 
-    def _prepare_cli_params(self):
+    def _prepare_cli_params(self) -> None:
         self.cli_params = []
         self._prepare_db_credentials_cli_params()
         self._prepare_config()
 
-    async def run(self):
+    async def run(self) -> PgAnonResult:
         if not self.mode:
             raise PgAnonError(ErrorCode.UNKNOWN_MODE, "Mode is not set")
 

@@ -11,7 +11,7 @@ class ScanRunner(BaseRunner):
     output_sens_dict_file_name: str
     output_no_sens_dict_file_name: str | None = None
 
-    def _prepare_dictionaries_cli_params(self):
+    def _prepare_dictionaries_cli_params(self) -> None:
         input_meta_dict_file_names = list(
             write_dictionary_contents(self.request.meta_dict_contents, self.base_tmp_dir).keys()
         )
@@ -56,14 +56,14 @@ class ScanRunner(BaseRunner):
                 ]
             )
 
-    def _prepare_parallelization_cli_params(self):
+    def _prepare_parallelization_cli_params(self) -> None:
         if self.request.proc_count:
             self.cli_params.append(f"--processes={self.request.proc_count}")
 
         if self.request.proc_conn_count:
             self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
 
-    def _prepare_scan_mode_cli_params(self):
+    def _prepare_scan_mode_cli_params(self) -> None:
         if self.request.type == ScanMode.PARTIAL and self.request.depth:
             self.cli_params.extend(
                 [
@@ -74,7 +74,7 @@ class ScanRunner(BaseRunner):
         else:
             self.cli_params.append(f"--scan-mode={ScanMode.FULL.value}")
 
-    def _prepare_cli_params(self):
+    def _prepare_cli_params(self) -> None:
         super()._prepare_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_parallelization_cli_params()

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -405,7 +405,7 @@ class DumpRequest(StatelessRunnerRequest):
     ignore_privileges: bool = False
 
     @model_validator(mode="after")
-    def validate_model(self):
+    def validate_model(self) -> Self:
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.output_path:
@@ -422,7 +422,7 @@ class DumpDeleteRequest(BaseModel):
     validated_path: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
-    def validate_model(self):
+    def validate_model(self) -> Self:
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.path:
@@ -449,7 +449,7 @@ class RestoreRequest(StatelessRunnerRequest):
     ignore_privileges: bool = False
 
     @model_validator(mode="after")
-    def validate_model(self):
+    def validate_model(self) -> Self:
         from rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.clean_db and self.drop_db:

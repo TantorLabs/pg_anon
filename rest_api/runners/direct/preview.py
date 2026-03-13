@@ -31,7 +31,7 @@ class PreviewRunner:
         return schemas
 
     @staticmethod
-    def _prepare_sens_dicts(sens_dict_contents) -> dict[str, list[dict[str, str]]]:
+    def _prepare_sens_dicts(sens_dict_contents: list) -> dict[str, list[dict[str, str]]]:
         sens_dict_data = {
             "dictionary": [],
             "dictionary_exclude": [],

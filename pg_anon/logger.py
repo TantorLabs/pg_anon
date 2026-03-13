@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import logging
 import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from concurrent_log_handler import ConcurrentRotatingFileHandler
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class Logger:
@@ -11,7 +16,7 @@ class Logger:
 
     logger = None
 
-    def __new__(cls):
+    def __new__(cls) -> Logger:  # noqa: PYI034
         if cls._instance is not None:
             return cls._instance
 
@@ -30,7 +35,7 @@ class Logger:
 
         return cls._instance
 
-    def add_file_handler(self, log_dir: Path, log_file_name: str):
+    def add_file_handler(self, log_dir: Path, log_file_name: str) -> None:
         for handler in list(self.logger.handlers):
             if isinstance(handler, logging.FileHandler):
                 self.logger.removeHandler(handler)
@@ -46,10 +51,10 @@ class Logger:
         file_handler.setFormatter(self._formatter)
         self.logger.addHandler(file_handler)
 
-    def set_log_level(self, log_level: int):
+    def set_log_level(self, log_level: int) -> None:
         self.logger.setLevel(log_level)
 
-    def __del__(self):
+    def __del__(self) -> None:
         # Закрытие всех обработчиков при уничтожении экземпляра класса
         for handler in self.logger.handlers.copy():
             try:
@@ -63,16 +68,16 @@ class Logger:
                 self.logger.removeHandler(handler)
 
 
-def get_logger():
+def get_logger() -> logging.Logger:
     return Logger().logger
 
 
-def logger_add_file_handler(log_dir: Path, log_file_name: str):
+def logger_add_file_handler(log_dir: Path, log_file_name: str) -> None:
     Logger().add_file_handler(
         log_dir=log_dir,
         log_file_name=log_file_name,
     )
 
 
-def logger_set_log_level(log_level: int):
+def logger_set_log_level(log_level: int) -> None:
     Logger().set_log_level(log_level)

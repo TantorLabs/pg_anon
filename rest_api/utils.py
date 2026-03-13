@@ -53,7 +53,7 @@ def read_json_file(file_path: str | Path) -> dict:
 
 
 def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
-    def log_sort_key(file_path: Path):
+    def log_sort_key(file_path: Path) -> int:
         parts = file_path.name.split(".")
         try:
             return int(parts[-1])
@@ -95,7 +95,7 @@ def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
     return list(result_lines)
 
 
-def delete_folder(folder_path: Path):
+def delete_folder(folder_path: Path) -> None:
     try:
         shutil.rmtree(folder_path)
         print(f"Folder {folder_path} deleted successfully.")
@@ -103,7 +103,7 @@ def delete_folder(folder_path: Path):
         print(f"Error deleting folder {folder_path}: {e!s}")
 
 
-def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params: list[str]):
+def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params: list[str]) -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 

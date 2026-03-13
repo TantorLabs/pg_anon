@@ -8,11 +8,13 @@ import unittest
 from decimal import Decimal
 from pathlib import Path
 
+from asyncpg import Connection
+
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
 from pg_anon.common.db_utils import create_connection, get_scan_fields_count
-from pg_anon.common.dto import ConnectionParams
+from pg_anon.common.dto import ConnectionParams, RunOptions
 from pg_anon.common.enums import ResultCode
 from pg_anon.common.errors import PgAnonError
 from pg_anon.common.utils import exception_helper, get_dict_rule_for_table, recordset_to_list_flat, to_json
@@ -36,7 +38,7 @@ class TestParams:
     db_connections_per_process = 4
     test_processes = 4
 
-    def __init__(self):
+    def __init__(self) -> None:
         config_path = str(Path(__file__).resolve().parent / "config.yml")
 
         if os.environ.get("TEST_DB_USER") is not None:
@@ -67,7 +69,7 @@ params = TestParams()
 
 class DBOperations:
     @staticmethod
-    async def init_db(db_conn, db_name):
+    async def init_db(db_conn: Connection, db_name: str) -> None:
         try:
             await db_conn.execute(
                 f"""
@@ -95,7 +97,7 @@ class DBOperations:
             print(exception_helper(show_traceback=True))
 
     @staticmethod
-    async def init_db_once(db_conn, db_name):
+    async def init_db_once(db_conn: Connection, db_name: str) -> None:
         try:
             db_exists = await db_conn.fetch(f"""select datname from pg_database where datname = '{db_name}'""")
             if len(db_exists) == 0:
@@ -114,7 +116,7 @@ class DBOperations:
             print(exception_helper(show_traceback=True))
 
     @staticmethod
-    async def init_env(db_conn, env_sql_file, scale=1):
+    async def init_env(db_conn: Connection, env_sql_file: str, scale: int = 1) -> None:
         current_dir = Path(__file__).resolve().parent
         with (current_dir / "sql" / env_sql_file).open(encoding="utf-8") as f:
             data = f.read()
@@ -124,7 +126,7 @@ class DBOperations:
 
 
 class BasicUnitTest:
-    async def init_env(self):
+    async def init_env(self) -> None:
         options = build_run_options(
             [
                 "init",
@@ -182,7 +184,7 @@ class BasicUnitTest:
         passed_stages.append("init_env")
         return res
 
-    async def init_stress_env(self):
+    async def init_stress_env(self) -> None:
         options = build_run_options(
             [
                 "init",
@@ -236,7 +238,7 @@ class BasicUnitTest:
         passed_stages.append("init_stress_env")
         return res
 
-    async def check_rows(self, options, schema, table, fields, rows):
+    async def check_rows(self, options: RunOptions, schema: str, table: str, fields: list | None, rows: list) -> bool:
         ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
         if fields is None:
@@ -245,7 +247,7 @@ class BasicUnitTest:
             db_rows = await db_conn.fetch(f"""select {", ".join(fields)} from "{schema}"."{table}" limit 10000""")
         db_rows_prepared = [list(dict(db_row).values()) for db_row in db_rows]
 
-        def cmp_two_rows(row_a, row_b):
+        def cmp_two_rows(row_a: list, row_b: list) -> bool:
             result = True
             if len(db_row) == len(v):
                 for i in range(len(db_row)):
@@ -275,7 +277,7 @@ class BasicUnitTest:
         await db_conn.close()
         return result
 
-    async def check_list_tables_and_fields(self, source_options, target_options):
+    async def check_list_tables_and_fields(self, source_options: RunOptions, target_options: RunOptions) -> list:
         query = """
         SELECT
             n.nspname,
@@ -306,7 +308,7 @@ class BasicUnitTest:
 
         return [x for x in db_source_rows if x not in db_target_rows]
 
-    async def check_rows_count(self, options, objs) -> bool:
+    async def check_rows_count(self, options: RunOptions, objs: list) -> bool:
         failed_objs = []
         ctx = Context(options)
         db_conn = await create_connection(ctx.connection_params)
@@ -325,7 +327,7 @@ class BasicUnitTest:
         await db_conn.close()
         return len(failed_objs) == 0
 
-    async def check_list_tables(self, options, expected_tables_list) -> bool:
+    async def check_list_tables(self, options: RunOptions, expected_tables_list: list) -> bool:
         query = """
             SELECT
                 n.nspname,
@@ -351,7 +353,7 @@ class BasicUnitTest:
 
         return len(not_found_tables) == 0 and len(db_rows) == len(expected_tables_list)
 
-    async def get_list_tables_with_diff_data(self, source_options, target_options):
+    async def get_list_tables_with_diff_data(self, source_options: RunOptions, target_options: RunOptions) -> tuple:
         query = """
         SELECT
             n.nspname,
@@ -409,7 +411,7 @@ class BasicUnitTest:
     def get_test_output_path(dir_name: str) -> str:
         return str(Path.cwd() / "tests" / "output" / dir_name)
 
-    def save_and_compare_result(self, file_name, list_objects):
+    def save_and_compare_result(self, file_name: str, list_objects: list) -> bool:
         saved_results_file_path = Path.cwd() / "tests" / "saved_results"
         saved_results_file_path.mkdir(parents=True, exist_ok=True)
         saved_results_file = str(saved_results_file_path / file_name)
@@ -446,11 +448,11 @@ class BasicUnitTest:
 
 
 class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_dump(self):
+    async def test_02_dump(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test.py")
@@ -478,7 +480,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_dump")
 
-    async def test_03_restore(self):
+    async def test_03_restore(self) -> None:
         self.assertTrue("test_02_dump" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
@@ -503,7 +505,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_restore")
 
-    async def test_04_dump(self):
+    async def test_04_dump(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_exclude.py")
@@ -531,7 +533,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_04_dump")
 
-    async def test_05_restore(self):
+    async def test_05_restore(self) -> None:
         self.assertTrue("test_04_dump" in passed_stages)
         prepared_sens_dict_file = self.get_test_dict_path("test_exclude.py")
 
@@ -575,7 +577,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_05_restore")
 
-    async def test_06_sync_struct(self):
+    async def test_06_sync_struct(self) -> None:
         self.assertTrue("test_05_restore" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sync_struct.py")
@@ -701,7 +703,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_06_sync_struct")
 
-    async def test_07_sync_data(self):
+    async def test_07_sync_data(self) -> None:
         self.assertTrue("test_06_sync_struct" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sync_data.py")
@@ -800,7 +802,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_07_sync_data")
 
-    async def test_08_sync_data(self):
+    async def test_08_sync_data(self) -> None:
         # --mode=sync-data-dump ---> --mode=sync-data-restore [target DB is not empty]
         self.assertTrue("test_07_sync_data" in passed_stages)
 
@@ -862,7 +864,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_08_sync_data")
 
-    async def test_09_repeat_restore_in_existing_db(self):
+    async def test_09_repeat_restore_in_existing_db(self) -> None:
         self.assertTrue("test_03_restore" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
@@ -887,7 +889,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.FAIL)
         passed_stages.append("test_09_repeat_restore_in_existing_db")
 
-    async def test_10_repeat_restore_with_drop_db(self):
+    async def test_10_repeat_restore_with_drop_db(self) -> None:
         self.assertTrue("test_03_restore" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonUnitTest.test_02_dump")
@@ -913,7 +915,7 @@ class PGAnonUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_10_repeat_restore_with_drop_db")
 
-    async def test_11_dump_with_sql_conditions(self):
+    async def test_11_dump_with_sql_conditions(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_sens_with_sql_conditions.py")
@@ -1046,7 +1048,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     test_source_db = f"{params.test_source_db}_2"
     test_target_db = f"{params.test_target_db}_9"
 
-    async def init_db(self, db_name: str, scale: int = 1):
+    async def init_db(self, db_name: str, scale: int = 1) -> None:
         connection_params = ConnectionParams(
             host=params.test_db_host,
             port=int(params.test_db_port),
@@ -1074,7 +1076,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def add_data_to_db(self, db_name: str, scale: int = 1):
+    async def add_data_to_db(self, db_name: str, scale: int = 1) -> None:
         connection_params = ConnectionParams(
             host=params.test_db_host,
             port=int(params.test_db_port),
@@ -1086,7 +1088,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         await DBOperations.init_env(db_conn, "init_additional_simple_env.sql", scale)
         await db_conn.close()
 
-    async def make_dump(self, db_name: str, output_dir: str):
+    async def make_dump(self, db_name: str, output_dir: str) -> None:
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
 
         options = build_run_options(
@@ -1110,7 +1112,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def make_restore(self, output_dir: str):
+    async def make_restore(self, output_dir: str) -> None:
         restore_options = build_run_options(
             [
                 "restore",
@@ -1131,11 +1133,11 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         return restore_options
 
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_dump_and_restore_with_clean_db(self):
+    async def test_02_dump_and_restore_with_clean_db(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         output_dir = self.get_test_output_path("PGAnonRestoreCleanTest.test_02_dump_and_restore_with_clean_db")
@@ -1169,7 +1171,7 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_02_dump_and_restore_with_clean_db")
 
-    async def test_03_dump_and_wrong_restore_with_clean_db(self):
+    async def test_03_dump_and_wrong_restore_with_clean_db(self) -> None:
         """Second restore must be failed, because in target DB will be added tables, what not include in dump"""
         self.assertTrue("init_env" in passed_stages)
         output_dir = self.get_test_output_path("PGAnonRestoreCleanTest.test_03_dump_and_wrong_restore_with_clean_db")
@@ -1203,11 +1205,11 @@ class PGAnonRestoreCleanTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_sync_struct_for_validate(self):
+    async def test_02_sync_struct_for_validate(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
@@ -1254,7 +1256,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res_restore.result_code, ResultCode.DONE)
         passed_stages.append("test_02_sync_struct_for_validate")
 
-    async def test_03_validate_dict(self):
+    async def test_03_validate_dict(self) -> None:
         self.assertTrue("test_02_sync_struct_for_validate" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
@@ -1283,7 +1285,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_validate_dict")
 
-    async def test_04_validate_data(self):
+    async def test_04_validate_data(self) -> None:
         self.assertTrue("test_03_validate_dict" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
@@ -1331,7 +1333,7 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_04_validate_data")
 
-    async def test_05_validate_full(self):
+    async def test_05_validate_full(self) -> None:
         self.assertTrue("test_04_validate_data" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_dbg_stages.py")
@@ -1381,11 +1383,11 @@ class PGAnonValidateUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_partial_dump_include_restore_full(self):
+    async def test_02_partial_dump_include_restore_full(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1455,7 +1457,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
         passed_stages.append("test_02_partial_dump_include_restore_full")
 
-    async def test_03_partial_dump_exclude_restore_full(self):
+    async def test_03_partial_dump_exclude_restore_full(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1545,7 +1547,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
         passed_stages.append("test_03_partial_dump_exclude_restore_full")
 
-    async def test_04_partial_dump_include_exclude_restore_full(self):
+    async def test_04_partial_dump_include_exclude_restore_full(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1613,7 +1615,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
         passed_stages.append("test_04_partial_dump_include_exclude_restore_full")
 
-    async def test_05_partial_dump_include_restore_exclude(self):
+    async def test_05_partial_dump_include_restore_exclude(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1681,7 +1683,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
         passed_stages.append("test_05_partial_dump_include_restore_exclude")
 
-    async def test_06_partial_dump_exclude_restore_include(self):
+    async def test_06_partial_dump_exclude_restore_include(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1749,7 +1751,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
         passed_stages.append("test_06_partial_dump_exclude_restore_include")
 
-    async def test_07_partial_dump_full_restore_include_exclude(self):
+    async def test_07_partial_dump_full_restore_include_exclude(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test_empty_dictionary.py")
@@ -1819,7 +1821,7 @@ class PGAnonPartialDumpRestoreUnitTest(unittest.IsolatedAsyncioTestCase, BasicUn
 
 
 class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
         super().__init__(*args, **kwargs)
         self.target_sens_dict = self.get_test_dict_path("test_prepared_sens_dict_result.py", output=True)
         self.target_sens_dict_expected = self.get_test_expected_dict_path("test_prepared_sens_dict_result_expected.py")
@@ -1828,7 +1830,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             "test_prepared_no_sens_dict_result_expected.py"
         )
 
-    def assert_sens_dicts(self, prepared_sens_dict: str | Path, prepared_sens_dict_expected: str | Path):
+    def assert_sens_dicts(self, prepared_sens_dict: str | Path, prepared_sens_dict_expected: str | Path) -> None:
         """Comparing sens dicts
         :param prepared_sens_dict: output prepared sens dict
         :param prepared_sens_dict_expected: prepared sens dict for comparison
@@ -1841,11 +1843,11 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
             d1 = json.load(file1)["dictionary"]
             d2 = json.load(file2)["dictionary"]
 
-            def iterate_dict_level_2(data):
+            def iterate_dict_level_2(data: dict):  # noqa: ANN202
                 for k, v in data.items():
                     yield {k: v}
 
-            def iterate_dict_level_1(data):
+            def iterate_dict_level_1(data: list):  # noqa: ANN202
                 for item in data:
                     if "fields" in item:
                         yield from iterate_dict_level_2(item["fields"])
@@ -1937,11 +1939,11 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
     options = {}  # noqa: RUF012
 
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_create_dict(self):
+    async def test_02_create_dict(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dict = self.get_test_dict_path("test_meta_dict.py")
@@ -1975,7 +1977,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_create_dict")
 
-    async def test_03_dump(self):
+    async def test_03_dump(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
@@ -2003,7 +2005,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_dump")
 
-    async def test_04_restore(self):
+    async def test_04_restore(self) -> None:
         self.assertTrue("test_03_dump" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_03_dump")
@@ -2072,7 +2074,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_04_restore")
 
-    async def test_05_repeat_create_dict_with_no_sens_dict(self):
+    async def test_05_repeat_create_dict_with_no_sens_dict(self) -> None:
         self.assertTrue("test_02_create_dict" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
@@ -2108,7 +2110,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_05_repeat_create_dict_with_no_sens_dict")
 
-    async def test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict(self):
+    async def test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict(self) -> None:
         self.assertTrue("test_02_create_dict" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
@@ -2146,7 +2148,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_06_repeat_create_dict_with_no_sens_dict_and_sens_dict")
 
-    async def test_07_create_dict_using_include_rules(self):
+    async def test_07_create_dict_using_include_rules(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2185,7 +2187,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_07_create_dict_using_include_rules")
 
-    async def test_08_create_dict_using_include_and_skip_rules_with_masks(self):
+    async def test_08_create_dict_using_include_and_skip_rules_with_masks(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2226,7 +2228,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_08_create_dict_using_include_and_skip_rules_with_masks")
 
-    async def test_09_create_dict_using_partial_constants(self):
+    async def test_09_create_dict_using_partial_constants(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2267,7 +2269,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_09_create_dict_using_partial_constants")
 
-    async def test_10_create_dict_using_data_sql_condition(self):
+    async def test_10_create_dict_using_data_sql_condition(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2308,7 +2310,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_10_create_dict_using_data_sql_condition")
 
-    async def test_11_create_dict_using_data_func(self):
+    async def test_11_create_dict_using_data_func(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2347,7 +2349,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_11_create_dict_using_data_func")
 
-    async def test_12_create_dict_with_type_aliases(self):
+    async def test_12_create_dict_with_type_aliases(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dict = self.get_test_dict_path("test_meta_dict_type_aliases.py")
@@ -2383,7 +2385,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_12_create_dict_with_type_aliases")
 
-    async def test_13_create_dict_with_type_aliases_complex(self):
+    async def test_13_create_dict_with_type_aliases_complex(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dict = self.get_test_dict_path("test_meta_dict_type_aliases_complex.py")
@@ -2421,7 +2423,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_13_create_dict_with_type_aliases_complex")
 
-    async def test_14_create_dict_with_default_anonymization_function(self):
+    async def test_14_create_dict_with_default_anonymization_function(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2459,7 +2461,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_14_create_dict_with_default_anonymization_function")
 
-    async def test_15_create_dict_using_words_and_phrases_constants(self):
+    async def test_15_create_dict_using_words_and_phrases_constants(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2500,7 +2502,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_15_create_dict_using_words_and_phrases_constants")
 
-    async def test_16_create_dict_save_dicts(self):
+    async def test_16_create_dict_save_dicts(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dict = self.get_test_dict_path("test_meta_dict.py")
@@ -2557,7 +2559,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_16_create_dict_save_dicts")
 
-    async def test_17_dump_save_dicts(self):
+    async def test_17_dump_save_dicts(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         output_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_17_dump_save_dicts")
@@ -2605,7 +2607,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_17_dump_save_dicts")
 
-    async def test_18_restore_save_dicts(self):
+    async def test_18_restore_save_dicts(self) -> None:
         self.assertTrue("test_17_dump_save_dicts" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonDictGenUnitTest.test_17_dump_save_dicts")
@@ -2648,7 +2650,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_18_restore_save_dicts")
 
-    async def test_19_create_dict_using_not_existing_functions(self):
+    async def test_19_create_dict_using_not_existing_functions(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2680,7 +2682,7 @@ class PGAnonDictGenUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.FAIL)
         passed_stages.append("test_19_create_dict_using_not_existing_functions")
 
-    async def test_20_create_dict_using_data_func_per_field(self):
+    async def test_20_create_dict_using_data_func_per_field(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         meta_dicts = [
@@ -2734,11 +2736,11 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
     target_dict = "test_create_dict_result.py"
     options = {}  # noqa: RUF012
 
-    async def test_01_stress_init(self):
+    async def test_01_stress_init(self) -> None:
         res = await self.init_stress_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_create_dict(self):
+    async def test_02_create_dict(self) -> None:
         self.assertTrue("init_stress_env" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
@@ -2767,7 +2769,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         tmp_results.res_test_02 = res.elapsed
         passed_stages.append("test_02_create_dict")
 
-    async def test_03_create_dict(self):
+    async def test_03_create_dict(self) -> None:
         self.assertTrue("init_stress_env" in passed_stages)
 
         meta_dict_file = self.get_test_dict_path("test_meta_dict.py")
@@ -2796,7 +2798,7 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
         tmp_results.res_test_03 = res.elapsed
         passed_stages.append("test_03_create_dict")
 
-    async def test_04_create_dict(self):
+    async def test_04_create_dict(self) -> None:
         self.assertTrue("test_02_create_dict" in passed_stages and "test_03_create_dict" in passed_stages)
 
         print(f"Comparing values: {tmp_results.res_test_02} < ({tmp_results.res_test_03} / 5)")
@@ -2808,11 +2810,11 @@ class PGAnonDictGenStressUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTes
 class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
     options = {}  # noqa: RUF012
 
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_mask_dump(self):
+    async def test_02_mask_dump(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("mask_test.py")
@@ -2841,7 +2843,7 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_mask_dump")
 
-    async def test_03_mask_restore(self):
+    async def test_03_mask_restore(self) -> None:
         self.assertTrue("test_02_mask_dump" in passed_stages)
         input_dir = self.get_test_output_path("PGAnonMaskUnitTest.test_02_mask_dump")
 
@@ -2879,11 +2881,11 @@ class PGAnonMaskUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_view_data_print(self):
+    async def test_02_view_data_print(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path("test_prepared_sens_dict_result_expected.py")
@@ -2910,7 +2912,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_02_view_data_print")
 
-    async def test_03_view_data_json(self):
+    async def test_03_view_data_json(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path("test_prepared_sens_dict_result_expected.py")
@@ -2943,7 +2945,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_03_view_data_json")
 
-    async def test_04_view_data_null(self):
+    async def test_04_view_data_null(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path("test_prepared_sens_dict_result_expected.py")
@@ -2974,7 +2976,7 @@ class PGAnonViewDataUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_04_view_data_null")
 
-    async def test_05_view_data_without_matched_rule(self):
+    async def test_05_view_data_without_matched_rule(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_expected_dict_path(
@@ -3035,11 +3037,11 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         return counters
 
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_view_fields_full(self):
+    async def test_02_view_fields_full(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3073,7 +3075,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_02_view_fields_full")
 
-    async def test_03_view_fields_full_by_schema(self):
+    async def test_03_view_fields_full_by_schema(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3103,7 +3105,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_03_view_fields_full_by_schema")
 
-    async def test_04_view_fields_full_by_schema_mask(self):
+    async def test_04_view_fields_full_by_schema_mask(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3134,7 +3136,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_04_view_fields_full_by_schema_mask")
 
-    async def test_05_view_fields_full_by_table(self):
+    async def test_05_view_fields_full_by_table(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3164,7 +3166,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_05_view_fields_full_by_table")
 
-    async def test_06_view_fields_full_by_table_mask(self):
+    async def test_06_view_fields_full_by_table_mask(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3195,7 +3197,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_06_view_fields_full_by_table_mask")
 
-    async def test_07_view_fields_full_with_cut_output_and_notice(self):
+    async def test_07_view_fields_full_with_cut_output_and_notice(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3228,7 +3230,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_07_view_fields_full_with_cut_output")
 
-    async def test_08_view_fields_with_only_sensitive_fields(self):
+    async def test_08_view_fields_with_only_sensitive_fields(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3284,7 +3286,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_08_view_fields_with_only_sensitive_fields")
 
-    async def test_09_view_filter_json_output(self):
+    async def test_09_view_filter_json_output(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3319,7 +3321,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_11_view_filter_json_output")
 
-    async def test_10_view_fields_exception_on_zero_fields(self):
+    async def test_10_view_fields_exception_on_zero_fields(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3353,7 +3355,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_09_view_fields_json")
 
-    async def test_10_view_fields_exception_on_filter_to_zero_fields(self):
+    async def test_10_view_fields_exception_on_filter_to_zero_fields(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test.py")
@@ -3389,7 +3391,7 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
         passed_stages.append("test_10_view_filter_to_zero_fields")
 
-    async def test_12_view_fields_exception_on_empty_prepared_dictionary(self):
+    async def test_12_view_fields_exception_on_empty_prepared_dictionary(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file_name = self.get_test_dict_path("test_empty_dictionary.py")
@@ -3422,11 +3424,11 @@ class PGAnonViewFieldsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
 
 
 class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTest):
-    async def test_01_init(self):
+    async def test_01_init(self) -> None:
         res = await self.init_env()
         self.assertEqual(res.result_code, ResultCode.DONE)
 
-    async def test_02_dump_with_valid_pg_dump_options(self):
+    async def test_02_dump_with_valid_pg_dump_options(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test.py")
@@ -3455,7 +3457,7 @@ class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTe
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_02_dump_with_valid_pg_dump_options")
 
-    async def test_03_restore_with_valid_pg_restore_options(self):
+    async def test_03_restore_with_valid_pg_restore_options(self) -> None:
         self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")
@@ -3482,7 +3484,7 @@ class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTe
         self.assertEqual(res.result_code, ResultCode.DONE)
         passed_stages.append("test_03_restore_with_valid_pg_restore_options")
 
-    async def test_04_dump_with_invalid_pg_dump_options(self):
+    async def test_04_dump_with_invalid_pg_dump_options(self) -> None:
         self.assertTrue("init_env" in passed_stages)
 
         prepared_sens_dict_file = self.get_test_dict_path("test.py")
@@ -3510,7 +3512,7 @@ class PGAnonPgUtilsOptionsUnitTest(unittest.IsolatedAsyncioTestCase, BasicUnitTe
         res = await PgAnonApp(options).run()
         self.assertEqual(res.result_code, ResultCode.FAIL)
 
-    async def test_05_restore_with_invalid_pg_restore_options(self):
+    async def test_05_restore_with_invalid_pg_restore_options(self) -> None:
         self.assertTrue("test_02_dump_with_valid_pg_dump_options" in passed_stages)
 
         input_dir = self.get_test_output_path("PGAnonPgUtilsOptionsUnitTest.test_02_dump")

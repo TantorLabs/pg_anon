@@ -25,7 +25,7 @@ class ViewDataMode:
     table: PrettyTable = None
     _need_raw_data: bool = False
 
-    def __init__(self, context: Context, need_raw_data: bool = False):
+    def __init__(self, context: Context, need_raw_data: bool = False) -> None:
         self.context = context
         self._limit = context.options.limit
         self._offset = context.options.offset
@@ -67,7 +67,7 @@ class ViewDataMode:
 
         return [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
 
-    async def get_rows_count(self):
+    async def get_rows_count(self) -> int:
         self.rows_count = await get_rows_count(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
@@ -105,7 +105,7 @@ class ViewDataMode:
             self._prepare_table()
             print(self.table)
 
-    async def _prepare_queries(self):
+    async def _prepare_queries(self) -> None:
 
         query_without_limit = await get_dump_query(
             ctx=self.context,

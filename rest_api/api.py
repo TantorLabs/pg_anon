@@ -27,7 +27,6 @@ from rest_api.pydantic_models import (
     DumpRequest,
     DumpType,
     ErrorResponse,
-    OperationDataResponse,
     PreviewSchemasRequest,
     PreviewSchemasResponse,
     PreviewSchemaTablesRequest,
@@ -51,7 +50,7 @@ app = FastAPI(title="Stateless web service for pg_anon")
 
 
 @app.exception_handler(PgAnonError)
-async def pganon_error_handler(request: Request, exc: PgAnonError):  # noqa: ARG001
+async def pganon_error_handler(request: Request, exc: PgAnonError) -> JSONResponse:  # noqa: ARG001
     return JSONResponse(
         status_code=400,
         content=jsonable_encoder(ErrorResponse(error_code=exc.code, message=exc.message)),
@@ -59,14 +58,14 @@ async def pganon_error_handler(request: Request, exc: PgAnonError):  # noqa: ARG
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):  # noqa: ARG001
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # noqa: ARG001
     return JSONResponse(
         status_code=500,
         content=jsonable_encoder(ErrorResponse(error_code=ErrorCode.INTERNAL_ERROR, message=str(exc))),
     )
 
 
-def generate_openapi_doc_file():
+def generate_openapi_doc_file() -> None:
     output_path = Path(__file__).parent / "openapi.json"
     with Path.open(output_path, "w") as f:
         json.dump(app.openapi(), f, indent=2)
@@ -83,7 +82,7 @@ def generate_openapi_doc_file():
         "500": {"model": ErrorResponse},
     },
 )
-async def db_connection_check(request: DbConnectionParams):
+async def db_connection_check(request: DbConnectionParams) -> JSONResponse | None:
     connection_is_ok = await check_db_connection(
         connection_params=ConnectionParams(
             host=request.host,
@@ -115,7 +114,7 @@ async def db_connection_check(request: DbConnectionParams):
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_scan_start(request: ScanRequest, background_tasks: BackgroundTasks):
+async def stateless_scan_start(request: ScanRequest, background_tasks: BackgroundTasks) -> None:
     background_tasks.add_task(scan_callback, request)
 
 
@@ -124,13 +123,12 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
     tags=["Stateless"],
     summary="Render preview rules by fields",
     description="Rendering of preview rules by fields",
-    response_model=ViewFieldsResponse,
     responses={
         "400": {"model": ErrorResponse},
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_view_fields(request: ViewFieldsRequest):
+async def stateless_view_fields(request: ViewFieldsRequest) -> ViewFieldsResponse:
     runner = ViewFieldsRunner(request)
     data = await runner.run()
 
@@ -144,13 +142,12 @@ async def stateless_view_fields(request: ViewFieldsRequest):
     tags=["Stateless | Preview"],
     summary="Render preview rules by fields",  # TODO: Update
     description="Rendering of preview rules by fields",  # TODO: Update
-    response_model=PreviewSchemasResponse,
     responses={
         "400": {"model": ErrorResponse},
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_preview_schemas(request: PreviewSchemasRequest):
+async def stateless_preview_schemas(request: PreviewSchemasRequest) -> PreviewSchemasResponse:
     data = await PreviewRunner.get_schemas(request)
 
     return PreviewSchemasResponse(
@@ -163,13 +160,12 @@ async def stateless_preview_schemas(request: PreviewSchemasRequest):
     tags=["Stateless | Preview"],
     summary="Preview rules by fields",  # TODO: Update
     description="Rendering of preview rules by fields",  # TODO: Update
-    response_model=PreviewSchemaTablesResponse,
     responses={
         "400": {"model": ErrorResponse},
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTablesRequest):
+async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTablesRequest) -> PreviewSchemaTablesResponse:
     data = await PreviewRunner.get_schema_tables(schema, request)
 
     return PreviewSchemaTablesResponse(
@@ -182,13 +178,12 @@ async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTab
     tags=["Stateless"],
     summary="Render preview data by rules",
     description="Rendering of preview data by rules",
-    response_model=ViewDataResponse,
     responses={
         "400": {"model": ErrorResponse},
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_view_data(request: ViewDataRequest):
+async def stateless_view_data(request: ViewDataRequest) -> ViewDataResponse:
     runner = ViewDataRunner(request)
     data = await runner.run()
 
@@ -208,7 +203,7 @@ async def stateless_view_data(request: ViewDataRequest):
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks):
+async def stateless_dump_start(request: DumpRequest, background_tasks: BackgroundTasks) -> None:
     background_tasks.add_task(dump_callback, request)
 
 
@@ -223,7 +218,7 @@ async def stateless_dump_start(request: DumpRequest, background_tasks: Backgroun
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_restore_start(request: RestoreRequest, background_tasks: BackgroundTasks):
+async def stateless_restore_start(request: RestoreRequest, background_tasks: BackgroundTasks) -> None:
     background_tasks.add_task(restore_callback, request)
 
 
@@ -236,9 +231,8 @@ async def stateless_restore_start(request: RestoreRequest, background_tasks: Bac
     "/operation",
     tags=["Operations"],
     summary="List of operations",
-    response_model=list[str],
 )
-async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_filter)]):  # noqa: C901
+async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_filter)]) -> list[str]:  # noqa: C901
     date_before = filters["date_before"]
     date_after = filters["date_after"]
 
@@ -286,9 +280,8 @@ async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Operation run directory not found"},
     },
-    response_model=OperationDataResponse,
 )
-async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)]):
+async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)]) -> dict:
     saved_dicts_info_file_path = operation_run_dir / SAVED_DICTS_INFO_FILE_NAME
     run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
     run_status_file_path = operation_run_dir / SAVED_RUN_STATUS_FILE_NAME
@@ -331,12 +324,11 @@ async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(ge
     "/operation/{internal_operation_id}/logs",
     tags=["Operations"],
     summary="Logs of operation",
-    response_model=list[str],
 )
 async def stateless_operation_logs(
     operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)],
     tail_lines: Annotated[int, Query(1000, gt=0, description="Number of log lines to read from the end of the file")],
-):
+) -> list[str]:
     logs_file_path = operation_run_dir / LOGS_DIR_NAME
     return read_logs_from_tail(logs_file_path, tail_lines)
 
@@ -354,7 +346,7 @@ async def stateless_operation_logs(
 )
 async def remove_operation(
     background_tasks: BackgroundTasks, operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)]
-):
+) -> None:
     run_options_file_path = operation_run_dir / SAVED_RUN_OPTIONS_FILE_NAME
     run_options_data = read_json_file(run_options_file_path)
 
@@ -377,9 +369,8 @@ async def remove_operation(
     "/handbook/task-statuses",
     tags=["Handbooks"],
     summary="List of task statuses",
-    response_model=list[TaskStatus],
 )
-async def task_statuses():
+async def task_statuses() -> list[TaskStatus]:
     return [
         TaskStatus(
             id=1,
@@ -403,9 +394,8 @@ async def task_statuses():
     "/handbook/dump-types",
     tags=["Handbooks"],
     summary="List of dump types",
-    response_model=list[DumpType],
 )
-async def dump_types():
+async def dump_types() -> list[DumpType]:
     return [
         DumpType(
             title="Полный",
@@ -426,9 +416,8 @@ async def dump_types():
     "/handbook/restore-types",
     tags=["Handbooks"],
     summary="List of restore types",
-    response_model=list[RestoreType],
 )
-async def restore_types():
+async def restore_types() -> list[RestoreType]:
     return [
         RestoreType(
             title="Полный",
@@ -449,9 +438,8 @@ async def restore_types():
     "/handbook/scan-types",
     tags=["Handbooks"],
     summary="List of scan types",
-    response_model=list[ScanType],
 )
-async def scan_types():
+async def scan_types() -> list[ScanType]:
     return [
         ScanType(
             title="Полное сканирование",

@@ -19,13 +19,13 @@ class ViewFieldsMode:
     fields_cut_by_limits: bool = False
     empty_data_filler: str = "---"
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
         if context.options.fields_count is not None:
             self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
 
-    def _init_filter_dict_rule(self):
+    def _init_filter_dict_rule(self) -> None:
         self._filter_dict_rule = {}
         has_schema: bool = False
         has_table: bool = False
@@ -79,7 +79,7 @@ class ViewFieldsMode:
 
         return result
 
-    async def _make_notice_fields_cut_by_limits(self):
+    async def _make_notice_fields_cut_by_limits(self) -> None:
         fields_count = await get_scan_fields_count(
             connection_params=self.context.connection_params, server_settings=self.context.server_settings
         )
@@ -93,7 +93,7 @@ class ViewFieldsMode:
             )
             self.fields_cut_by_limits = True
 
-    def _prepare_fields_for_view(self):
+    def _prepare_fields_for_view(self) -> None:
         fields_with_find_rules = []
 
         for field in self.fields.copy():
@@ -132,7 +132,7 @@ class ViewFieldsMode:
 
         self.fields = fields_with_find_rules
 
-    def _prepare_table(self):
+    def _prepare_table(self) -> None:
         self.table = PrettyTable(
             [
                 "schema",
@@ -158,7 +158,7 @@ class ViewFieldsMode:
                 ]
             )
 
-    def _prepare_json(self):
+    def _prepare_json(self) -> None:
         self.json = json.dumps(
             [
                 {
@@ -174,7 +174,7 @@ class ViewFieldsMode:
             ensure_ascii=False,
         )
 
-    async def _output_fields(self):
+    async def _output_fields(self) -> None:
         await self._make_notice_fields_cut_by_limits()
 
         self.fields = await self._get_fields_for_view()

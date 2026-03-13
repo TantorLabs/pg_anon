@@ -79,7 +79,7 @@ class DumpMode:
     _skip_pre_data_dump: bool = False
     _skip_post_data_dump: bool = False
 
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
         self.metadata = Metadata()
         os.environ["PGPASSWORD"] = self.context.options.db_user_password
@@ -107,7 +107,7 @@ class DumpMode:
             or self.context.options.dbg_stage_3_validate_full
         )
 
-    def _prepare_output_dir(self):
+    def _prepare_output_dir(self) -> None:
         if self.context.options.dbg_stage_1_validate_dict:
             return
 
@@ -121,7 +121,7 @@ class DumpMode:
             raise PgAnonError(ErrorCode.OUTPUT_DIR_NOT_EMPTY, msg)
         self._clear_output_dir()
 
-    def _clear_output_dir(self):
+    def _clear_output_dir(self) -> None:
         expected_file_extensions = {
             ".sql",
             ".gz",
@@ -145,7 +145,7 @@ class DumpMode:
     def output_dir_is_empty(self) -> bool:
         return not any(self.output_dir.iterdir())
 
-    async def _count_totals(self, connection: Connection):
+    async def _count_totals(self, connection: Connection) -> None:
         for query, file_key in zip(self._data_dump_queries, self._data_dump_files, strict=True):
             file = self._data_dump_files[file_key]
 
@@ -158,7 +158,7 @@ class DumpMode:
             self._total_tables_size += await connection.fetchval(get_relation_size_query(schema=schema, table=table))
             self._total_rows += int(file["rows"])
 
-    async def _prepare_sequences_last_values(self, connection: Connection):
+    async def _prepare_sequences_last_values(self, connection: Connection) -> None:
         self._sequences_last_values = {}
 
         for table_schema, table_name, _, sequence_schema, sequence_name in self._sequences_data:
@@ -181,7 +181,7 @@ class DumpMode:
                         "is_excluded": (table_schema, table_name) not in self.context.tables,
                     }
 
-    async def _prepare_indexes(self, connection: Connection):
+    async def _prepare_indexes(self, connection: Connection) -> None:
         self._indexes = {}
         views_list = [
             (view_data["view_schema"], view_data["view_name"])
@@ -197,7 +197,7 @@ class DumpMode:
                 "is_excluded": is_excluded,
             }
 
-    async def _prepare_views(self, connection: Connection):
+    async def _prepare_views(self, connection: Connection) -> None:
         self._views = {}
         views_data = await get_views_related_to_tables(connection, self.context.tables)
         for view_schema, view_name, view_type, table_schema, table_name, is_excluded in views_data:
@@ -213,7 +213,7 @@ class DumpMode:
                 "is_excluded": is_excluded,
             }
 
-    async def _prepare_constraints(self, connection: Connection):
+    async def _prepare_constraints(self, connection: Connection) -> None:
         self._constraints = {}
         constraints_data = await get_constraints_to_excluded_tables(connection, self.context.tables)
 
@@ -234,7 +234,7 @@ class DumpMode:
                 "is_excluded": is_excluded,
             }
 
-    async def _prepare_extensions(self, connection: Connection):
+    async def _prepare_extensions(self, connection: Connection) -> None:
         self._extensions = {}
         extensions_data = await get_extensions(connection)
         for schema, name, version, relocatable in extensions_data:
@@ -246,7 +246,7 @@ class DumpMode:
                 "is_excluded_by_schema": schema in self.context.exclude_schemas,
             }
 
-    async def _prepare_and_save_metadata(self):
+    async def _prepare_and_save_metadata(self) -> None:
         if self.context.options.dbg_stage_1_validate_dict:
             return
 
@@ -290,7 +290,7 @@ class DumpMode:
         if self._need_dump_data:
             self.metadata.save_dumped_tables_into_file(self.dumped_tables_file_path)
 
-    async def _run_pg_dump(self, section):
+    async def _run_pg_dump(self, section: str) -> None:
         specific_tables = []
 
         if self.context.black_listed_tables:
@@ -365,7 +365,7 @@ class DumpMode:
             self.context.logger.error(msg)
             raise PgAnonError(ErrorCode.DUMP_FAILED, msg)
 
-    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str | Path):
+    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str | Path) -> str:
         try:
             if self.context.options.dbg_stage_1_validate_dict:
                 return await db_conn.execute(query)
@@ -379,14 +379,14 @@ class DumpMode:
             self.context.logger.exception("Exception in _dump_data_into_file")
             raise
 
-    async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True):
+    async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
         return await asyncio.to_thread(
             self._compress_file,
             file_path,
             remove_origin_file_after_compress=remove_origin_file_after_compress,
         )
 
-    def _compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True):
+    def _compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
         gzipped_file_path = file_path.with_name(file_path.name + ".gz")
 
         self.context.logger.debug("Start compressing file: %s", file_path)
@@ -400,7 +400,7 @@ class DumpMode:
 
     async def _dump_data_by_query(
         self, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str, process_name: str | None = None
-    ):
+    ) -> dict:
         binary_output_file_path = self.output_dir / Path(file_name).stem
 
         task_id = uuid.uuid4()
@@ -460,7 +460,7 @@ class DumpMode:
             if pool.is_closing():
                 self.context.logger.debug("Process [%s] Task [%s] Pool closed!", process_name, task_id)
 
-            error_message = f"Something went wrong: {ex.message}"
+            error_message = f"Something went wrong: {ex}"
             if not dump_is_complete:
                 error_message = f"Can't execute query: {query}"
             elif not compress_is_complete:
@@ -478,7 +478,7 @@ class DumpMode:
 
         return {hashlib.sha256(query.encode()).hexdigest(): count_rows}
 
-    async def _prepare_dump_queries(self):
+    async def _prepare_dump_queries(self) -> None:
         self._data_dump_queries = []
         self._data_dump_files = {}
 
@@ -508,7 +508,7 @@ class DumpMode:
         query_tasks: list[tuple[str, str]],
         stop_event: multiprocessing.Event,
         transaction_snapshot_id: str | None = None,
-    ):
+    ) -> None:
         tasks_res = []
 
         status_ratio = 10
@@ -517,10 +517,10 @@ class DumpMode:
         if len(query_tasks) > 50000:  # noqa: PLR2004
             status_ratio = 1000
 
-        def _should_stop():
+        def _should_stop() -> bool:
             return stop_event is not None and stop_event.is_set()
 
-        async def _wait_and_check(tasks: set):
+        async def _wait_and_check(tasks: set) -> set | None:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
             if _should_stop():
@@ -534,7 +534,7 @@ class DumpMode:
 
             return pending
 
-        async def _process_run():
+        async def _process_run() -> None:
             self.context.logger.debug("================> Process [%s] Connection pool opening", name)
 
             pool = await create_pool(
@@ -623,7 +623,7 @@ class DumpMode:
             queue.close()
             self.context.logger.debug("<================ Process [%s] closed", name)
 
-    async def _dump_data(self, connection: Connection):  # noqa: C901
+    async def _dump_data(self, connection: Connection) -> None:  # noqa: C901
         if not self._need_dump_data:
             self.context.logger.info("-------------> Skipped dump data")
             return
@@ -703,7 +703,7 @@ class DumpMode:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
 
-    async def _dump_pre_data(self):
+    async def _dump_pre_data(self) -> None:
         if self._skip_pre_data_dump:
             self.context.logger.info("-------------> Skipped dump pre-data (pg_dump)")
             return
@@ -712,7 +712,7 @@ class DumpMode:
         await self._run_pg_dump("pre-data")
         self.context.logger.info("<------------- Finished dump pre-data (pg_dump)")
 
-    async def _dump_post_data(self):
+    async def _dump_post_data(self) -> None:
         if self._skip_post_data_dump:
             self.context.logger.info("-------------> Skipped dump post-data (pg_dump)")
             return
@@ -721,17 +721,17 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
-    async def _fetch_sequences_data(self, connection: Connection):
+    async def _fetch_sequences_data(self, connection: Connection) -> None:
         """Fetch sequences data and cache for reuse in pg_dump and metadata."""
         query = get_sequences_query(self.context.exclude_schemas)
         self.context.logger.debug(str(query))
         self._sequences_data = [tuple(row) for row in await connection.fetch(query)]
 
-    async def _prepare_tables_lists(self, connection: Connection):
+    async def _prepare_tables_lists(self, connection: Connection) -> None:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
 
-    async def _prepare_schemas_lists(self, connection):
+    async def _prepare_schemas_lists(self, connection: Connection) -> None:
         self._all_db_schemas = await get_schemas(connection)
         excluded_schemas = []
 
@@ -755,7 +755,7 @@ class DumpMode:
         self._schemas = list(set(self._all_db_schemas) - set(excluded_schemas))
         self.context.exclude_schemas.extend(excluded_schemas)
 
-    async def _prepare_objects_ddl_to_metadata(self, connection: Connection):
+    async def _prepare_objects_ddl_to_metadata(self, connection: Connection) -> None:
         if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
@@ -770,7 +770,7 @@ class DumpMode:
                 connection, self.context.exclude_schemas
             )
 
-    def _save_input_dicts_to_run_dir(self):
+    def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
             return
 

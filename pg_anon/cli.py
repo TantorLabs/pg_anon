@@ -12,7 +12,7 @@ from pg_anon.common.utils import parse_comma_separated_list
 from pg_anon.version import __version__
 
 
-def common_parser():
+def common_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--db-host",
@@ -100,7 +100,7 @@ def common_parser():
     return parser
 
 
-def multiprocessing_common_parser():
+def multiprocessing_common_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--db-connections-per-process",
@@ -118,7 +118,7 @@ def multiprocessing_common_parser():
     return p
 
 
-def scan_parser():
+def scan_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -176,7 +176,7 @@ def scan_parser():
     return p
 
 
-def dump_parser():
+def dump_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--prepared-sens-dict-file",
@@ -250,7 +250,7 @@ def dump_parser():
     return p
 
 
-def restore_parser():
+def restore_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -339,7 +339,7 @@ def restore_parser():
     return p
 
 
-def view_fields_parser():
+def view_fields_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -393,7 +393,7 @@ def view_fields_parser():
     return p
 
 
-def view_data_parser():
+def view_data_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -436,7 +436,7 @@ def view_data_parser():
     return p
 
 
-def get_arg_parser():
+def get_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pg_anon",
         description="PostgreSQL database anonymization tool",
@@ -582,7 +582,7 @@ async def run_pg_anon(cli_run_params: list[str] | None = None) -> PgAnonResult:
     return await PgAnonApp(options).run()
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     result = asyncio.run(run_pg_anon(argv))
     if result.result_code == ResultCode.FAIL:
         sys.exit(1)

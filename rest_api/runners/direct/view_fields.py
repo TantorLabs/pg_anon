@@ -13,13 +13,13 @@ class ViewFieldsRunner:
     result: PgAnonResult = None
     _executor = type[ViewFieldsMode]
 
-    def __init__(self, request: ViewFieldsRequest):
+    def __init__(self, request: ViewFieldsRequest) -> None:
         self.request = request
         self._prepare_cli_params()
         self._init_context()
         self._init_executor()
 
-    def _prepare_db_credentials_cli_params(self):
+    def _prepare_db_credentials_cli_params(self) -> None:
         self.cli_params.extend(
             [
                 f"--db-host={self.request.db_connection_params.host}",
@@ -30,11 +30,11 @@ class ViewFieldsRunner:
             ]
         )
 
-    def _prepare_dictionaries_cli_params(self):
+    def _prepare_dictionaries_cli_params(self) -> None:
         self._input_sens_dict_file_names = write_dictionary_contents(self.request.sens_dict_contents, BASE_TEMP_DIR)
         self.cli_params.append(f"--prepared-sens-dict-file={','.join(self._input_sens_dict_file_names.keys())}")
 
-    def _prepare_filters_cli_params(self):
+    def _prepare_filters_cli_params(self) -> None:
         if self.request.schema_name:
             self.cli_params.append(
                 f"--schema-name={self.request.schema_name}",
@@ -60,18 +60,18 @@ class ViewFieldsRunner:
                 "--view-only-sensitive-fields",
             )
 
-    def _prepare_limit_cli_params(self):
+    def _prepare_limit_cli_params(self) -> None:
         if self.request.fields_limit_count:
             self.cli_params.append(
                 f"--fields-count={self.request.fields_limit_count}",
             )
 
-    def _prepare_json_cli_params(self):
+    def _prepare_json_cli_params(self) -> None:
         self.cli_params.append(
             "--json",
         )
 
-    def _prepare_verbosity_cli_params(self):
+    def _prepare_verbosity_cli_params(self) -> None:
         self.cli_params.extend(
             [
                 "--verbose=debug",
@@ -79,7 +79,7 @@ class ViewFieldsRunner:
             ]
         )
 
-    def _prepare_cli_params(self):
+    def _prepare_cli_params(self) -> None:
         self.cli_params = ["view-fields"]
         self._prepare_db_credentials_cli_params()
         self._prepare_dictionaries_cli_params()
@@ -88,11 +88,11 @@ class ViewFieldsRunner:
         self._prepare_json_cli_params()
         self._prepare_verbosity_cli_params()
 
-    def _init_context(self):
+    def _init_context(self) -> None:
         options = build_run_options(self.cli_params)
         self.context = Context(options)
 
-    def _init_executor(self):
+    def _init_executor(self) -> None:
         self._executor = ViewFieldsMode(self.context)
 
     def _format_output(self) -> list[ViewFieldsContent]:
@@ -119,6 +119,6 @@ class ViewFieldsRunner:
 
         return result
 
-    async def run(self):
+    async def run(self) -> list[ViewFieldsContent]:
         await self._executor.run()
         return self._format_output()

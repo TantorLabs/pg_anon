@@ -17,7 +17,7 @@ from pg_anon.version import __version__
 
 
 class PgAnonApp:
-    def __init__(self, options: RunOptions):
+    def __init__(self, options: RunOptions) -> None:
         run_dir = Path(options.run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         save_json_file(run_dir / SAVED_RUN_OPTIONS_FILE_NAME, options.to_dict())
@@ -31,7 +31,7 @@ class PgAnonApp:
             AnonMode.VIEW_DATA,
         )
 
-    def _bootstrap(self):
+    def _bootstrap(self) -> None:
         self.context.logger.info(
             "============> Started pg_anon (v%s) in mode: %s", __version__, self.context.options.mode.value
         )
@@ -41,14 +41,14 @@ class PgAnonApp:
             params_info += "\n#-----------------------------------"
             self.context.logger.debug(params_info)
 
-    async def _set_postgres_utils(self):
+    async def _set_postgres_utils(self) -> None:
         pg_version = await get_pg_version(self.context.connection_params, server_settings=self.context.server_settings)
         self.context.set_postgres_version(pg_version)
         self.context.logger.info("Target DB version: %s", pg_version)
         self.context.logger.info("pg_dump path: %s", self.context.pg_dump)
         self.context.logger.info("pg_restore path: %s", self.context.pg_restore)
 
-    def _check_postgres_utils(self):
+    def _check_postgres_utils(self) -> None:
         if self._skip_check_postgres_utils:
             self.context.logger.info("Skip postgres utils exists check")
             return
@@ -61,7 +61,7 @@ class PgAnonApp:
         if not pg_dump_exists or not pg_restore_exists:
             raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump or pg_restore not found")
 
-    async def _check_initialization(self):
+    async def _check_initialization(self) -> None:
         if self.context.options.mode in (
             AnonMode.CREATE_DICT,
             AnonMode.DUMP,
@@ -77,7 +77,7 @@ class PgAnonApp:
                     f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'",
                 )
 
-    def _get_mode(self):
+    def _get_mode(self) -> DumpMode | RestoreMode | InitMode | CreateDictMode | ViewFieldsMode | ViewDataMode:
         if self.context.options.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
             return DumpMode(self.context)
 

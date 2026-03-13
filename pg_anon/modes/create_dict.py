@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from aioprocessing import AioQueue
-from asyncpg import Connection
+from asyncpg import Connection, Pool
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
@@ -35,7 +35,7 @@ from pg_anon.context import Context
 
 
 class CreateDictMode:
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
 
     def _check_field_match_by_rule(self, field: dict, rule: dict) -> bool:
@@ -106,7 +106,7 @@ class CreateDictMode:
             if self._check_include_fields(field) and self._check_not_skip_fields(field)
         }
 
-    def _scan_fields_by_names(self, fields_info: dict[str, FieldInfo]):  # noqa: C901, PLR0912
+    def _scan_fields_by_names(self, fields_info: dict[str, FieldInfo]) -> None:  # noqa: C901, PLR0912
         """Scanning fields by names and removes matches according to dict rules
 
         Priorities of rules:
@@ -445,7 +445,7 @@ class CreateDictMode:
         )
         return {}
 
-    def _field_can_be_sensitive_by_type(self, dictionary_obj, field_info: FieldInfo):
+    def _field_can_be_sensitive_by_type(self, dictionary_obj: dict, field_info: FieldInfo) -> bool:
         if field_info.type in dictionary_obj["sens_pg_types"]:
             return True
 
@@ -454,13 +454,13 @@ class CreateDictMode:
 
     async def _scan_obj_func(
         self,
-        name,
-        pool,
+        name: str,
+        pool: Pool,
         field_info: FieldInfo,
         scan_mode: ScanMode,
-        dictionary_obj,
-        scan_partial_rows,
-    ):
+        dictionary_obj: dict,
+        scan_partial_rows: int | None,
+    ) -> dict | None:
         field_full_name = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name}"
 
         self.context.logger.debug(
@@ -522,7 +522,7 @@ class CreateDictMode:
             field = f"{field_full_name} (type={field_info.type})"
             self.context.logger.exception("Exception in scan_obj_func:\n%s", field)
             raise PgAnonError(
-                ErrorCode.SCAN_FIELD_ERROR, f"Can't execute task for field {field}. Error: {ex.message}"
+                ErrorCode.SCAN_FIELD_ERROR, f"Can't execute task for field {field}. Error: {ex}"
             ) from ex
 
         end_t = time.time()
@@ -543,7 +543,7 @@ class CreateDictMode:
         queue: AioQueue,
         fields_info_chunk: list[FieldInfo],
         stop_event: multiprocessing.Event,
-    ):
+    ) -> None:
         tasks_res = []
 
         status_ratio = 10
@@ -552,10 +552,10 @@ class CreateDictMode:
         if len(fields_info_chunk) > 50000:  # noqa: PLR2004
             status_ratio = 1000
 
-        def _should_stop():
+        def _should_stop() -> bool:
             return stop_event is not None and stop_event.is_set()
 
-        async def _wait_and_check(tasks: set):
+        async def _wait_and_check(tasks: set) -> set | None:
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
             if _should_stop():
@@ -568,7 +568,7 @@ class CreateDictMode:
 
             return pending
 
-        async def _process_run():
+        async def _process_run() -> None:
             pool = await create_pool(
                 connection_params=self.context.connection_params,
                 server_settings=self.context.server_settings,
@@ -634,7 +634,7 @@ class CreateDictMode:
             queue.close()
             self.context.logger.debug("================> Process [%s] closed", name)
 
-    def _prepare_sens_dict_rule(self, meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict):
+    def _prepare_sens_dict_rule(self, meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict) -> dict:
         hash_func = field_info.rule
 
         if hash_func is None:
@@ -659,7 +659,7 @@ class CreateDictMode:
             prepared_sens_dict_rules[field_info.tbl_id]["fields"].update({field_info.column_name: hash_func})
         return prepared_sens_dict_rules
 
-    def _prepare_no_sens_dict_rule(self, field_info: FieldInfo, prepared_no_sens_dict_rules: dict):
+    def _prepare_no_sens_dict_rule(self, field_info: FieldInfo, prepared_no_sens_dict_rules: dict) -> dict:
         if field_info.tbl_id not in prepared_no_sens_dict_rules:
             prepared_no_sens_dict_rules[field_info.tbl_id] = {
                 "schema": field_info.nspname,
@@ -670,7 +670,7 @@ class CreateDictMode:
             prepared_no_sens_dict_rules[field_info.tbl_id]["fields"].append(field_info.column_name)
         return prepared_no_sens_dict_rules
 
-    async def _create_dict(self):  # noqa: C901, PLR0912
+    async def _create_dict(self) -> None:  # noqa: C901, PLR0912
         fields_info: dict[str, FieldInfo] = await self._get_fields_for_scan()
         if not fields_info:
             raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_SCAN, "No objects for scan!")
@@ -766,7 +766,7 @@ class CreateDictMode:
             with output_no_sens_dict_file_name.open("w", encoding="utf-8") as file:
                 file.write(json.dumps(output_no_sens_dict, indent=4, ensure_ascii=False))
 
-    def _save_input_dicts_to_run_dir(self):
+    def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
             return
 
@@ -782,7 +782,7 @@ class CreateDictMode:
         for dict_file in input_dict_files:
             shutil.copy2(dict_file, input_dicts_dir / Path(dict_file).name)
 
-    def _save_output_dicts_to_run_dir(self):
+    def _save_output_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
             return
 
@@ -800,7 +800,7 @@ class CreateDictMode:
                 output_dicts_dir / Path(self.context.options.output_no_sens_dict_file).name,
             )
 
-    async def _check_available_connections(self):
+    async def _check_available_connections(self) -> None:
         connection = await create_connection(
             self.context.connection_params, server_settings=self.context.server_settings
         )

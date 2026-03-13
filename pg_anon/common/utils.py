@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import concurrent.futures
 import decimal
@@ -7,12 +9,17 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pg_anon.common.dto import FieldInfo, RunOptions
+    from pg_anon.context import Context
 
 import yaml
 
 from pg_anon.common.constants import BASE_TYPE_ALIASES, SAVED_DICTS_INFO_FILE_NAME, TRACEBACK_LINES_COUNT
-from pg_anon.common.dto import FieldInfo, RunOptions
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.logger import get_logger
 
@@ -30,13 +37,13 @@ TYPE_PATTERN = re.compile(
 )
 
 
-def get_pg_util_version(util_name):
+def get_pg_util_version(util_name: str) -> str:
     command = [util_name, "--version"]
     res = subprocess.run(command, capture_output=True, text=True, check=False)
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
 
 
-def check_pg_util(ctx, util_name, output_util_res):
+def check_pg_util(ctx: Context, util_name: str, output_util_res: str) -> bool:
     if not Path(util_name).is_file():
         ctx.logger.error("ERROR: program %s is not exists!", util_name)
         return False
@@ -50,13 +57,13 @@ def check_pg_util(ctx, util_name, output_util_res):
     return True
 
 
-def exception_helper(show_traceback=True):
+def exception_helper(show_traceback: bool = True) -> str:
     exc_type, exc_value, exc_traceback = sys.exc_info()
     return "\n".join(list(traceback.format_exception(exc_type, exc_value, exc_traceback if show_traceback else None)))
 
 
-def exception_handler(func):
-    def f(*args, **kwargs):
+def exception_handler(func: Callable) -> Callable:
+    def f(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
         try:
             func(*args, **kwargs)
         except:
@@ -66,11 +73,11 @@ def exception_handler(func):
     return f
 
 
-def get_major_version(str_version):
+def get_major_version(str_version: str) -> str:
     return re.findall(r"(\d+)", str_version)[0]
 
 
-def pretty_size(bytes_v):
+def pretty_size(bytes_v: int) -> str:
     if bytes_v < 1024:  # noqa: PLR2004
         if bytes_v == 1:
             return "1 byte"
@@ -86,24 +93,24 @@ def pretty_size(bytes_v):
     return f"{int(value)} {units[-1]}"
 
 
-def chunkify(lst, n):
+def chunkify(lst: list, n: int) -> list:
     result = [lst[i::n] for i in range(n)]
     return [x for x in result if x]  # clear empty lists
 
 
-def recordset_to_list_flat(rs):
+def recordset_to_list_flat(rs: list) -> list:
     return [list(dict(rec).values()) for rec in rs]
 
 
-def setof_to_list(rs) -> list:
+def setof_to_list(rs: list) -> list:
     res = []
     for rec in rs:
         res.extend(dict(rec).values())
     return res
 
 
-def to_json(obj, formatted=False):
-    def type_adapter(o):
+def to_json(obj, formatted: bool = False) -> str | bytes:  # noqa: ANN001
+    def type_adapter(o) -> float | None:  # noqa: ANN001
         if isinstance(o, decimal.Decimal):
             return float(o)
         return None
@@ -164,7 +171,7 @@ def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: st
     return result
 
 
-def validate_exists_mode(mode: str):
+def validate_exists_mode(mode: str) -> bool:
     from pg_anon.common.enums import AnonMode  # noqa: PLC0415
 
     try:
@@ -193,7 +200,7 @@ def get_folder_size(folder_path: str | Path) -> int:
     return total_size
 
 
-def simple_slugify(value: str):
+def simple_slugify(value: str) -> str:
     return re.sub(r"\W+", "-", value).strip("-").lower()
 
 
@@ -314,7 +321,7 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def resolve_dependencies(extension_name, extensions_map: dict[str, list[dict[str, Any]]], seen=None):
+def resolve_dependencies(extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None) -> set | None:
     if seen is None:
         seen = set()
 
@@ -333,7 +340,7 @@ def resolve_dependencies(extension_name, extensions_map: dict[str, list[dict[str
     return seen
 
 
-def safe_compile(pattern: str, flags=0):
+def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
     try:
         return re.compile(pattern, flags)
     except re.error:
@@ -341,7 +348,7 @@ def safe_compile(pattern: str, flags=0):
         return re.compile(r"(?!)")  # Never matching. Instead of None
 
 
-def save_json_file(file_path: str | Path, data: dict):
+def save_json_file(file_path: str | Path, data: dict) -> None:
     with Path(file_path).open("w", encoding="utf-8") as out_file:
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
@@ -371,7 +378,7 @@ def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | Non
     return read_dict_data(data, dictionary_file_path)
 
 
-def save_dicts_info_file(options: RunOptions):
+def save_dicts_info_file(options: RunOptions) -> None:
     def serialize_dict(file_path: str) -> dict[str, Any] | None:
         file_path = Path(file_path)
         if not file_path.exists():

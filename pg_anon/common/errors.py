@@ -57,10 +57,10 @@ class ErrorCode(StrEnum):
 
 
 class PgAnonError(Exception):
-    def __init__(self, code: ErrorCode, message: str):
+    def __init__(self, code: ErrorCode, message: str) -> None:
         self.code = code
         self.message = message
         super().__init__(message)
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple:
         return (self.__class__, (self.code, self.message))

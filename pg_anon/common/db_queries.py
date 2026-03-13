@@ -23,7 +23,7 @@ def get_relation_size_query(schema: str, table: str) -> str:
     return f"""select pg_total_relation_size('"{schema}"."{table}"')"""
 
 
-def get_scan_fields_query(limit: int | None = None, count_only: bool = False):
+def get_scan_fields_query(limit: int | None = None, count_only: bool = False) -> str:
     if not count_only:
         fields = f"""
             SELECT DISTINCT
@@ -76,7 +76,7 @@ def get_scan_fields_query(limit: int | None = None, count_only: bool = False):
     """
 
 
-def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, table_filter: str | None = None):
+def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, table_filter: str | None = None) -> str:
     table_filter_clause = f"AND table_name LIKE '%{table_filter}%'" if table_filter else ""
     return f"""
     WITH paged_tables AS (
@@ -138,7 +138,7 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int | None = None, c
     """
 
 
-def get_sequences_query(excluded_schemas: list[str] | None = None):
+def get_sequences_query(excluded_schemas: list[str] | None = None) -> str:
     excluded_schemas_filter = ""
     if excluded_schemas:
         excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
@@ -192,7 +192,7 @@ def get_sequences_query(excluded_schemas: list[str] | None = None):
             """
 
 
-def get_check_constraint_query():
+def get_check_constraint_query() -> str:
     return r"""
     SELECT DISTINCT
         nsp.nspname,
@@ -219,7 +219,7 @@ def get_check_constraint_query():
     """
 
 
-def get_sequences_max_value_init_query():
+def get_sequences_max_value_init_query() -> str:
     return """
     DO $$
     DECLARE
@@ -251,7 +251,7 @@ def get_sequences_max_value_init_query():
     END$$;"""
 
 
-def get_db_params(db_name: str):
+def get_db_params(db_name: str) -> str:
     return f"""
         SELECT d.datname,
                r.rolname AS owner,

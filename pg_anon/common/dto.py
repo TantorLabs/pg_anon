@@ -87,7 +87,7 @@ class RunOptions:
     # view-fields, view-data options
     json: bool = False
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             k: v.value if isinstance(v, Enum) else v for k, v in asdict(self).items() if k not in SECRET_RUN_OPTIONS
         }
@@ -108,11 +108,11 @@ class PgAnonResult:
     _exception = None
     _traceback = None
 
-    def start(self, run_options: RunOptions):
+    def start(self, run_options: RunOptions) -> None:
         self.run_options = run_options
         self.start_time = time.time()
 
-    def fail(self, exception: Exception | None = None):
+    def fail(self, exception: Exception | None = None) -> None:
         from pg_anon.common.utils import exception_to_str  # noqa: PLC0415
 
         self.end_time = time.time()
@@ -120,11 +120,11 @@ class PgAnonResult:
         self._exception = exception
         self._traceback = exception_to_str(self._exception)
 
-    def complete(self):
+    def complete(self) -> None:
         self.end_time = time.time()
         self.result_code = ResultCode.DONE
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "result_code": self.result_code.value,
             "started": self.start_time,
@@ -132,7 +132,7 @@ class PgAnonResult:
         }
 
     @property
-    def elapsed(self):
+    def elapsed(self) -> float | None:
         if not self._elapsed:
             if self.start_time is None or self.end_time is None:
                 return None
@@ -215,7 +215,7 @@ class ConnectionParams:
         ssl_cert_file: str | None = None,
         ssl_key_file: str | None = None,
         ssl_ca_file: str | None = None,
-    ):
+    ) -> None:
         self.host = host
         self.port = port
         self.database = database
@@ -333,7 +333,7 @@ class Metadata:
         data = [{k: v for k, v in table_data.items() if k in ("schema", "table")} for table_data in self.files.values()]
         return {"tables": data}
 
-    def _deserialize_data(self, data: dict):
+    def _deserialize_data(self, data: dict) -> None:
         self.created = data.get("created")
         self.pg_version = data.get("pg_version")
         self.pg_dump_version = data.get("pg_dump_version")
@@ -361,17 +361,17 @@ class Metadata:
         self.partial_dump_operators = data.get("partial_dump_operators")
         self.partial_dump_aggregates = data.get("partial_dump_aggregates")
 
-    def save_into_file(self, file_path: Path):
+    def save_into_file(self, file_path: Path) -> None:
         from pg_anon.common.utils import save_json_file  # noqa: PLC0415
 
         save_json_file(file_path, self._serialize_data())
 
-    def save_dumped_tables_into_file(self, file_path: Path):
+    def save_dumped_tables_into_file(self, file_path: Path) -> None:
         from pg_anon.common.utils import save_json_file  # noqa: PLC0415
 
         save_json_file(file_path, self._serialize_tables())
 
-    def load_from_file(self, file_name: str | Path):
+    def load_from_file(self, file_name: str | Path) -> None:
         file_name = Path(file_name)
         with file_name.open() as metadata_file:
             data = json.loads(metadata_file.read())
