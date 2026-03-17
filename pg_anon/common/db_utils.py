@@ -30,7 +30,9 @@ async def create_connection(connection_params: ConnectionParams, server_settings
     )
 
 
-async def create_pool(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Pool:
+async def create_pool(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10
+) -> Pool:
     """Create a new asyncpg connection pool."""
     return await asyncpg.create_pool(
         **connection_params.as_dict(),
@@ -51,7 +53,9 @@ async def check_db_connection(connection_params: ConnectionParams, server_settin
     return True
 
 
-async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> bool:
+async def check_anon_utils_db_schema_exists(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS
+) -> bool:
     """Check whether the anonymization utils schema exists in the database."""
     query = f"""
     select exists (select schema_name FROM information_schema.schemata where "schema_name" = '{ANON_UTILS_DB_SCHEMA_NAME}');
@@ -63,7 +67,9 @@ async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams,
     return exists
 
 
-async def get_scan_fields_list(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None) -> list:
+async def get_scan_fields_list(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None
+) -> list:
     """Get the list of fields available for scanning sensitive data."""
     query = get_scan_fields_query(limit=limit)
 
@@ -73,7 +79,14 @@ async def get_scan_fields_list(connection_params: ConnectionParams, server_setti
     return fields_list
 
 
-async def get_tables_with_fields(schema: str, connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None, offset: int | None = None, table_filter: str | None = None) -> list:
+async def get_tables_with_fields(
+    schema: str,
+    connection_params: ConnectionParams,
+    server_settings: dict = SERVER_SETTINGS,
+    limit: int = 10,
+    offset: int = 0,
+    table_filter: str | None = None,
+) -> list:
     """Get tables with their column definitions for a given schema."""
     query = get_tables_with_fields_query(schema, limit, offset, table_filter=table_filter)
 
@@ -96,7 +109,9 @@ async def get_scan_fields_count(connection_params: ConnectionParams, server_sett
     return count
 
 
-async def get_fields_list(connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: dict = SERVER_SETTINGS) -> list:
+async def get_fields_list(
+    connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+) -> list:
     """Get the list of fields for a table dump."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
@@ -110,7 +125,9 @@ async def get_fields_list(connection_params: ConnectionParams, table_schema: str
     return fields_list
 
 
-async def get_rows_count(connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS) -> int:
+async def get_rows_count(
+    connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+) -> int:
     """Get the row count for a table."""
     query = get_count_query(schema_name=schema_name, table_name=table_name)
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -119,7 +136,9 @@ async def get_rows_count(connection_params: ConnectionParams, schema_name: str, 
     return count
 
 
-async def get_db_size(connection_params: ConnectionParams, db_name: str, server_settings: dict = SERVER_SETTINGS) -> int:
+async def get_db_size(
+    connection_params: ConnectionParams, db_name: str, server_settings: dict = SERVER_SETTINGS
+) -> int:
     """Get the database size in bytes."""
     query = get_database_size_query(db_name=db_name)
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -132,23 +151,21 @@ async def exec_data_scan_func_query(connection: Connection, scan_func: str, valu
     """Execute a row-level scan using a custom database function."""
     query = f"""SELECT {scan_func}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    return await statement.fetchval(
-        value, field_info.nspname, field_info.relname, field_info.column_name
-    )
+    return await statement.fetchval(value, field_info.nspname, field_info.relname, field_info.column_name)
 
 
-async def exec_data_scan_func_per_field_query(connection: Connection, scan_func_per_field: str, field_info: FieldInfo) -> bool:
+async def exec_data_scan_func_per_field_query(
+    connection: Connection, scan_func_per_field: str, field_info: FieldInfo
+) -> bool:
     """Execute a field-level scan using a custom database function."""
     query = f"""SELECT {scan_func_per_field}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    return await statement.fetchval(
-        field_info.nspname, field_info.relname, field_info.column_name, field_info.type
-    )
+    return await statement.fetchval(field_info.nspname, field_info.relname, field_info.column_name, field_info.type)
 
 
 async def get_db_tables(
-        connection: Connection,
-        excluded_schemas: list[str] | None = None,
+    connection: Connection,
+    excluded_schemas: list[str] | None = None,
 ) -> list[tuple[str, str]]:
     """Get the list of non-partitioned base tables in the database."""
     if not excluded_schemas:
@@ -184,7 +201,7 @@ async def get_schemas(connection: Connection, schema_filter: str | None = None) 
     return [row[0] for row in result]
 
 
-async def get_extensions(connection: Connection) -> list[str]:
+async def get_extensions(connection: Connection) -> list:
     """Get the list of installed extensions in the database."""
     query = """
     SELECT
@@ -213,12 +230,14 @@ async def get_available_extensions_map(connection: Connection) -> dict[str, list
     extensions_map = defaultdict(list)
 
     for row in rows:
-        extensions_map[row["name"]].append({
-            "version": row["version"],
-            "installed": row["installed"],
-            "requires": row["requires"],
-            "default_version": row["default_version"],
-        })
+        extensions_map[row["name"]].append(
+            {
+                "version": row["version"],
+                "installed": row["installed"],
+                "requires": row["requires"],
+                "default_version": row["default_version"],
+            }
+        )
 
     return dict(extensions_map)
 
@@ -487,7 +506,7 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: li
     return [row[0] for row in result]
 
 
-async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list:
     """Get index metadata for the given tables."""
     values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
@@ -511,7 +530,7 @@ async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]
     return await connection.fetch(query, *args)
 
 
-async def get_views_related_to_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+async def get_views_related_to_tables(connection: Connection, tables: list[tuple[str, str]]) -> list:
     """Get views and materialized views that reference the given tables."""
     values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
@@ -563,7 +582,7 @@ async def get_views_related_to_tables(connection: Connection, tables: list[tuple
     return await connection.fetch(query, *args)
 
 
-async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[str]:
+async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list:
     """Get foreign key constraints referencing the given tables."""
     values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
@@ -595,7 +614,7 @@ async def get_constraints_to_excluded_tables(connection: Connection, tables: lis
 async def check_db_is_empty(connection: Connection) -> bool:
     """Check whether the database has no user-defined base tables."""
     return await connection.fetchval(
-            f"""
+        f"""
             SELECT NOT EXISTS(
                 SELECT table_schema, table_name
                 FROM information_schema.tables
@@ -605,7 +624,7 @@ async def check_db_is_empty(connection: Connection) -> bool:
                         '{ANON_UTILS_DB_SCHEMA_NAME}'
                     ) AND table_type = 'BASE TABLE'
             )"""
-        )
+    )
 
 
 async def run_query_in_pool(pool: Pool, query: str) -> None:
@@ -671,18 +690,17 @@ async def check_required_connections(
     if required_connections > available_connections:
         raise PgAnonError(
             ErrorCode.INSUFFICIENT_CONNECTIONS,
-            f"Not enough database connections. "
-            f"Required: {required_connections}, available: ~{available_connections}"
+            f"Not enough database connections. Required: {required_connections}, available: ~{available_connections}",
         )
 
 
 async def get_dump_query(  # noqa: C901, PLR0912
-        ctx: Context,
-        table_schema: str,
-        table_name: str,
-        table_rule: dict | None = None,
-        nulls_last: bool = False,
-        files: dict | None = None
+    ctx: Context,
+    table_schema: str,
+    table_name: str,
+    table_rule: dict | None = None,
+    nulls_last: bool = False,
+    files: dict | None = None,
 ) -> str | None:
     """Build the SELECT query used to dump a table with optional anonymization rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
@@ -718,9 +736,11 @@ async def get_dump_query(  # noqa: C901, PLR0912
 
     if table_rule and "raw_sql" in table_rule:
         # the table is transferred using "raw_sql"
-        if (ctx.options.dbg_stage_1_validate_dict
-                or ctx.options.dbg_stage_2_validate_data
-                or ctx.options.dbg_stage_3_validate_full):
+        if (
+            ctx.options.dbg_stage_1_validate_dict
+            or ctx.options.dbg_stage_2_validate_data
+            or ctx.options.dbg_stage_3_validate_full
+        ):
             query = table_rule["raw_sql"] + " " + ctx.validate_limit
             ctx.logger.info(str(query))
             return query
@@ -730,7 +750,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
         connection_params=ctx.connection_params,
         server_settings=ctx.server_settings,
         table_schema=table_schema,
-        table_name=table_name
+        table_name=table_name,
     )
 
     fields = []
@@ -758,16 +778,21 @@ async def get_dump_query(  # noqa: C901, PLR0912
         condition = re.sub(r"^\s*where\b\s*", "", sql_condition, flags=re.IGNORECASE)
         query += f"\nWHERE {condition}"
 
-    if (ctx.options.dbg_stage_1_validate_dict
-            or ctx.options.dbg_stage_2_validate_data
-            or ctx.options.dbg_stage_3_validate_full):
+    if (
+        ctx.options.dbg_stage_1_validate_dict
+        or ctx.options.dbg_stage_2_validate_data
+        or ctx.options.dbg_stage_3_validate_full
+    ):
         query += f" {ctx.validate_limit}"
 
     if nulls_last:
-        ordering = ", ".join([
-            f'"{field["column_name"]}"' + " NULLS LAST" for field in fields_list
-            if field["is_nullable"].lower() == "yes"
-        ])
+        ordering = ", ".join(
+            [
+                f'"{field["column_name"]}"' + " NULLS LAST"
+                for field in fields_list
+                if field["is_nullable"].lower() == "yes"
+            ]
+        )
         if ordering:
             query += f" ORDER BY {ordering}"
 

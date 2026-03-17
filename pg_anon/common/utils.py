@@ -67,6 +67,7 @@ def exception_helper(show_traceback: bool = True) -> str:
 
 def exception_handler(func: Callable) -> Callable:
     """Decorate a function to print and re-raise any exception."""
+
     def f(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
         try:
             func(*args, **kwargs)
@@ -90,7 +91,7 @@ def pretty_size(bytes_v: int) -> str:
         return f"{bytes_v} bytes"
 
     units = ["KB", "MB", "GB", "TB", "PB"]
-    value = bytes_v
+    value: float = bytes_v
     for unit in units:
         value /= 1024
         if value < 1024:  # noqa: PLR2004
@@ -112,7 +113,7 @@ def recordset_to_list_flat(rs: list) -> list:
 
 def setof_to_list(rs: list) -> list:
     """Flatten a set-of recordset into a single list of values."""
-    res = []
+    res: list = []
     for rec in rs:
         res.extend(dict(rec).values())
     return res
@@ -120,6 +121,7 @@ def setof_to_list(rs: list) -> list:
 
 def to_json(obj, formatted: bool = False) -> str | bytes:  # noqa: ANN001
     """Serialize an object to JSON string or UTF-8 bytes."""
+
     def type_adapter(o) -> float | None:  # noqa: ANN001
         if isinstance(o, decimal.Decimal):
             return float(o)
@@ -138,7 +140,7 @@ def parse_comma_separated_list(value: str | None = None) -> list[str] | None:
     return list(value.split(","))
 
 
-def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: str) -> list[dict] | dict | None:
+def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: str) -> dict | None:
     """Find matching rules for a table in the prepared dictionary."""
     result = None
 
@@ -310,9 +312,9 @@ def filter_db_tables(
     black_list_rules: list[dict] | None = None,
 ) -> tuple[list[tuple[str, str]], set[tuple[str, str]], set[tuple[str, str]]]:
     """Filter database tables by whitelist and blacklist rules."""
-    filtered_tables = []
-    black_listed_tables = set()
-    white_listed_tables = set()
+    filtered_tables: list[tuple[str, str]] = []
+    black_listed_tables: set[tuple[str, str]] = set()
+    white_listed_tables: set[tuple[str, str]] = set()
     if not (white_list_rules or black_list_rules):
         return tables, black_listed_tables, white_listed_tables
 
@@ -337,13 +339,15 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def resolve_dependencies(extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None) -> set | None:
+def resolve_dependencies(
+    extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None
+) -> set:
     """Recursively resolve all dependencies for a PostgreSQL extension."""
     if seen is None:
         seen = set()
 
     if extension_name in seen:
-        return None
+        return seen
 
     seen.add(extension_name)
 
@@ -372,7 +376,7 @@ def save_json_file(file_path: str | Path, data: dict) -> None:
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
 
-def read_dict_data(data: str, dict_name: str) -> dict[str, Any] | None:
+def read_dict_data(data: str, dict_name: str | Path) -> dict[str, Any] | None:
     """Parse a string as a Python literal and validate it is a dictionary."""
     try:
         dict_data = ast.literal_eval(data)
@@ -401,15 +405,16 @@ def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | Non
 
 def save_dicts_info_file(options: RunOptions) -> None:
     """Serialize all dictionary file contents and save them as a JSON info file."""
+
     def serialize_dict(file_path: str) -> dict[str, Any] | None:
-        file_path = Path(file_path)
-        if not file_path.exists():
+        path = Path(file_path)
+        if not path.exists():
             return None
 
-        with Path(file_path).open() as file:
+        with path.open() as file:
             content = file.read().strip()
 
-        return {"name": file_path.name, "content": content}
+        return {"name": path.name, "content": content}
 
     data = {
         "meta_dict_files": [serialize_dict(file) for file in options.meta_dict_files]

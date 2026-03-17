@@ -10,17 +10,15 @@ from pg_anon.context import Context
 
 
 class ViewFieldsMode:
-    context: Context
-    _processing_fields_limit: int = 5000
-    _filter_dict_rule: dict = None
-    fields: list[FieldInfo] = None
-    table: PrettyTable = None
-    json: str = None
-    fields_cut_by_limits: bool = False
-    empty_data_filler: str = "---"
-
     def __init__(self, context: Context) -> None:
         self.context = context
+        self._processing_fields_limit: int = 5000
+        self._filter_dict_rule: dict | None = None
+        self.fields: list[FieldInfo] | None = None
+        self.table: PrettyTable | None = None
+        self.json: str | None = None
+        self.fields_cut_by_limits: bool = False
+        self.empty_data_filler: str = "---"
         if context.options.fields_count is not None:
             self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
@@ -53,6 +51,8 @@ class ViewFieldsMode:
             self._filter_dict_rule["schema_mask"] = "*"
 
     def _check_by_filters(self, field: FieldInfo) -> bool:
+        if self._filter_dict_rule is None:
+            return False
         return bool(
             get_dict_rule_for_table(
                 dictionary_rules=[self._filter_dict_rule],
@@ -94,7 +94,7 @@ class ViewFieldsMode:
     def _prepare_fields_for_view(self) -> None:
         fields_with_find_rules = []
 
-        for field in self.fields.copy():
+        for field in (self.fields or []).copy():
             include_rule = get_dict_rule_for_table(
                 dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
                 schema=field.nspname,
@@ -144,7 +144,7 @@ class ViewFieldsMode:
         )
         self.table.set_style(SINGLE_BORDER)
 
-        for field in self.fields:
+        for field in self.fields or []:
             self.table.add_row(
                 [
                     field.nspname,
@@ -167,7 +167,7 @@ class ViewFieldsMode:
                     "dict_file_name": field.dict_file_name,
                     "rule": field.rule,
                 }
-                for field in self.fields
+                for field in self.fields or []
             ],
             ensure_ascii=False,
         )

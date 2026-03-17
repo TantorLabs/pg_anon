@@ -30,26 +30,25 @@ class Context:
     def __init__(self, options: RunOptions) -> None:
         self.options = options
         self.config = read_yaml(options.config) if options.config else None
-        self.pg_version = None
-        self.pg_dump = options.pg_dump
-        self.pg_restore = options.pg_restore
+        self.pg_version: str = ""
+        self.pg_dump: str = options.pg_dump
+        self.pg_restore: str = options.pg_restore
         self.validate_limit = "LIMIT 100"
         self.meta_dictionary_obj: dict = {}
         self.prepared_dictionary_obj: dict = {}
-        self.prepared_dictionary_contents: dict = {}  # for dump process
-        self.metadata = None  # for restore process
-        self.task_results = {}  # for dump process (key is hash() of SQL query)
+        self.prepared_dictionary_contents: dict[str, str] = {}  # for dump process
+        self.metadata: dict | None = None  # for restore process
+        self.task_results: dict = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
-        self.create_dict_sens_matches = {}  # for create-dict mode
-        self.create_dict_no_sens_matches = {}  # for create-dict mode
+        self.create_dict_sens_matches: dict = {}  # for create-dict mode
+        self.create_dict_no_sens_matches: dict = {}  # for create-dict mode
         self.exclude_schemas = ["columnar_internal"]
         self.included_tables_rules: list[dict] = []
         self.excluded_tables_rules: list[dict] = []
         self.tables: list[tuple[str, str]] = []
         self.black_listed_tables: set[tuple[str, str]] = set()
         self.white_listed_tables: set[tuple[str, str]] = set()
-        self.logger = None
-        self.data_const_constants_min_length = None
+        self.data_const_constants_min_length: int | None = None
         self.setup_logger()
 
         if not options.db_user_password:
@@ -74,19 +73,19 @@ class Context:
     def _check_meta_dict_types(self, meta_dict: dict) -> None:
         """Check expected types in meta dict fields."""
         if not (
-            isinstance(meta_dict["field"]["rules"], list) and
-            isinstance(meta_dict["field"]["constants"], list) and
-            isinstance(meta_dict["skip_rules"], list) and
-            isinstance(meta_dict["include_rules"], list) and
-            isinstance(meta_dict["data_regex"]["rules"], list) and
-            isinstance(meta_dict["data_const"]["constants"]["words"], set) and
-            isinstance(meta_dict["data_const"]["constants"]["phrases"], set) and
-            isinstance(meta_dict["data_const"]["partial_constants"], set) and
-            isinstance(meta_dict["data_func"], dict) and
-            isinstance(meta_dict["data_sql_condition"], list) and
-            isinstance(meta_dict["sens_pg_types"], list) and
-            isinstance(meta_dict["funcs"], dict) and
-            isinstance(meta_dict["no_sens_dictionary"], list)
+            isinstance(meta_dict["field"]["rules"], list)
+            and isinstance(meta_dict["field"]["constants"], list)
+            and isinstance(meta_dict["skip_rules"], list)
+            and isinstance(meta_dict["include_rules"], list)
+            and isinstance(meta_dict["data_regex"]["rules"], list)
+            and isinstance(meta_dict["data_const"]["constants"]["words"], set)
+            and isinstance(meta_dict["data_const"]["constants"]["phrases"], set)
+            and isinstance(meta_dict["data_const"]["partial_constants"], set)
+            and isinstance(meta_dict["data_func"], dict)
+            and isinstance(meta_dict["data_sql_condition"], list)
+            and isinstance(meta_dict["sens_pg_types"], list)
+            and isinstance(meta_dict["funcs"], dict)
+            and isinstance(meta_dict["no_sens_dictionary"], list)
         ):
             raise PgAnonError(ErrorCode.INVALID_META_DICT, "Meta dict does not have expected types")
 
@@ -96,27 +95,27 @@ class Context:
         constants_words, constants_phrases = split_constants_to_words_and_phrases(constants)
 
         return {
-          "field": {
-            "rules": (meta_dict_data or {}).get("field", {}).get("rules", []),
-            "constants": (meta_dict_data or {}).get("field", {}).get("constants", []),
-          },
-          "skip_rules": (meta_dict_data or {}).get("skip_rules", []),
-          "include_rules": (meta_dict_data or {}).get("include_rules", []),
-          "data_regex": {
-            "rules": (meta_dict_data or {}).get("data_regex", {}).get("rules", []),
-          },
-          "data_const": {
-            "constants": {
-                "words": constants_words,
-                "phrases": constants_phrases,
+            "field": {
+                "rules": (meta_dict_data or {}).get("field", {}).get("rules", []),
+                "constants": (meta_dict_data or {}).get("field", {}).get("constants", []),
             },
-            "partial_constants": set((meta_dict_data or {}).get("data_const", {}).get("partial_constants", [])),
-          },
-          "data_func": (meta_dict_data or {}).get("data_func", {}),
-          "data_sql_condition": (meta_dict_data or {}).get("data_sql_condition", []),
-          "sens_pg_types": (meta_dict_data or {}).get("sens_pg_types", SENS_PG_TYPES),
-          "funcs": (meta_dict_data or {}).get("funcs", {}),
-          "no_sens_dictionary": (meta_dict_data or {}).get("no_sens_dictionary", []),
+            "skip_rules": (meta_dict_data or {}).get("skip_rules", []),
+            "include_rules": (meta_dict_data or {}).get("include_rules", []),
+            "data_regex": {
+                "rules": (meta_dict_data or {}).get("data_regex", {}).get("rules", []),
+            },
+            "data_const": {
+                "constants": {
+                    "words": constants_words,
+                    "phrases": constants_phrases,
+                },
+                "partial_constants": set((meta_dict_data or {}).get("data_const", {}).get("partial_constants", [])),
+            },
+            "data_func": (meta_dict_data or {}).get("data_func", {}),
+            "data_sql_condition": (meta_dict_data or {}).get("data_sql_condition", []),
+            "sens_pg_types": (meta_dict_data or {}).get("sens_pg_types", SENS_PG_TYPES),
+            "funcs": (meta_dict_data or {}).get("funcs", {}),
+            "no_sens_dictionary": (meta_dict_data or {}).get("no_sens_dictionary", []),
         }
 
     def _append_meta_dict(self, meta_dict: dict) -> None:  # noqa: C901, PLR0912
@@ -124,9 +123,7 @@ class Context:
         self._check_meta_dict_types(meta_dict)
 
         if meta_dict["field"]["rules"]:
-            self.meta_dictionary_obj["field"]["rules"].extend(
-                [safe_compile(v) for v in meta_dict["field"]["rules"]]
-            )
+            self.meta_dictionary_obj["field"]["rules"].extend([safe_compile(v) for v in meta_dict["field"]["rules"]])
 
         if meta_dict["field"]["constants"]:
             self.meta_dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
@@ -162,7 +159,9 @@ class Context:
             )
 
         if meta_dict["data_func"]:
-            normalized_data_func_rules = {normalize_data_type(field_type): rules for field_type, rules in meta_dict["data_func"].items()}
+            normalized_data_func_rules = {
+                normalize_data_type(field_type): rules for field_type, rules in meta_dict["data_func"].items()
+            }
             self.meta_dictionary_obj["data_func"].update(normalized_data_func_rules)
 
         if meta_dict["data_sql_condition"]:
@@ -174,9 +173,7 @@ class Context:
             )
 
         if meta_dict["funcs"]:
-            self.meta_dictionary_obj["funcs"].update(
-                {normalize_data_type(k): v for k, v in meta_dict["funcs"].items()}
-            )
+            self.meta_dictionary_obj["funcs"].update({normalize_data_type(k): v for k, v in meta_dict["funcs"].items()})
 
         if meta_dict["no_sens_dictionary"]:
             self.meta_dictionary_obj["no_sens_dictionary"].extend(meta_dict["no_sens_dictionary"])
@@ -184,10 +181,10 @@ class Context:
     def read_meta_dict(self) -> None:
         """Read and compile meta dictionary files into a single merged object."""
         self.meta_dictionary_obj = self._make_meta_dict()
-        dict_files_list = self.options.meta_dict_files
+        dict_files_list = list(self.options.meta_dict_files or [])
 
         if self.options.prepared_no_sens_dict_files:
-            dict_files_list += self.options.prepared_no_sens_dict_files
+            dict_files_list.extend(self.options.prepared_no_sens_dict_files)
 
         for dict_file in dict_files_list:
             dict_data = read_dict_data_from_file(Path.cwd() / dict_file)
@@ -246,6 +243,8 @@ class Context:
             return
 
         utils_versions = self.config.get("pg-utils-versions")
+        if not utils_versions:
+            return
         pg_utils = utils_versions.get(pg_major_version)
         if not pg_utils:
             pg_utils = utils_versions.get("default")
@@ -256,7 +255,9 @@ class Context:
         pg_restore = pg_utils.get("pg_restore")
 
         if not pg_dump or not pg_restore:
-            raise PgAnonError(ErrorCode.INVALID_CONFIG, "Config incorrect. Must be specified pg_dump and pg_restore utils paths")
+            raise PgAnonError(
+                ErrorCode.INVALID_CONFIG, "Config incorrect. Must be specified pg_dump and pg_restore utils paths"
+            )
 
         self.pg_dump = pg_dump
         self.pg_restore = pg_restore
@@ -275,10 +276,7 @@ class Context:
 
         log_dir = Path(self.options.run_dir) / LOGS_DIR_NAME
 
-        logger_add_file_handler(
-            log_dir=log_dir,
-            log_file_name=LOGS_FILE_NAME
-        )
+        logger_add_file_handler(log_dir=log_dir, log_file_name=LOGS_FILE_NAME)
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()
 

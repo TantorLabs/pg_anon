@@ -1,15 +1,23 @@
+from typing import TYPE_CHECKING
+
 from pg_anon.common.enums import AnonMode
 from rest_api.enums import ScanMode
 from rest_api.pydantic_models import ScanRequest
 from rest_api.runners.background import BaseRunner
 from rest_api.utils import write_dictionary_contents
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 class ScanRunner(BaseRunner):
-    mode: str = AnonMode.CREATE_DICT.value
-    request: ScanRequest
-    output_sens_dict_file_name: str
-    output_no_sens_dict_file_name: str | None = None
+    request: ScanRequest  # type narrowing
+
+    def __init__(self, request: ScanRequest) -> None:
+        self.mode: str = AnonMode.CREATE_DICT.value
+        self.output_sens_dict_file_name: str | Path = ""
+        self.output_no_sens_dict_file_name: str | Path | None = None
+        super().__init__(request)
 
     def _prepare_dictionaries_cli_params(self) -> None:
         input_meta_dict_file_names = list(

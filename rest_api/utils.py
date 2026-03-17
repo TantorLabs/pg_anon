@@ -58,6 +58,7 @@ def read_json_file(file_path: str | Path) -> dict:
 
 def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
     """Read the last N lines from rotated log files in a directory."""
+
     def log_sort_key(file_path: Path) -> int:
         parts = file_path.name.split(".")
         try:
@@ -65,9 +66,9 @@ def read_logs_from_tail(logs_path: str | Path, lines_count: int) -> list[str]:
         except ValueError:
             return 0
 
-    log_files = sorted(logs_path.glob("*"), key=log_sort_key)
+    log_files = sorted(Path(logs_path).glob("*"), key=log_sort_key)
 
-    result_lines = deque(maxlen=lines_count)
+    result_lines: deque[str] = deque(maxlen=lines_count)
     block_size = 1024
     for log_file in log_files:
         if len(result_lines) >= lines_count:
@@ -128,7 +129,7 @@ def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params
         loop.close()
 
 
-async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[str]) -> PgAnonResult | None:
+async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[str]) -> PgAnonResult:
     """Spawn a pg_anon worker process and await its result via an async queue."""
     if not validate_exists_mode(mode):
         raise PgAnonError(ErrorCode.UNKNOWN_MODE, f"Invalid mode: {mode}")
@@ -145,7 +146,7 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
     )
     p.start()
 
-    result = None
+    result: PgAnonResult | None = None
     while True:
         try:
             coro_result = await queue.coro_get(timeout=QUEUE_POLL_TIMEOUT)
@@ -161,6 +162,9 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
             break
         result = coro_result
     await p.coro_join()
+
+    if result is None:
+        raise PgAnonError(ErrorCode.OPERATION_FAILED, "Worker process completed without producing a result")
 
     return result
 

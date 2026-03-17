@@ -1,5 +1,7 @@
+from typing import Any, cast
+
 from pg_anon.common.db_utils import create_connection, get_schemas, get_tables_with_fields
-from pg_anon.common.dto import ConnectionParams, PgAnonResult
+from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.utils import get_dict_rule_for_table, read_dict_data
 from rest_api.pydantic_models import (
     PreviewFieldContent,
@@ -10,8 +12,6 @@ from rest_api.pydantic_models import (
 
 
 class PreviewRunner:
-    result: PgAnonResult = None
-
     @classmethod
     async def get_schemas(cls, request: PreviewSchemasRequest) -> list[str]:
         """Retrieve the list of schemas from the database."""
@@ -33,7 +33,7 @@ class PreviewRunner:
 
     @staticmethod
     def _prepare_sens_dicts(sens_dict_contents: list) -> dict[str, list[dict[str, str]]]:
-        sens_dict_data = {
+        sens_dict_data: dict[str, list[dict[str, str]]] = {
             "dictionary": [],
             "dictionary_exclude": [],
             "validate_tables": [],
@@ -67,7 +67,7 @@ class PreviewRunner:
             table_filter=request.table_filter,
         )
 
-        table_fields = {}
+        table_fields: dict[Any, list[tuple[Any, Any]]] = {}
         for table_name, field_name, field_type in data:
             if table_name not in table_fields:
                 table_fields[table_name] = []
@@ -75,24 +75,27 @@ class PreviewRunner:
 
         result = []
         for table_name, fields in table_fields.items():
-            include_rule = (
+            # get_dict_rule_for_table declares list[dict]|dict|None but always returns dict|None
+            include_rule = cast(
+                "dict[str, Any] | None",
                 get_dict_rule_for_table(
                     dictionary_rules=sens_dict_data["dictionary"],
                     schema=schema,
                     table=table_name,
                 )
                 if sens_dict_data["dictionary"]
-                else None
+                else None,
             )
 
-            exclude_rule = (
+            exclude_rule = cast(
+                "dict[str, Any] | None",
                 get_dict_rule_for_table(
                     dictionary_rules=sens_dict_data["dictionary_exclude"],
                     schema=schema,
                     table=table_name,
                 )
                 if sens_dict_data["dictionary_exclude"]
-                else None
+                else None,
             )
 
             is_excluded = exclude_rule is not None and include_rule is None

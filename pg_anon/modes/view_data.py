@@ -9,33 +9,23 @@ from pg_anon.context import Context
 
 
 class ViewDataMode:
-    context: Context
-    _limit: int
-    _offset: int
-    _schema_name: str
-    _table_name: str
-    table_rule: dict
-    raw_field_names: list[str] = None
-    field_names: list[str] = None
-    rows_count: int = 0
-    query: str
-    data: list[list[str]] = None
-    raw_query: str | None = None
-    raw_data: list[list[str]] | None = None
-    table: PrettyTable = None
-    _need_raw_data: bool = False
-
     def __init__(self, context: Context, need_raw_data: bool = False) -> None:
         self.context = context
-        self._limit = context.options.limit
-        self._offset = context.options.offset
-        self._schema_name = context.options.schema_name
-        self._table_name = context.options.table_name
-        self.field_names = []
-        self.raw_field_names = []
-        self.data = []
-        self.raw_data = []
-        self._need_raw_data = need_raw_data
+        self._limit: int = context.options.limit or 0
+        self._offset: int = context.options.offset or 0
+        self._schema_name: str = context.options.schema_name or ""
+        self._table_name: str = context.options.table_name or ""
+        self.table_rule: dict | None = None
+        self.raw_field_names: list[str] = []
+        self.field_names: list[str] = []
+        self.rows_count: int = 0
+        self.query: str = ""
+        self.data: list[list[str]] = []
+        self.raw_query: str | None = None
+        self.raw_data: list[list[str]] = []
+        self.table: PrettyTable | None = None
+        self.json: str | None = None
+        self._need_raw_data: bool = need_raw_data
 
     async def _get_fields_for_view(self) -> None:
         """Get field names and all fields for view-data mode."""
@@ -51,6 +41,11 @@ class ViewDataMode:
                 ErrorCode.TABLE_NOT_FOUND, f'Table "{self._schema_name}.{self._table_name}" hasn\'t exists!'
             )
 
+        if self.raw_field_names is None:
+            self.raw_field_names = []
+        if self.field_names is None:
+            self.field_names = []
+
         for field in fields_list:
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
@@ -65,7 +60,8 @@ class ViewDataMode:
         table_result = await db_conn.fetch(query)
         await db_conn.close()
 
-        return [[record[field_name] for field_name in self.raw_field_names] for record in table_result]
+        raw_field_names = self.raw_field_names or []
+        return [[record[field_name] for field_name in raw_field_names] for record in table_result]
 
     async def get_rows_count(self) -> int:
         """Retrieve the total row count for the target table."""
@@ -80,14 +76,15 @@ class ViewDataMode:
     def _prepare_table(self) -> None:
         self.table = PrettyTable(self.field_names)
         self.table.set_style(SINGLE_BORDER)
-        for row in self.data:
+        for row in self.data or []:
             self.table.add_row(row)
 
     def _prepare_json(self) -> None:
-        result = {field: [] for field in self.field_names}
+        field_names = self.field_names or []
+        result: dict[str, list[str]] = {field: [] for field in field_names}
 
-        for field_values in self.data:
-            for field, value in zip(self.field_names, field_values, strict=False):
+        for field_values in self.data or []:
+            for field, value in zip(field_names, field_values, strict=False):
                 result[field].append(value)
 
         self.json = json.dumps(result, default=str, ensure_ascii=False)
@@ -96,7 +93,7 @@ class ViewDataMode:
         await self._get_fields_for_view()
         self.data = await self._get_data_for_view(self.query)
 
-        if self._need_raw_data:
+        if self._need_raw_data and self.raw_query is not None:
             self.raw_data = await self._get_data_for_view(self.raw_query)
 
         if self.context.options.json:
@@ -128,7 +125,8 @@ class ViewDataMode:
                 table_rule=None,
                 nulls_last=True,
             )
-            self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
+            if query_without_limit:
+                self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
 
     async def run(self) -> None:
         """Run the view_data mode to display anonymized table rows."""

@@ -9,15 +9,13 @@ from rest_api.utils import run_pg_anon_worker
 
 
 class BaseRunner:
-    mode: str
-    request: StatelessRunnerRequest
-    operation_id: str
-    cli_params: list[str] = None
-    result: PgAnonResult = None
+    mode: str  # set by subclasses
 
     def __init__(self, request: StatelessRunnerRequest) -> None:
         self.request = request
-        self.operation_id = request.operation_id
+        self.operation_id: str = request.operation_id
+        self.cli_params: list[str] = []
+        self.result: PgAnonResult | None = None
         self.base_tmp_dir = BASE_TEMP_DIR / f"{self.operation_id}__{uuid.uuid4()}"
         self._prepare_cli_params()
 

@@ -4,7 +4,7 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import FieldInfo
 
 
-def get_limit_query(limit: int) -> str:
+def get_limit_query(limit: int | None) -> str:
     """Build a SQL LIMIT clause from the given limit value."""
     return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
 
@@ -109,7 +109,9 @@ def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, 
     """
 
 
-def get_data_from_field_query(field_info: FieldInfo, limit: int | None = None, condition: str | None = None, not_null: bool = True) -> str:
+def get_data_from_field_query(
+    field_info: FieldInfo, limit: int | None = None, condition: str | None = None, not_null: bool = True
+) -> str:
     """Build a query for receiving data from a table."""
     conditions = []
     query_condition = ""

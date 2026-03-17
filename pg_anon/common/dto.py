@@ -1,13 +1,19 @@
 import json
 import time
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime, UTC
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pg_anon.common.constants import SECRET_RUN_OPTIONS
+from pg_anon.common.constants import (
+    DEFAULT_DB_CONNECTIONS_PER_PROCESS,
+    DEFAULT_PG_DUMP_PATH,
+    DEFAULT_PG_RESTORE_PATH,
+    DEFAULT_PROCESSES,
+    DEFAULT_SCAN_PARTIAL_ROWS,
+    SECRET_RUN_OPTIONS,
+)
 from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
 
 
@@ -35,8 +41,8 @@ class RunOptions:
     version: bool = False
 
     # I/O options (create-dict, dump, restore)
-    db_connections_per_process: int | None = None
-    processes: int | None = None
+    db_connections_per_process: int = DEFAULT_DB_CONNECTIONS_PER_PROCESS
+    processes: int = DEFAULT_PROCESSES
     save_dicts: bool = False
 
     # create-dict options
@@ -45,13 +51,13 @@ class RunOptions:
     output_sens_dict_file: str | None = None
     output_no_sens_dict_file: str | None = None
     scan_mode: ScanMode | None = None
-    scan_partial_rows: int | None = None
+    scan_partial_rows: int = DEFAULT_SCAN_PARTIAL_ROWS
 
     # dump options
     prepared_sens_dict_files: list[str] | None = None
-    pg_dump: str | None = None
+    pg_dump: str = DEFAULT_PG_DUMP_PATH
     pg_dump_options: str | None = None
-    output_dir: str | None = None
+    output_dir: str = ""
     clear_output_dir: bool = False
     dbg_stage_1_validate_dict: bool = False
     dbg_stage_2_validate_data: bool = False
@@ -60,8 +66,8 @@ class RunOptions:
     partial_tables_exclude_dict_files: list[str] | None = None
 
     # restore options
-    input_dir: str | None = None
-    pg_restore: str | None = None
+    input_dir: str = ""
+    pg_restore: str = DEFAULT_PG_RESTORE_PATH
     pg_restore_options: str | None = None
     drop_custom_check_constr: bool = False
     seq_init_by_max_value: bool = False
@@ -99,16 +105,17 @@ class RunOptions:
 
 
 class PgAnonResult:
-    run_options = None
-    result_code = ResultCode.UNKNOWN
-    result_data = None
-    start_time = None
-    end_time = None
-    _elapsed = None
-    _start_date = None
-    _end_date = None
-    _exception = None
-    _traceback = None
+    def __init__(self) -> None:
+        self.run_options: RunOptions | None = None
+        self.result_code: ResultCode = ResultCode.UNKNOWN
+        self.result_data: dict | None = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
+        self._elapsed: float | None = None
+        self._start_date: datetime | None = None
+        self._end_date: datetime | None = None
+        self._exception: Exception | None = None
+        self._traceback: str | None = None
 
     def start(self, run_options: RunOptions) -> None:
         """Record start time and associate run options with this result."""
@@ -122,7 +129,8 @@ class PgAnonResult:
         self.end_time = time.time()
         self.result_code = ResultCode.FAIL
         self._exception = exception
-        self._traceback = exception_to_str(self._exception)
+        if exception is not None:
+            self._traceback = exception_to_str(exception)
 
     def complete(self) -> None:
         """Mark the result as successfully completed."""
@@ -148,9 +156,11 @@ class PgAnonResult:
         return self._elapsed
 
     @property
-    def start_date(self) -> datetime:
+    def start_date(self) -> datetime | None:
         """Return the start time as a UTC datetime."""
         if not self._start_date:
+            if self.start_time is None:
+                return None
             self._start_date = datetime.fromtimestamp(self.start_time, tz=UTC)
         return self._start_date
 
@@ -196,26 +206,11 @@ class FieldInfo:
     attnum: int
     obj_id: str
     tbl_id: str
-    rule: Callable | None = None  # uses for --mode=create-dict with --prepared-sens-dict-file
+    rule: str | None = None  # uses for --mode=create-dict with --prepared-sens-dict-file
     dict_file_name: str | None = None  # uses for --mode=view-fields
 
 
 class ConnectionParams:
-    host: str
-    database: str
-    port: int
-    user: str
-
-    password: str | None = None
-    passfile: str | None = None
-
-    ssl_cert_file: str | None = None
-    ssl_key_file: str | None = None
-    ssl_ca_file: str | None = None
-
-    ssl: str | None = None
-    ssl_min_protocol_version: str | None = None
-
     def __init__(  # noqa: PLR0913
         self,
         host: str,
@@ -234,13 +229,15 @@ class ConnectionParams:
         self.user = user
         self.password = password
         self.passfile = passfile
+        self.ssl_cert_file = ssl_cert_file
+        self.ssl_key_file = ssl_key_file
+        self.ssl_ca_file = ssl_ca_file
+        self.ssl: str | None = None
+        self.ssl_min_protocol_version: str | None = None
 
         if ssl_cert_file or ssl_key_file or ssl_ca_file:
             self.ssl = "on"
             self.ssl_min_protocol_version = "TLSv1.2"
-            self.ssl_cert_file = ssl_cert_file
-            self.ssl_key_file = ssl_key_file
-            self.ssl_ca_file = ssl_ca_file
 
     def as_dict(self) -> dict:
         """Return connection parameters as a dictionary."""
@@ -248,35 +245,32 @@ class ConnectionParams:
 
 
 class Metadata:
-    created: str
-    pg_version: str
-    pg_dump_version: str
-
-    dictionary_content_hash: dict[str, str]
-    prepared_sens_dict_files: str
-    dbg_stage_2_validate_data: bool = False
-    dbg_stage_3_validate_full: bool = False
-
-    # only in data dumps cases
-    sequences_last_values: dict | None = None
-    views: dict | None = None
-    indexes: dict | None = None
-    constraints: dict | None = None
-
-    files: dict[str, dict[str, str]] | None = None
-    total_tables_size: int | None = None
-    total_rows: int | None = None
-    db_size: int | None = None
-
-    # only in black and white lists cases
-    partial_dump_schemas: list[str] | None = None
-    extensions: dict[str, dict[str, Any]] | None = None
-    partial_dump_types: list[str] | None = None
-    partial_dump_domains: list[str] | None = None
-    partial_dump_functions: list[str] | None = None
-    partial_dump_casts: list[str] | None = None
-    partial_dump_operators: list[str] | None = None
-    partial_dump_aggregates: list[str] | None = None
+    def __init__(self) -> None:
+        self.created: str = ""
+        self.pg_version: str = ""
+        self.pg_dump_version: str = ""
+        self.dictionary_content_hash: dict[str, str] = {}
+        self.prepared_sens_dict_files: str = ""
+        self.dbg_stage_2_validate_data: bool = False
+        self.dbg_stage_3_validate_full: bool = False
+        # only in data dumps cases
+        self.sequences_last_values: dict | None = None
+        self.views: dict | None = None
+        self.indexes: dict | None = None
+        self.constraints: dict | None = None
+        self.files: dict[str, dict[str, Any]] | None = None
+        self.total_tables_size: int | None = None
+        self.total_rows: int | None = None
+        self.db_size: int | None = None
+        # only in black and white lists cases
+        self.partial_dump_schemas: list[str] | None = None
+        self.extensions: dict[str, dict[str, Any]] | None = None
+        self.partial_dump_types: list[str] | None = None
+        self.partial_dump_domains: list[str] | None = None
+        self.partial_dump_functions: list[str] | None = None
+        self.partial_dump_casts: list[str] | None = None
+        self.partial_dump_operators: list[str] | None = None
+        self.partial_dump_aggregates: list[str] | None = None
 
     def _serialize_data(self) -> dict:  # noqa: C901, PLR0912
         data = {
@@ -343,18 +337,20 @@ class Metadata:
         return data
 
     def _serialize_tables(self) -> dict:
+        if not self.files:
+            return {"tables": []}
         data = [{k: v for k, v in table_data.items() if k in ("schema", "table")} for table_data in self.files.values()]
         return {"tables": data}
 
     def _deserialize_data(self, data: dict) -> None:
-        self.created = data.get("created")
-        self.pg_version = data.get("pg_version")
-        self.pg_dump_version = data.get("pg_dump_version")
+        self.created = data.get("created", "")
+        self.pg_version = data.get("pg_version", "")
+        self.pg_dump_version = data.get("pg_dump_version", "")
         self.db_size = data.get("db_size")
-        self.dictionary_content_hash = data.get("dictionary_content_hash")
-        self.prepared_sens_dict_files = data.get("prepared_sens_dict_files")
-        self.dbg_stage_2_validate_data = data.get("dbg_stage_2_validate_data")
-        self.dbg_stage_3_validate_full = data.get("dbg_stage_3_validate_full")
+        self.dictionary_content_hash = data.get("dictionary_content_hash", {})
+        self.prepared_sens_dict_files = data.get("prepared_sens_dict_files", "")
+        self.dbg_stage_2_validate_data = data.get("dbg_stage_2_validate_data", False)
+        self.dbg_stage_3_validate_full = data.get("dbg_stage_3_validate_full", False)
 
         self.sequences_last_values = data.get("seq_lastvals")
         self.views = data.get("views")

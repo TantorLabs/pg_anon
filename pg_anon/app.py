@@ -55,6 +55,9 @@ class PgAnonApp:
 
         self.context.logger.info("Postgres utils exists checking")
 
+        if not self.context.pg_dump or not self.context.pg_restore:
+            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump or pg_restore path is not configured")
+
         pg_dump_exists = check_pg_util(self.context, self.context.pg_dump, "pg_dump")
         pg_restore_exists = check_pg_util(self.context, self.context.pg_restore, "pg_restore")
 
@@ -108,12 +111,10 @@ class PgAnonApp:
             await self._check_initialization()
 
             mode = self._get_mode()
-            self.result.result_data = await mode.run()
+            await mode.run()
             self.result.complete()
         except Exception as exc:
-            self.context.logger.exception(
-                "<============ %s failed", self.context.options.mode.value
-            )
+            self.context.logger.exception("<============ %s failed", self.context.options.mode.value)
             self.result.fail(exc)
 
         self.context.logger.info(

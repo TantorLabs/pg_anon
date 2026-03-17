@@ -39,9 +39,7 @@ _CUSTOM_OBJECTS_TOC_RE = re.compile(
     r"(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR|AGGREGATE)\b"
 )
 
-_EXTENSION_TOC_RE = re.compile(
-    r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b"
-)
+_EXTENSION_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
 
 
 class RestoreMode:
@@ -97,7 +95,7 @@ class RestoreMode:
 
     def _generate_analyze_queries(self) -> list[str]:
         analyze_queries = []
-        for target in self.metadata.files.values():
+        for target in (self.metadata.files or {}).values():
             schema = target["schema"]
             table = target["table"]
             if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
@@ -141,29 +139,32 @@ class RestoreMode:
             )
 
     async def _check_free_disk_space(self, connection: Connection) -> None:
-        data_directory_location = await connection.fetchval(
+        data_directory_location: str | None = await connection.fetchval(
             """
             SELECT setting
             FROM pg_settings
             WHERE name = 'data_directory'
             """
         )
+        if not data_directory_location:
+            raise PgAnonError(ErrorCode.INVALID_CONFIG, "Could not determine data_directory from pg_settings")
         disk_size = shutil.disk_usage(data_directory_location)
+        total_tables_size = int(self.metadata.total_tables_size or 0)
         free_disk_space = pretty_size(disk_size.free)
-        required_disk_space = pretty_size(int(self.metadata.total_tables_size) * 1.5)
+        required_disk_space = pretty_size(int(total_tables_size * 1.5))
 
         self.context.logger.info("Free disk space: %s", free_disk_space)
         self.context.logger.info("Required disk space: %s", required_disk_space)
 
-        if disk_size.free < int(self.metadata.total_tables_size) * 1.5:
+        if disk_size.free < total_tables_size * 1.5:
             raise PgAnonError(
                 ErrorCode.INSUFFICIENT_DISK_SPACE,
                 f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}",
             )
 
     def _make_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
-        whitelist = []
-        blacklist = []
+        whitelist: list[re.Pattern[str]] = []
+        blacklist: list[re.Pattern[str]] = []
 
         for schema, table in self.context.black_listed_tables:
             # Make blacklist for TABLE, DEFAULT, TRIGGER, RULE
@@ -258,17 +259,15 @@ class RestoreMode:
                     )
 
         if self._restored_schemas:
-            blacklist.extend([
-                re.compile(fr".*SCHEMA - {re.escape(schema)}")
-            for schema in self._restored_schemas])
+            blacklist.extend([re.compile(rf".*SCHEMA - {re.escape(schema)}") for schema in self._restored_schemas])
 
         has_custom_ddl = bool(
-            self.metadata.partial_dump_types or
-            self.metadata.partial_dump_domains or
-            self.metadata.partial_dump_functions or
-            self.metadata.partial_dump_casts or
-            self.metadata.partial_dump_operators or
-            self.metadata.partial_dump_aggregates
+            self.metadata.partial_dump_types
+            or self.metadata.partial_dump_domains
+            or self.metadata.partial_dump_functions
+            or self.metadata.partial_dump_casts
+            or self.metadata.partial_dump_operators
+            or self.metadata.partial_dump_aggregates
         )
         if has_custom_ddl:
             blacklist.append(_CUSTOM_OBJECTS_TOC_RE)
@@ -313,13 +312,16 @@ class RestoreMode:
         if self.context.options.debug:
             return
 
-        self._toc_list_pre_data_file_path.unlink(missing_ok=True)
-        self._toc_list_post_data_file_path.unlink(missing_ok=True)
+        if self._toc_list_pre_data_file_path:
+            self._toc_list_pre_data_file_path.unlink(missing_ok=True)
+        if self._toc_list_post_data_file_path:
+            self._toc_list_post_data_file_path.unlink(missing_ok=True)
 
-    async def _run_pg_restore(self, section: str) -> None:
-        os.environ["PGPASSWORD"] = self.context.options.db_user_password
+    async def _run_pg_restore(self, section: str) -> None:  # noqa: C901
+        if self.context.options.db_user_password:
+            os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
-        command = [
+        command: list[str] = [
             self.context.pg_restore,
             "-h",
             self.context.options.db_host,
@@ -354,12 +356,11 @@ class RestoreMode:
             command.append("--no-privileges")
 
         if self._toc_list_pre_data_file_path:
-            command.extend(
-                [
-                    "-L",
-                    self._toc_list_pre_data_file_path if section == "pre-data" else self._toc_list_post_data_file_path,
-                ]
+            toc_path = (
+                self._toc_list_pre_data_file_path if section == "pre-data" else self._toc_list_post_data_file_path
             )
+            if toc_path:
+                command.extend(["-L", str(toc_path)])
 
         if self.context.options.pg_restore_options:
             command.extend(shlex.split(self.context.options.pg_restore_options))
@@ -388,7 +389,7 @@ class RestoreMode:
             self.context.logger.debug(query)
             await connection.execute(query)
         else:
-            for sequence_data in self.metadata.sequences_last_values.values():
+            for sequence_data in (self.metadata.sequences_last_values or {}).values():
                 if sequence_data["is_excluded"]:
                     continue
 
@@ -410,7 +411,7 @@ class RestoreMode:
                 self.context.logger.info(query)
                 await connection.execute(query)
 
-    def _extract_schemas_from_toc(self) -> set:
+    def _extract_schemas_from_toc(self) -> set[str]:
         """Extract schema names from pre_data backup TOC.
 
         Used when partial_dump_schemas is not available in metadata (e.g. full dump + partial restore).
@@ -423,7 +424,7 @@ class RestoreMode:
         proc = subprocess.Popen(command, stdout=subprocess.PIPE)
         toc_bytes, _ = proc.communicate()
 
-        schemas = set()
+        schemas: set[str] = set()
         schema_re = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+(\S+)")
         for line in toc_bytes.decode("utf-8", errors="replace").split("\n"):
             match = schema_re.match(line)
@@ -468,7 +469,8 @@ class RestoreMode:
                     )
                 self.context.logger.warning(
                     'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is not exists',
-                    extension_name, extension_data["schema"],
+                    extension_name,
+                    extension_data["schema"],
                 )
             else:
                 query_parts.append(f"SCHEMA {extension_data['schema']}")
@@ -498,7 +500,9 @@ class RestoreMode:
                 version_specified = available_extension_versions[0]
                 self.context.logger.warning(
                     'EXTENSION "%s" will restored by default version "%s", cause target version "%s" is not exists',
-                    extension_name, version_specified["default_version"], extension_data["version"],
+                    extension_name,
+                    version_specified["default_version"],
+                    extension_data["version"],
                 )
 
             query_parts.append(f"VERSION '{version_specified['default_version']}'")
@@ -615,7 +619,9 @@ class RestoreMode:
         except Exception:
             self.context.logger.exception(
                 "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s extracted_file=%s",
-                schema_name, table_name, extracted_file
+                schema_name,
+                table_name,
+                extracted_file,
             )
         finally:
             extracted_file.unlink()
@@ -632,8 +638,8 @@ class RestoreMode:
 
         try:
             loop = asyncio.get_event_loop()
-            tasks = set()
-            for file_name, target in self.metadata.files.items():
+            tasks: set[asyncio.Task[None]] = set()
+            for file_name, target in (self.metadata.files or {}).items():
                 table_name_full = f'"{target["schema"]}"."{target["table"]}"'
 
                 # black list has the highest priority for pg_dump / pg_restore
@@ -693,7 +699,7 @@ class RestoreMode:
         if self.context.black_listed_tables or self._whitelist_active:
             dumped_rows = 0
 
-            for table_data in self.metadata.files.values():
+            for table_data in (self.metadata.files or {}).values():
                 table_name = (table_data["schema"], table_data["table"])
 
                 if self.context.black_listed_tables and table_name in self.context.black_listed_tables:
@@ -704,7 +710,7 @@ class RestoreMode:
 
                 dumped_rows += int(table_data["rows"])
         else:
-            dumped_rows = int(self.metadata.total_rows)
+            dumped_rows = int(self.metadata.total_rows or 0)
 
         restored_rows = self.context.total_rows
         if restored_rows != dumped_rows:
@@ -763,14 +769,11 @@ class RestoreMode:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
             return
 
-        tables = [(table_info["schema"], table_info["table"]) for table_info in self.metadata.files.values()]
+        tables = [(table_info["schema"], table_info["table"]) for table_info in (self.metadata.files or {}).values()]
         self.context.set_tables_lists(tables)
 
         if self._whitelist_active and not self.context.white_listed_tables:
-            raise PgAnonError(
-                ErrorCode.NO_TABLES_FOR_RESTORE,
-                "None of the requested tables match the dump contents"
-            )
+            raise PgAnonError(ErrorCode.NO_TABLES_FOR_RESTORE, "None of the requested tables match the dump contents")
 
     def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
@@ -808,7 +811,7 @@ class RestoreMode:
 
         queries = self._generate_analyze_queries()
         loop = asyncio.get_event_loop()
-        tasks = set()
+        tasks: set[asyncio.Task[None]] = set()
         for query in queries:
             if len(tasks) >= self.context.options.db_connections_per_process:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

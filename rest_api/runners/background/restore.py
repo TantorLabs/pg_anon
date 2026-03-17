@@ -6,11 +6,11 @@ from rest_api.utils import write_dictionary_contents
 
 
 class RestoreRunner(BaseRunner):
-    mode: str = AnonMode.RESTORE.value
-    request: RestoreRequest
-    full_input_path: str
+    request: RestoreRequest  # type narrowing
 
     def __init__(self, request: RestoreRequest) -> None:
+        self.mode: str = AnonMode.RESTORE.value
+        self.full_input_path: str | None = None
         super().__init__(request)
         self._set_mode()
 

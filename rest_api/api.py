@@ -172,7 +172,9 @@ async def stateless_preview_schemas(request: PreviewSchemasRequest) -> PreviewSc
         "500": {"model": ErrorResponse},
     },
 )
-async def stateless_preview_schema_tables(schema: str, request: PreviewSchemaTablesRequest) -> PreviewSchemaTablesResponse:
+async def stateless_preview_schema_tables(
+    schema: str, request: PreviewSchemaTablesRequest
+) -> PreviewSchemaTablesResponse:
     """Return tables and their fields for a given schema with sensitivity info."""
     data = await PreviewRunner.get_schema_tables(schema, request)
 
@@ -243,12 +245,14 @@ async def stateless_restore_start(request: RestoreRequest, background_tasks: Bac
     tags=["Operations"],
     summary="List of operations",
 )
-async def stateless_operations_list(filters: Annotated[dict, Depends(date_range_filter)]) -> list[str]:  # noqa: C901
+async def stateless_operations_list(  # noqa: C901
+    filters: Annotated[dict[str, date | None], Depends(date_range_filter)],
+) -> list[str]:  # noqa: C901
     """List saved operations, optionally filtered by date range."""
     date_before = filters["date_before"]
     date_after = filters["date_after"]
 
-    operations = []
+    operations: list[str] = []
 
     if not RUNS_BASE_DIR.exists():
         return operations

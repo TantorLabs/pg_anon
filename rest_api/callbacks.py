@@ -69,7 +69,7 @@ async def send_webhook(
 async def scan_callback(request: ScanRequest) -> None:
     """Execute a scan operation and send status webhooks on progress and completion."""
     logger.debug("Run scan callback")
-    scan_runner = None
+    result: PgAnonResult | None = None
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
@@ -91,8 +91,8 @@ async def scan_callback(request: ScanRequest) -> None:
         )
 
         logger.info("Run SCAN operation")
-        await scan_runner.run()
-        _raise_if_failed(scan_runner.result)
+        result = await scan_runner.run()
+        _raise_if_failed(result)
 
         logger.debug("SCAN completed - OK")
         sens_dict_contents = read_dictionary_contents(scan_runner.output_sens_dict_file_name)
@@ -108,17 +108,17 @@ async def scan_callback(request: ScanRequest) -> None:
         logger.debug("Send ERROR webhook")
 
         error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
-        scan_runner_params = {
+        scan_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
         }
-        if scan_runner and scan_runner.result:
+        if result:
             scan_runner_params.update(
                 {
-                    "internal_operation_id": scan_runner.result.internal_operation_id,
-                    "started": scan_runner.result.start_date.isoformat(timespec="seconds"),
-                    "ended": scan_runner.result.end_date.isoformat(timespec="seconds"),
-                    "run_options": scan_runner.result.run_options.to_dict(),
+                    "internal_operation_id": result.internal_operation_id or "",
+                    "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+                    "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+                    "run_options": result.run_options.to_dict() if result.run_options else "",
                 }
             )
         await send_webhook(
@@ -140,12 +140,12 @@ async def scan_callback(request: ScanRequest) -> None:
         url=request.webhook_status_url,
         response_body=ScanStatusResponse(
             operation_id=request.operation_id,
-            internal_operation_id=scan_runner.result.internal_operation_id,
+            internal_operation_id=result.internal_operation_id,
             status_id=ResponseStatus.SUCCESS.value,
             status=ResponseStatus.SUCCESS.name.lower(),
-            started=scan_runner.result.start_date.isoformat(timespec="seconds"),
-            ended=scan_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=scan_runner.result.run_options.to_dict(),
+            started=result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+            ended=result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+            run_options=result.run_options.to_dict() if result.run_options else None,
             webhook_metadata=request.webhook_metadata,
             sens_dict_content=sens_dict_contents,
             no_sens_dict_content=no_sens_dict_contents,
@@ -158,7 +158,7 @@ async def scan_callback(request: ScanRequest) -> None:
 async def dump_callback(request: DumpRequest) -> None:
     """Execute a dump operation and send status webhooks on progress and completion."""
     logger.debug("Run dump callback")
-    dump_runner = None
+    result: PgAnonResult | None = None
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
@@ -180,27 +180,27 @@ async def dump_callback(request: DumpRequest) -> None:
         )
 
         logger.info("Run DUMP operation")
-        await dump_runner.run()
-        _raise_if_failed(dump_runner.result)
+        result = await dump_runner.run()
+        _raise_if_failed(result)
 
         logger.debug("DUMP completed - OK")
-        dump_size = get_folder_size(dump_runner.full_dump_path)
+        dump_size = get_folder_size(dump_runner.full_dump_path or "")
     except Exception as ex:
         logger.debug("DUMP completed - FAIL")
         logger.exception("DUMP failed")
 
         error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
-        dump_runner_params = {
+        dump_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
         }
-        if dump_runner and dump_runner.result:
+        if result:
             dump_runner_params.update(
                 {
-                    "internal_operation_id": dump_runner.result.internal_operation_id,
-                    "started": dump_runner.result.start_date.isoformat(timespec="seconds"),
-                    "ended": dump_runner.result.end_date.isoformat(timespec="seconds"),
-                    "run_options": dump_runner.result.run_options.to_dict(),
+                    "internal_operation_id": result.internal_operation_id or "",
+                    "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+                    "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+                    "run_options": result.run_options.to_dict() if result.run_options else "",
                 }
             )
         await send_webhook(
@@ -222,12 +222,12 @@ async def dump_callback(request: DumpRequest) -> None:
         url=request.webhook_status_url,
         response_body=DumpStatusResponse(
             operation_id=request.operation_id,
-            internal_operation_id=dump_runner.result.internal_operation_id,
+            internal_operation_id=result.internal_operation_id,
             status_id=ResponseStatus.SUCCESS.value,
             status=ResponseStatus.SUCCESS.name.lower(),
-            started=dump_runner.result.start_date.isoformat(timespec="seconds"),
-            ended=dump_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=dump_runner.result.run_options.to_dict(),
+            started=result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+            ended=result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+            run_options=result.run_options.to_dict() if result.run_options else None,
             webhook_metadata=request.webhook_metadata,
             size=dump_size,
         ),
@@ -238,8 +238,8 @@ async def dump_callback(request: DumpRequest) -> None:
 
 async def restore_callback(request: RestoreRequest) -> None:
     """Execute a restore operation and send status webhooks on progress and completion."""
-    logger.debug("Run scan callback")
-    restore_runner = None
+    logger.debug("Run restore callback")
+    result: PgAnonResult | None = None
     try:
         restore_runner = RestoreRunner(request)
 
@@ -257,8 +257,8 @@ async def restore_callback(request: RestoreRequest) -> None:
         )
 
         logger.info("Run RESTORE operation")
-        await restore_runner.run()
-        _raise_if_failed(restore_runner.result)
+        result = await restore_runner.run()
+        _raise_if_failed(result)
 
         logger.debug("RESTORE completed - OK")
     except Exception as ex:
@@ -267,17 +267,17 @@ async def restore_callback(request: RestoreRequest) -> None:
         logger.debug("Send ERROR webhook")
 
         error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
-        restore_runner_params = {
+        restore_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
         }
-        if restore_runner and restore_runner.result:
+        if result:
             restore_runner_params.update(
                 {
-                    "internal_operation_id": restore_runner.result.internal_operation_id,
-                    "started": restore_runner.result.start_date.isoformat(timespec="seconds"),
-                    "ended": restore_runner.result.end_date.isoformat(timespec="seconds"),
-                    "run_options": restore_runner.result.run_options.to_dict(),
+                    "internal_operation_id": result.internal_operation_id or "",
+                    "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+                    "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+                    "run_options": result.run_options.to_dict() if result.run_options else "",
                 }
             )
         await send_webhook(
@@ -299,12 +299,12 @@ async def restore_callback(request: RestoreRequest) -> None:
         url=request.webhook_status_url,
         response_body=StatelessRunnerResponse(
             operation_id=request.operation_id,
-            internal_operation_id=restore_runner.result.internal_operation_id,
+            internal_operation_id=result.internal_operation_id,
             status_id=ResponseStatus.SUCCESS.value,
             status=ResponseStatus.SUCCESS.name.lower(),
-            started=restore_runner.result.start_date.isoformat(timespec="seconds"),
-            ended=restore_runner.result.end_date.isoformat(timespec="seconds"),
-            run_options=restore_runner.result.run_options.to_dict(),
+            started=result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+            ended=result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+            run_options=result.run_options.to_dict() if result.run_options else None,
             webhook_metadata=request.webhook_metadata,
         ),
         verify_ssl=request.webhook_verify_ssl,

@@ -5,7 +5,14 @@ import uuid
 from datetime import datetime
 
 from pg_anon import PgAnonApp
-from pg_anon.common.constants import RUNS_BASE_DIR
+from pg_anon.common.constants import (
+    DEFAULT_DB_CONNECTIONS_PER_PROCESS,
+    DEFAULT_PG_DUMP_PATH,
+    DEFAULT_PG_RESTORE_PATH,
+    DEFAULT_PROCESSES,
+    DEFAULT_SCAN_PARTIAL_ROWS,
+    RUNS_BASE_DIR,
+)
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
 from pg_anon.common.utils import parse_comma_separated_list
@@ -107,13 +114,13 @@ def multiprocessing_common_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--db-connections-per-process",
         type=int,
-        default=4,
+        default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
         help="""Number of database connections per process for I/O operations. (default: %(default)s)""",
     )
     p.add_argument(
         "--processes",
         type=int,
-        default=4,
+        default=DEFAULT_PROCESSES,
         help="""Number of processes used for multiprocessing operations. (default: %(default)s)""",
     )
 
@@ -129,7 +136,7 @@ def scan_parser() -> argparse.ArgumentParser:
         dest="meta_dict_files",
         type=parse_comma_separated_list,
         required=True,
-        help="Input file or file list contains meta-dictionary, which was prepared manually. In rules collision case, priority has rules in last file from the list."
+        help="Input file or file list contains meta-dictionary, which was prepared manually. In rules collision case, priority has rules in last file from the list.",
     )
     p.add_argument(
         "--prepared-sens-dict-file",
@@ -166,7 +173,7 @@ def scan_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--scan-partial-rows",
         type=int,
-        default=10000,
+        default=DEFAULT_SCAN_PARTIAL_ROWS,
         help="""In "--scan-mode=partial" defines amount of rows to scan (default: %(default)s). Actual rows count can be smaller after getting unique values.""",
     )
 
@@ -224,7 +231,7 @@ def dump_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--pg-dump",
         type=str,
-        default="/usr/bin/pg_dump",
+        default=DEFAULT_PG_DUMP_PATH,
         help="""Path to the pg_dump Postgres tool (default: %(default)s).""",
     )
     p.add_argument(
@@ -279,7 +286,7 @@ def restore_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--db-connections-per-process",
         type=int,
-        default=4,
+        default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
         help="""Number of database connections. (default: %(default)s)""",
     )
     p.add_argument(
@@ -300,7 +307,7 @@ def restore_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--pg-restore",
         type=str,
-        default="/usr/bin/pg_restore",
+        default=DEFAULT_PG_RESTORE_PATH,
         help="""Path to the pg_restore Postgres tool. """,
     )
     group = p.add_mutually_exclusive_group()
@@ -562,19 +569,17 @@ def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
     internal_operation_id = str(uuid.uuid4())
     start_date = datetime.today()
     run_dir = str(
-        RUNS_BASE_DIR /
-        str(start_date.year) /
-        str(start_date.month) /
-        str(start_date.day) /
-        internal_operation_id
+        RUNS_BASE_DIR / str(start_date.year) / str(start_date.month) / str(start_date.day) / internal_operation_id
     )
 
-    args_dict.update({
-        "pg_anon_version": __version__,
-        "internal_operation_id": internal_operation_id,
-        "run_dir": run_dir,
-        "mode": AnonMode(args_dict["mode"]),
-    })
+    args_dict.update(
+        {
+            "pg_anon_version": __version__,
+            "internal_operation_id": internal_operation_id,
+            "run_dir": run_dir,
+            "mode": AnonMode(args_dict["mode"]),
+        }
+    )
     return RunOptions(**args_dict)
 
 

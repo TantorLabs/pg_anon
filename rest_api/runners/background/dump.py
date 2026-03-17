@@ -6,11 +6,11 @@ from rest_api.utils import write_dictionary_contents
 
 
 class DumpRunner(BaseRunner):
-    mode: str = AnonMode.DUMP.value
-    request: DumpRequest
-    full_dump_path: str
+    request: DumpRequest  # type narrowing
 
     def __init__(self, request: DumpRequest) -> None:
+        self.mode: str = AnonMode.DUMP.value
+        self.full_dump_path: str | None = None
         super().__init__(request)
         self._set_mode()
 

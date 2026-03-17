@@ -1,5 +1,4 @@
 from pg_anon.cli import build_run_options
-from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
 from rest_api.constants import BASE_TEMP_DIR
@@ -8,13 +7,9 @@ from rest_api.utils import write_dictionary_contents
 
 
 class ViewDataRunner:
-    request: ViewDataRequest
-    cli_params: list[str] = None
-    result: PgAnonResult = None
-    _executor = type[ViewDataMode]
-
     def __init__(self, request: ViewDataRequest) -> None:
         self.request = request
+        self.cli_params: list[str] = []
         self._prepare_cli_params()
         self._init_context()
         self._init_executor()
@@ -87,8 +82,8 @@ class ViewDataRunner:
         def _format_data_to_str(records: list[list[str]]) -> list[list[str]]:
             return [[str(data) for data in record] for record in records]
 
-        rows_before = _format_data_to_str(self._executor.raw_data)
-        rows_after = _format_data_to_str(self._executor.data)
+        rows_before = _format_data_to_str(self._executor.raw_data or [])
+        rows_after = _format_data_to_str(self._executor.data or [])
 
         return ViewDataContent(
             schema_name=self.request.schema_name,

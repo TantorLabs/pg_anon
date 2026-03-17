@@ -11,10 +11,10 @@ if TYPE_CHECKING:
 
 
 class Logger:
-    _instance = None
-    _formatter: str
+    _instance: Logger | None = None
+    _formatter: logging.Formatter
 
-    logger = None
+    logger: logging.Logger
 
     def __new__(cls) -> Logger:  # noqa: PYI034
         """Create or return the singleton Logger instance."""

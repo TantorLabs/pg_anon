@@ -1,5 +1,4 @@
 from pg_anon.cli import build_run_options
-from pg_anon.common.dto import PgAnonResult
 from pg_anon.context import Context
 from pg_anon.modes.view_fields import ViewFieldsMode
 from rest_api.constants import BASE_TEMP_DIR
@@ -8,13 +7,9 @@ from rest_api.utils import write_dictionary_contents
 
 
 class ViewFieldsRunner:
-    request: ViewFieldsRequest
-    cli_params: list[str] = None
-    result: PgAnonResult = None
-    _executor = type[ViewFieldsMode]
-
     def __init__(self, request: ViewFieldsRequest) -> None:
         self.request = request
+        self.cli_params: list[str] = []
         self._prepare_cli_params()
         self._init_context()
         self._init_executor()
@@ -97,9 +92,9 @@ class ViewFieldsRunner:
 
     def _format_output(self) -> list[ViewFieldsContent]:
         result = []
-        for field in self._executor.fields:
+        for field in self._executor.fields or []:
             dict_data = None
-            if field.dict_file_name != self._executor.empty_data_filler:
+            if field.dict_file_name is not None and field.dict_file_name != self._executor.empty_data_filler:
                 dict_data = self._input_sens_dict_file_names[field.dict_file_name]
 
             field_rule = None
