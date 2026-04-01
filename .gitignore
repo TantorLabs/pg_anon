@@ -2,9 +2,11 @@
 output/
 log/
 runs/
-tests/output_dict/
-tests/output/
-tests/saved_results/
+tests_old/output_dict/
+tests_old/output/
+tests_old/saved_results/
+tests/suites/*/output/
+tests/suites/*/output_dict/
 docker/pg_anon
 *.tar
 *.tar.gz

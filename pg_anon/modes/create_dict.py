@@ -687,7 +687,7 @@ class CreateDictMode:
 
                     if idx % status_ratio == 0:
                         progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
-                        self.context.logger.info("Process [%s] Progress %d%", name, progress_percents)
+                        self.context.logger.info("Process [%s] Progress %d%%", name, progress_percents)
 
                 while tasks:
                     remaining = await _wait_and_check(tasks)

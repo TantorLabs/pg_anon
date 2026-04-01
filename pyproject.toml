@@ -26,6 +26,8 @@ dev = [
     "ruff>=0.15",
     "mypy>=1.19",
     "pydantic",
+    "pytest>=9.0.2,<10.0",
+    "pytest-asyncio>=1.3,<2.0",
 ]
 
 [build-system]
@@ -40,6 +42,12 @@ pg_anon_api = "rest_api.__main__:main"
 include-package-data = false
 packages.find.include = ["pg_anon", "pg_anon.*", "rest_api", "rest_api.*"]
 packages.find.exclude = ["tests"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests/suites"]
+pythonpath = ["."]
+norecursedirs = ["input_dict", "expected", "output", "output_dict"]
 
 [tool.ruff]
 line-length = 120
@@ -116,6 +124,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
     "D102",  # missing docstring in public method (test methods are self-documenting)
+    "D103",  # missing docstring in public function (test methods are self-documenting)
     "S101",  # use of assert (expected in tests)
 ]
 
