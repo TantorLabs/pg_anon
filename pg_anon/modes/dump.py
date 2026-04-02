@@ -366,7 +366,7 @@ class DumpMode:
         self.context.logger.debug(f"Start compressing file: {file_path}")
         with (open(file_path, "rb") as f_in,
               gzip.open(gzipped_file_path, "wb") as f_out):
-            f_out.writelines(f_in)
+            shutil.copyfileobj(f_in, f_out)
         self.context.logger.debug(f"Compressing has done. Output file: {gzipped_file_path}")
 
         if remove_origin_file_after_compress:
