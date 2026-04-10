@@ -103,11 +103,6 @@ def pretty_size(bytes_v):
     return str(amount) + suffix
 
 
-def chunkify(lst, n):
-    result = [lst[i::n] for i in range(n)]
-    result = [x for x in result if x]  # clear empty lists
-    return result
-
 
 def recordset_to_list_flat(rs):
     res = []

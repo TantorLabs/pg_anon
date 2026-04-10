@@ -37,7 +37,7 @@ class TestParams:
     test_db_port = "5432"
     test_source_db = "test_source_db"
     test_target_db = "test_target_db"
-    test_scale = "10"
+    test_scale = "1"
     db_connections_per_process = 4
     test_processes = 4
 
@@ -230,7 +230,7 @@ class BasicUnitTest:
         if len(schema_exists) == 0:
             print("============> Started init_stress_env")
             db_conn = await create_connection(source_db_params)
-            await DBOperations.init_env(db_conn, "init_stress_env.sql", params.test_scale)
+            await DBOperations.init_env(db_conn, "init_stress_env.sql", int(params.test_scale) * 10)
             await db_conn.close()
             print("<============ Finished init_stress_env")
         else:
