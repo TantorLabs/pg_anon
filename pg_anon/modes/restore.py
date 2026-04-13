@@ -587,8 +587,8 @@ class RestoreMode:
 
     @staticmethod
     def _extract_file(src_path: Path, dst_path: Path) -> None:
-        with gzip.open(src_path, "rb") as src_file, dst_path.open("wb") as trg_file:
-            trg_file.writelines(src_file)
+        with gzip.open(src_path, "rb") as src_file, open(dst_path, "wb") as trg_file:
+            shutil.copyfileobj(src_file, trg_file, length=1024 * 1024)
 
     async def _restore_table_data(
         self,

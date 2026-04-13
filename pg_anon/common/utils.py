@@ -99,13 +99,6 @@ def pretty_size(bytes_v: int) -> str:
 
     return f"{int(value)} {units[-1]}"
 
-
-def chunkify(lst: list, n: int) -> list:
-    """Split a list into n interleaved chunks."""
-    result = [lst[i::n] for i in range(n)]
-    return [x for x in result if x]  # clear empty lists
-
-
 def recordset_to_list_flat(rs: list) -> list:
     """Convert a recordset to a list of flat value lists."""
     return [list(dict(rec).values()) for rec in rs]

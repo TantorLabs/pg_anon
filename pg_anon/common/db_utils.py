@@ -124,9 +124,36 @@ async def get_fields_list(
     await db_conn.close()
     return fields_list
 
+async def get_all_fields_list(connection_params: ConnectionParams, exclude_schemas: List[str], server_settings: Dict = SERVER_SETTINGS) -> Dict[Tuple[str, str], List]:
+    """
+    Get fields for all tables in one query.
+    """
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    try:
+        excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
+        placeholders = ', '.join(f"'{s}'" for s in excluded)
+
+        rows = await db_conn.fetch(f"""
+            SELECT table_schema, table_name, column_name, udt_name, is_nullable, is_generated
+            FROM information_schema.columns
+            WHERE table_schema NOT IN ({placeholders})
+            ORDER BY table_schema, table_name, ordinal_position ASC
+        """)
+    finally:
+        await db_conn.close()
+
+    result: Dict[Tuple[str, str], List] = {}
+    for row in rows:
+        key = (row['table_schema'], row['table_name'])
+        if key not in result:
+            result[key] = []
+        result[key].append(row)
+
+    return result
+
 
 async def get_rows_count(
-    connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+        connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
 ) -> int:
     """Get the row count for a table."""
     query = get_count_query(schema_name=schema_name, table_name=table_name)
@@ -701,6 +728,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
     table_rule: dict | None = None,
     nulls_last: bool = False,
     files: dict | None = None,
+    fields_cache: dict | None = None,
 ) -> str | None:
     """Build the SELECT query used to dump a table with optional anonymization rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
@@ -746,12 +774,15 @@ async def get_dump_query(  # noqa: C901, PLR0912
             return query
         return table_rule["raw_sql"]
     # the table is transferred with the specific fields for anonymization or transferred "as is"
-    fields_list = await get_fields_list(
-        connection_params=ctx.connection_params,
-        server_settings=ctx.server_settings,
-        table_schema=table_schema,
-        table_name=table_name,
-    )
+    if fields_cache is not None:
+        fields_list = fields_cache.get((table_schema, table_name), [])
+    else:
+        fields_list = await get_fields_list(
+            connection_params=ctx.connection_params,
+            server_settings=ctx.server_settings,
+            table_schema=table_schema,
+            table_name=table_name,
+        )
 
     fields = []
 

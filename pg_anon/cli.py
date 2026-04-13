@@ -115,13 +115,13 @@ def multiprocessing_common_parser() -> argparse.ArgumentParser:
         "--db-connections-per-process",
         type=int,
         default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
-        help="""Number of database connections per process for I/O operations. (default: %(default)s)""",
+        help="""Number of concurrent database connections for I/O operations. (default: %(default)s)""",
     )
     p.add_argument(
         "--processes",
         type=int,
         default=DEFAULT_PROCESSES,
-        help="""Number of processes used for multiprocessing operations. (default: %(default)s)""",
+        help="""Number of concurrent compression workers for dump mode. (default: %(default)s)""",
     )
 
     return p

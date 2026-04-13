@@ -1,14 +1,11 @@
 import asyncio
 import json
-import multiprocessing
-import multiprocessing.synchronize
 import re
 import shutil
 import time
 from pathlib import Path
 
-from aioprocessing import AioQueue
-from asyncpg import Connection, Pool
+from asyncpg import Connection
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
@@ -22,16 +19,9 @@ from pg_anon.common.db_utils import (
 )
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
-from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.multiprocessing_utils import init_process
-from pg_anon.common.utils import (
-    chunkify,
-    get_base_field_type,
-    get_dict_rule_for_table,
-    safe_compile,
-    save_dicts_info_file,
-    setof_to_list,
-)
+from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.utils import (exception_helper, setof_to_list, get_dict_rule_for_table,
+                                  save_dicts_info_file, safe_compile, get_base_field_type)
 from pg_anon.context import Context
 
 
@@ -616,105 +606,69 @@ class CreateDictMode:
         )
         return res
 
-    def _process_create_dict(  # noqa: C901, PLR0915
-        self,
-        name: str,
-        queue: AioQueue,
-        fields_info_chunk: list[FieldInfo],
-        stop_event: multiprocessing.synchronize.Event,
-    ) -> None:
-        tasks_res: list = []
+    async def _run_scan_tasks(self, fields_info_list: List[FieldInfo]) -> list:
+        self.context.logger.info(f"Using {self.context.options.db_connections_per_process} concurrent connections")
+
+        pool = await create_pool(
+            connection_params=self.context.connection_params,
+            server_settings=self.context.server_settings,
+            min_size=self.context.options.db_connections_per_process,
+            max_size=self.context.options.db_connections_per_process,
+        )
+
+        results = []
+        tasks = set()
 
         status_ratio = 10
-        if len(fields_info_chunk) > 1000:  # noqa: PLR2004
+        if len(fields_info_list) > 1000:
             status_ratio = 100
-        if len(fields_info_chunk) > 50000:  # noqa: PLR2004
+        if len(fields_info_list) > 50000:
             status_ratio = 1000
 
-        def _should_stop() -> bool:
-            return stop_event is not None and stop_event.is_set()
-
-        async def _wait_and_check(tasks: set[asyncio.Task]) -> set[asyncio.Task] | None:
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-            if _should_stop():
-                self.context.logger.info("Process [%s] received stop signal, terminating", name)
-                return None
-
-            for done_task in done:
-                if exc := done_task.exception():
-                    raise exc
-
-            return pending
-
-        async def _process_run() -> None:
-            db_connections = self.context.options.db_connections_per_process
-            pool = await create_pool(
-                connection_params=self.context.connection_params,
-                server_settings=self.context.server_settings,
-                min_size=db_connections,
-                max_size=db_connections,
-            )
-            tasks: set[asyncio.Task] = set()
-
-            self.context.logger.info("============> Started collecting list_tagged_fields in mode: create-dict")
-            self.context.logger.info("<============ Finished collecting list_tagged_fields in mode: create-dict")
-
-            try:
-                for idx, field_info in enumerate(fields_info_chunk):
-                    if _should_stop():
-                        self.context.logger.info("Process [%s] received stop signal, terminating", name)
-                        return
-
-                    while len(tasks) >= self.context.options.db_connections_per_process:
-                        result = await _wait_and_check(tasks)
-                        if result is None:
-                            return
-                        tasks = result
-
-                    task_res = loop.create_task(
-                        self._scan_obj_func(
-                            name,
-                            pool,
-                            field_info,
-                            self.context.options.scan_mode,
-                            self.context.meta_dictionary_obj,
-                            self.context.options.scan_partial_rows,
-                        )
-                    )
-                    tasks_res.append(task_res)
-                    tasks.add(task_res)
-
-                    if idx % status_ratio == 0:
-                        progress_percents = round(float(idx) * 100 / len(fields_info_chunk), 2)
-                        self.context.logger.info("Process [%s] Progress %d%%", name, progress_percents)
-
-                while tasks:
-                    remaining = await _wait_and_check(tasks)
-                    if remaining is None:
-                        return
-                    tasks = remaining
-            finally:
-                await pool.close()
-
-        loop = asyncio.new_event_loop()
-
         try:
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(_process_run())
+            fields_count = len(fields_info_list)
+            for idx, field_info in enumerate(fields_info_list):
+                while len(tasks) >= self.context.options.db_connections_per_process:
+                    done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for done_task in done:
+                        if exc := done_task.exception():
+                            for t in tasks:
+                                t.cancel()
+                            raise exc
+                        r = done_task.result()
+                        if r is not None and len(r) > 0:
+                            results.append(r)
 
-            tasks_res_final = [r for task in tasks_res if (r := task.result()) is not None and len(r) > 0]
+                task = asyncio.create_task(
+                    self._scan_obj_func(
+                        "main",
+                        pool,
+                        field_info,
+                        self.context.options.scan_mode,
+                        self.context.meta_dictionary_obj,
+                        self.context.options.scan_partial_rows,
+                    )
+                )
+                tasks.add(task)
 
-            queue.put(tasks_res_final)
-        except Exception as ex:
-            self.context.logger.exception("================> Process [%s]", name)
-            queue.put([ex])
+                if idx % status_ratio == 0:
+                    progress_percents = round(float(idx) * 100 / fields_count, 2)
+                    self.context.logger.info(f"Progress {progress_percents}%")
+
+            while tasks:
+                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for done_task in done:
+                    if exc := done_task.exception():
+                        for t in tasks:
+                            t.cancel()
+                        raise exc
+                    r = done_task.result()
+                    if r is not None and len(r) > 0:
+                        results.append(r)
         finally:
-            self.context.logger.debug("================> Process [%s] closing", name)
-            loop.close()
-            queue.put(None)  # Shut down the worker
-            queue.close()
-            self.context.logger.debug("================> Process [%s] closed", name)
+            await pool.close()
+
+        return results
 
     def _prepare_sens_dict_rule(
         self, meta_dictionary_obj: dict, field_info: FieldInfo, prepared_sens_dict_rules: dict
@@ -768,56 +722,16 @@ class CreateDictMode:
         need_prepare_no_sens_dict: bool = bool(self.context.options.output_no_sens_dict_file)
 
         if fields_info:
-            fields_info_chunks = list(chunkify(list(fields_info.values()), self.context.options.processes))
+            scan_results = await self._run_scan_tasks(list(fields_info.values()))
 
-            # Shared event to signal all processes to stop on error
-            stop_event = multiprocessing.Event()
-
-            tasks = []
-            for idx, fields_info_chunk in enumerate(fields_info_chunks):
-                tasks.append(
-                    asyncio.ensure_future(
-                        init_process(
-                            name=str(idx + 1),
-                            ctx=self.context,
-                            target_func=self._process_create_dict,
-                            tasks=fields_info_chunk,
-                            stop_event=stop_event,
-                        )
+            # Fill results based on scan tasks
+            for res in scan_results:
+                for field_info in res.values():
+                    prepared_sens_dict_rules = self._prepare_sens_dict_rule(
+                        self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
                     )
-                )
-
-            # Wait with immediate error detection
-            completed_tasks: list = []
-            remaining = tasks
-            while remaining:
-                done, pending = await asyncio.wait(remaining, return_when=asyncio.FIRST_EXCEPTION)
-
-                for task in done:
-                    exc = task.exception()
-                    if exc:
-                        # Signal all processes to stop
-                        stop_event.set()
-                        # Wait for remaining processes to finish (with timeout)
-                        if pending:
-                            await asyncio.wait(pending, timeout=10)
-                        raise exc
-
-                completed_tasks.extend(done)
-                remaining = list(pending)
-
-            # ============================================================================================
-            # Fill results based on processes
-            # ============================================================================================
-            for v in completed_tasks:
-                if v.result() is not None:
-                    for res in v.result():
-                        for field_info in res.values():
-                            prepared_sens_dict_rules = self._prepare_sens_dict_rule(
-                                self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
-                            )
-                            if need_prepare_no_sens_dict:
-                                del fields_info[field_info.obj_id]
+                    if need_prepare_no_sens_dict:
+                        del fields_info[field_info.obj_id]
 
         # ============================================================================================
         # Fill results based on check_sensitive_fld_names
@@ -891,8 +805,7 @@ class CreateDictMode:
             self.context.connection_params, server_settings=self.context.server_settings
         )
         try:
-            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
-            await check_required_connections(connection, required_connections)
+            await check_required_connections(connection, self.context.options.db_connections_per_process)
         finally:
             await connection.close()
 

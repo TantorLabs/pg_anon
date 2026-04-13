@@ -1,8 +1,7 @@
 import asyncio
 import gzip
 import hashlib
-import multiprocessing
-import multiprocessing.synchronize
+import shlex
 import os
 import re
 import shlex
@@ -13,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from aioprocessing import AioQueue
 from asyncpg import Connection, Pool
 
 from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
@@ -21,6 +19,7 @@ from pg_anon.common.db_utils import (
     check_required_connections,
     create_connection,
     create_pool,
+    get_all_fields_list,
     get_constraints_to_excluded_tables,
     get_custom_aggregates_ddl,
     get_custom_casts_ddl,
@@ -39,13 +38,8 @@ from pg_anon.common.db_utils import (
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.multiprocessing_utils import init_process
 from pg_anon.common.utils import (
-    chunkify,
-    get_dict_rule_for_table,
-    get_pg_util_version,
-    safe_compile,
-    save_dicts_info_file,
+    exception_helper, get_dict_rule_for_table, get_pg_util_version, save_dicts_info_file, safe_compile
 )
 from pg_anon.context import Context
 
@@ -389,115 +383,74 @@ class DumpMode:
     def _compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
         gzipped_file_path = file_path.with_name(file_path.name + ".gz")
 
-        self.context.logger.debug("Start compressing file: %s", file_path)
-        with file_path.open("rb") as f_in, gzip.open(gzipped_file_path, "wb") as f_out:
-            f_out.writelines(f_in)
-        self.context.logger.debug("Compressing has done. Output file: %s", gzipped_file_path)
+        self.context.logger.debug(f"Start compressing file: {file_path}")
+        with (open(file_path, "rb") as f_in,
+              gzip.open(gzipped_file_path, "wb", compresslevel=1) as f_out):
+            shutil.copyfileobj(f_in, f_out, length=1024 * 1024)
+        self.context.logger.debug(f"Compressing has done. Output file: {gzipped_file_path}")
 
         if remove_origin_file_after_compress:
             self.context.logger.debug("Removing origin file: %s", file_path)
             file_path.unlink()
 
     async def _dump_data_by_query(
-        self, pool: Pool, query: str, transaction_snapshot_id: str, file_name: str, process_name: str | None = None
-    ) -> dict:
+        self,
+        pool: Pool,
+        query: str,
+        transaction_snapshot_id: str,
+        file_name: str,
+    ):
         binary_output_file_path = self.output_dir / Path(file_name).stem
 
         task_id = uuid.uuid4()
-        dump_is_complete = False
-        compress_is_complete = False
-        self.context.logger.info(
-            "================> Process [%s] Task [%s] Started task %s to file %s",
-            process_name,
-            task_id,
-            query,
-            binary_output_file_path,
-        )
+        self.context.logger.info(f"================> Task [{task_id}] Started task {query} to file {binary_output_file_path}")
 
         try:
-            self.context.logger.debug("Process [%s] Task [%s] Connection acquiring", process_name, task_id)
+            self.context.logger.debug(f"Task [{task_id}] Connection acquiring")
             async with pool.acquire() as db_conn:
-                self.context.logger.debug("Process [%s] Task [%s] Connection acquired", process_name, task_id)
-                async with db_conn.transaction(isolation="repeatable_read", readonly=True):
+                self.context.logger.debug(f"Task [{task_id}] Connection acquired")
+                async with db_conn.transaction(isolation='repeatable_read', readonly=True):
                     await db_conn.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
-                    self.context.logger.debug(
-                        "Process [%s] Task [%s] Transaction opened. Starting dump query",
-                        process_name,
-                        task_id,
-                    )
+                    self.context.logger.debug(f"Task [{task_id}] Transaction opened. Starting dump query")
                     result = await self._dump_data_into_file(
                         db_conn=db_conn,
                         query=query,
                         file_name=binary_output_file_path,
                     )
-                    self.context.logger.debug(
-                        "Process [%s] Task [%s] Transaction setup to snapshot %s",
-                        process_name,
-                        task_id,
-                        transaction_snapshot_id,
-                    )
+                    self.context.logger.debug(f"Task [{task_id}] Transaction setup to snapshot {transaction_snapshot_id}")
 
-            dump_is_complete = True
             count_rows = re.findall(r"(\d+)", result)[0]
-            self.context.logger.debug(
-                "Process [%s] Task [%s] COPY %s [rows] Task: %s",
-                process_name,
-                task_id,
-                count_rows,
-                query,
-            )
-
-            if not self.context.options.dbg_stage_1_validate_dict:
-                # Processing files no need to keep connection, after receiving data into binary file
-                self.context.logger.debug(
-                    "Process [%s] Task [%s] Compressing file start - %s",
-                    process_name,
-                    task_id,
-                    binary_output_file_path,
-                )
-
-                await self.compress_file(binary_output_file_path)
-                compress_is_complete = True
-                self.context.logger.debug(
-                    "Process [%s] Task [%s] Compressing file end - %s",
-                    process_name,
-                    task_id,
-                    binary_output_file_path,
-                )
+            self.context.logger.debug(f"Task [{task_id}] COPY {count_rows} [rows] Task: {query}")
 
         except Exception as ex:
-            self.context.logger.exception(
-                "Process [%s] Task [%s] Exception in DumpMode._dump_data_by_query", process_name, task_id
+            self.context.logger.error(
+                f"Task [{task_id}] Exception in DumpMode._dump_data_by_query:\n"
+                + exception_helper()
             )
-            if pool.is_closing():
-                self.context.logger.debug("Process [%s] Task [%s] Pool closed!", process_name, task_id)
+            raise PgAnonError(ErrorCode.DUMP_FAILED, f"Can't execute query: {query}")
 
-            error_message = f"Something went wrong: {ex}"
-            if not dump_is_complete:
-                error_message = f"Can't execute query: {query}"
-            elif not compress_is_complete:
-                error_message = f"Can't compress file: {binary_output_file_path}"
+        self.context.logger.info(f"<================ Task [{task_id}] Finished task {query}")
 
-            self.context.logger.debug(
-                "Process [%s] Task [%s] Error: %s",
-                process_name,
-                task_id,
-                error_message,
-            )
-            raise PgAnonError(ErrorCode.DUMP_FAILED, error_message) from ex
+        result_hash = hashlib.sha256(query.encode()).hexdigest()
+        return {result_hash: count_rows}, binary_output_file_path
 
-        self.context.logger.info(
-            "<================ Process [%s] Task [%s] Finished task %s",
-            process_name,
-            task_id,
-            query,
-        )
-
-        return {hashlib.sha256(query.encode()).hexdigest(): count_rows}
+    async def _compress_with_semaphore(self, file_path: Path, semaphore: asyncio.Semaphore):
+        try:
+            async with semaphore:
+                await self.compress_file(file_path)
+        except Exception as ex:
+            self.context.logger.error(f"Can't compress file: {file_path}\n" + exception_helper())
+            raise PgAnonError(ErrorCode.DUMP_FAILED, f"Can't compress file: {file_path}")
 
     async def _prepare_dump_queries(self) -> None:
         self._data_dump_queries = []
         self._data_dump_files = {}
+
+        fields_cache = await get_all_fields_list(
+            connection_params=self.context.connection_params,
+            exclude_schemas=self.context.exclude_schemas,
+            server_settings=self.context.server_settings,
+        )
 
         for table_schema, table_name in self.context.tables:
             table_rule = get_dict_rule_for_table(
@@ -512,21 +465,29 @@ class DumpMode:
                 table_name=table_name,
                 table_rule=table_rule,
                 files=self._data_dump_files,
+                fields_cache=fields_cache,
             )
 
             if query:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
-    def _process_dump_data(  # noqa: C901, PLR0915
+    async def _run_dump_tasks(
         self,
-        name: str,
-        queue: AioQueue,
-        query_tasks: list[tuple[str, str]],
-        stop_event: multiprocessing.synchronize.Event,
-        transaction_snapshot_id: str = "",
-    ) -> None:
-        tasks_res: list[asyncio.Task] = []
+        query_tasks: List[Tuple[str, str]],
+        transaction_snapshot_id: str,
+        compression_semaphore: asyncio.Semaphore,
+    ) -> dict:
+        pool = await create_pool(
+            connection_params=self.context.connection_params,
+            server_settings=self.context.server_settings,
+            min_size=self.context.options.db_connections_per_process,
+            max_size=self.context.options.db_connections_per_process,
+        )
+
+        results = {}
+        dump_tasks = set()
+        compress_tasks = set()
 
         status_ratio = 10
         if len(query_tasks) > 1000:  # noqa: PLR2004
@@ -534,118 +495,66 @@ class DumpMode:
         if len(query_tasks) > 50000:  # noqa: PLR2004
             status_ratio = 1000
 
-        def _should_stop() -> bool:
-            return stop_event is not None and stop_event.is_set()
-
-        async def _wait_and_check(tasks: set[asyncio.Task]) -> set[asyncio.Task] | None:
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-            if _should_stop():
-                self.context.logger.info("Process [%s] received stop signal, terminating", name)
-                return None
-
-            for done_task in done:
-                if exc := done_task.exception():
-                    self.context.logger.error("<================ Process [%s]: %s", name, exc)
-                    raise exc
-
-            return pending
-
-        async def _process_run() -> None:
-            self.context.logger.debug("================> Process [%s] Connection pool opening", name)
-
-            pool = await create_pool(
-                connection_params=self.context.connection_params,
-                server_settings=self.context.server_settings,
-                min_size=self.context.options.db_connections_per_process,
-                max_size=self.context.options.db_connections_per_process,
-            )
-            tasks: set[asyncio.Task] = set()
-
-            try:
-                query_tasks_count = len(query_tasks)
-                for idx, (file_name, query) in enumerate(query_tasks):
-                    if _should_stop():
-                        self.context.logger.info("Process [%s] received stop signal, terminating", name)
-                        return
-
-                    while len(tasks) >= self.context.options.db_connections_per_process:
-                        result = await _wait_and_check(tasks)
-                        if result is None:
-                            return
-                        tasks = result
-
-                    self.context.logger.debug(
-                        "Process [%s] Adding new task into pool [%s/%s]",
-                        name,
-                        idx + 1,
-                        query_tasks_count,
-                    )
-                    task_res = loop.create_task(
-                        self._dump_data_by_query(
-                            pool=pool,
-                            query=query,
-                            transaction_snapshot_id=transaction_snapshot_id,
-                            file_name=file_name,
-                            process_name=name,
-                        )
-                    )
-
-                    tasks.add(task_res)
-                    tasks_res.append(task_res)
-
-                    self.context.logger.debug(
-                        "Process [%s] New task added. Current tasks in pool: %s / %s",
-                        name,
-                        len(tasks),
-                        self.context.options.db_connections_per_process,
-                    )
-
-                    if idx % status_ratio == 0:
-                        progress_percents = round(float(idx) * 100 / query_tasks_count, 2)
-                        self.context.logger.info("Process [%s] Progress %s%%", name, progress_percents)
-
-                while tasks:
-                    result = await _wait_and_check(tasks)
-                    if result is None:
-                        return
-                    tasks = result
-            finally:
-                self.context.logger.debug("<================ Process [%s] Connection pool closing", name)
-
-                if pool.is_closing():
-                    self.context.logger.debug(
-                        "<================ Process [%s] Connection pool already has been closed!",
-                        name,
-                    )
-                else:
-                    await pool.close()
-                    self.context.logger.debug("<================ Process [%s] Connection pool closed", name)
-
-        self.context.logger.info("================> Process [%s] Started process_dump_impl", name)
-        loop = asyncio.new_event_loop()
+        def _collect_dump_result(done_task):
+            result_dict, file_path = done_task.result()
+            results.update(result_dict)
+            if not self.context.options.dbg_stage_1_validate_dict:
+                compress_tasks.add(
+                    asyncio.create_task(self._compress_with_semaphore(file_path, compression_semaphore))
+                )
 
         try:
-            self.context.logger.debug("Process [%s] Setup event loop", name)
-            asyncio.set_event_loop(loop)
+            query_tasks_count = len(query_tasks)
+            for idx, (file_name, query) in enumerate(query_tasks):
+                while len(dump_tasks) >= self.context.options.db_connections_per_process:
+                    done, dump_tasks = await asyncio.wait(dump_tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for done_task in done:
+                        if exc := done_task.exception():
+                            for t in dump_tasks:
+                                t.cancel()
+                            raise exc
+                        _collect_dump_result(done_task)
 
-            self.context.logger.debug("Process [%s] Run dump tasks", name)
-            loop.run_until_complete(_process_run())
+                self.context.logger.debug(f"Adding new task [{idx + 1}/{query_tasks_count}]")
+                task = asyncio.create_task(
+                    self._dump_data_by_query(
+                        pool=pool,
+                        query=query,
+                        transaction_snapshot_id=transaction_snapshot_id,
+                        file_name=file_name,
+                    )
+                )
+                dump_tasks.add(task)
 
-            self.context.logger.debug("Process [%s] Processing results start", name)
-            tasks_res_final = [r for task in tasks_res if (r := task.result()) is not None and len(r) > 0]
+                self.context.logger.debug(
+                    f"New task added. Current dump tasks: "
+                    f"{len(dump_tasks)} / {self.context.options.db_connections_per_process}"
+                )
 
-            queue.put(tasks_res_final)
-            self.context.logger.debug("Process [%s] Processing results end", name)
-        except Exception as ex:
-            self.context.logger.exception("<================ Process [%s]", name)
-            queue.put([ex])  # Send exception to parent process
+                if idx % status_ratio == 0:
+                    progress_percents = round(float(idx) * 100 / query_tasks_count, 2)
+                    self.context.logger.info(f"Progress {progress_percents}%")
+
+            # Wait remaining dump tasks
+            while dump_tasks:
+                done, dump_tasks = await asyncio.wait(dump_tasks, return_when=asyncio.FIRST_COMPLETED)
+                for done_task in done:
+                    if exc := done_task.exception():
+                        for t in dump_tasks:
+                            t.cancel()
+                        raise exc
+                    _collect_dump_result(done_task)
+
+            # Wait remaining compress tasks
+            if compress_tasks:
+                done, _ = await asyncio.wait(compress_tasks)
+                for done_task in done:
+                    if exc := done_task.exception():
+                        raise exc
         finally:
-            self.context.logger.debug("<================ Process [%s] closing", name)
-            loop.close()
-            queue.put(None)  # Shut down the worker
-            queue.close()
-            self.context.logger.debug("<================ Process [%s] closed", name)
+            await pool.close()
+
+        return results
 
     async def _dump_data(self, connection: Connection) -> None:  # noqa: C901
         if not self._need_dump_data:
@@ -663,58 +572,32 @@ class DumpMode:
                 if not self._data_dump_queries:
                     raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_DUMP, "No objects for dump!")
 
-                queries_chunks = chunkify(
-                    list(zip(self._data_dump_files.keys(), self._data_dump_queries, strict=True)),
-                    self.context.options.processes,
+                self.context.logger.info(
+                    f"Using {self.context.options.db_connections_per_process} concurrent connections"
                 )
 
-                # Shared event to signal all processes to stop on error
-                stop_event = multiprocessing.Event()
+                compression_semaphore = asyncio.Semaphore(self.context.options.processes)
+                all_query_tasks = list(zip(self._data_dump_files.keys(), self._data_dump_queries))
 
-                process_tasks = []
-                for idx, queries_chunk in enumerate(queries_chunks):
-                    process_tasks.append(
-                        asyncio.ensure_future(
-                            init_process(
-                                name=str(idx + 1),
-                                ctx=self.context,
-                                target_func=self._process_dump_data,
-                                tasks=queries_chunk,
-                                stop_event=stop_event,
-                                transaction_snapshot_id=transaction_snapshot_id,
-                            )
-                        )
+                dump_task = asyncio.create_task(
+                    self._run_dump_tasks(
+                        query_tasks=all_query_tasks,
+                        transaction_snapshot_id=transaction_snapshot_id,
+                        compression_semaphore=compression_semaphore,
                     )
+                )
 
-                # Wait with immediate error detection while keeping transaction alive
-                remaining = process_tasks
-                while remaining:
-                    # Use timeout to periodically run SELECT 1 for keeping transaction alive
-                    done, pending = await asyncio.wait(remaining, timeout=5, return_when=asyncio.FIRST_EXCEPTION)
+                # Keep main transaction active while dump tasks run
+                try:
+                    while not dump_task.done():
+                        await asyncio.wait({dump_task}, timeout=5)
+                        if not dump_task.done():
+                            await connection.execute('SELECT 1')
+                except Exception:
+                    dump_task.cancel()
+                    raise
 
-                    # Keep main transaction active (needed for large databases with long dumps)
-                    await connection.execute("SELECT 1")
-
-                    for task in done:
-                        exc = task.exception()
-                        if exc:
-                            # Signal all processes to stop
-                            stop_event.set()
-                            # Wait for remaining processes to finish (with timeout)
-                            if pending:
-                                await asyncio.wait(pending, timeout=10)
-                            raise exc
-
-                    remaining = list(pending)
-
-                self._data_dump_tasks_results = {}
-                for process_task in process_tasks:
-                    process_task_result = process_task.result()
-                    if not process_task_result:
-                        raise PgAnonError(ErrorCode.DUMP_QUERY_FAILED, "One or more dump queries has been failed!")
-
-                    for res in process_task_result:
-                        self._data_dump_tasks_results.update(res)
+                self._data_dump_tasks_results = dump_task.result()
 
                 # Prepare data for metadata
                 await self._count_totals(connection=connection)
@@ -823,8 +706,7 @@ class DumpMode:
                 self.context.connection_params, server_settings=self.context.server_settings
             )
 
-            required_connections = self.context.options.processes * self.context.options.db_connections_per_process
-            await check_required_connections(connection, required_connections)
+            await check_required_connections(connection, self.context.options.db_connections_per_process)
 
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()
