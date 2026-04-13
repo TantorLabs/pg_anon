@@ -4,7 +4,7 @@
 
 ## Overview
 
-This mode creates the `anon_funcs` schema in the source database and loads the predefined SQL functions from [init.sql](../../init.sql).
+This mode creates the `anon_funcs` schema in the source database and loads the predefined SQL functions from [init.sql](../../pg_anon/init.sql).
 These functions are required for processing data in the source database.
 
 ## Run example

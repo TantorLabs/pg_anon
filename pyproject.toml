@@ -43,6 +43,9 @@ include-package-data = false
 packages.find.include = ["pg_anon", "pg_anon.*", "rest_api", "rest_api.*"]
 packages.find.exclude = ["tests"]
 
+[tool.setuptools.package-data]
+pg_anon = ["init.sql"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests/suites"]

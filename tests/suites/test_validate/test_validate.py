@@ -1,6 +1,5 @@
+from .conftest import input_dict, output_path
 from pg_anon.common.enums import ResultCode
-
-from .conftest import TARGET_DB, TARGET_DB_2, input_dict, output_path
 
 
 async def test_02_sync_struct_for_validate(source_db, target_db, db_params, pg_anon_runner):
@@ -25,7 +24,7 @@ async def test_02_sync_struct_for_validate(source_db, target_db, db_params, pg_a
 
 
 async def test_03_validate_dict(source_db, db_params, pg_anon_runner):
-    """dump with --dbg-stage-1-validate-dict."""
+    """Dump with --dbg-stage-1-validate-dict."""
     out = output_path("test_03_validate_dict")
 
     res = await pg_anon_runner.run("dump", source_db, [
@@ -40,7 +39,7 @@ async def test_03_validate_dict(source_db, db_params, pg_anon_runner):
 
 
 async def test_04_validate_data(source_db, target_db, db_params, pg_anon_runner):
-    """dump with --dbg-stage-2-validate-data, then sync-data-restore to target."""
+    """Dump with --dbg-stage-2-validate-data, then sync-data-restore to target."""
     out = output_path("test_04_validate_data")
 
     res = await pg_anon_runner.run("dump", source_db, [
@@ -61,7 +60,7 @@ async def test_04_validate_data(source_db, target_db, db_params, pg_anon_runner)
 
 
 async def test_05_validate_full(source_db, target_db_2, db_params, pg_anon_runner):
-    """dump with --dbg-stage-3-validate-full, then restore to target_db_2."""
+    """Dump with --dbg-stage-3-validate-full, then restore to target_db_2."""
     out = output_path("test_05_validate_full")
 
     res = await pg_anon_runner.run("dump", source_db, [

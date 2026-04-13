@@ -5,19 +5,28 @@
 
 Install the project in editable mode:
 
-```commandline
-pip install -e ".[api,dev]"
+```bash
+pip install -e ".[dev]"         # CLI + dev tools (ruff, mypy, pytest)
+pip install -e ".[api,dev]"     # CLI + REST API + dev tools
 ```
 
 To add a new dependency, edit the `dependencies` list
 in `pyproject.toml` and re-run install command above.
 
-## Build package
+## Build and install from source
 
-For building the package use command:
+Build the wheel:
 
-```commandline
+```bash
+pip install build
 python -m build
+```
+
+Install the built package:
+
+```bash
+pip install dist/pg_anon-*.whl           # CLI only
+pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
 ```
 
 ---
@@ -77,140 +86,121 @@ The logic of REST API service for pg_anon is contained within the following Pyth
 - `rest_api/utils.py` - Common utility functions.
 
 
-`tree pg_anon/ -L 3`:
+`tree -L 4`:
 
 ```commandline
 pg_anon/
-├── docker
-│   ├── Dockerfile
-│   ├── entrypoint_dbg.sh
-│   ├── entrypoint.sh
-│   ├── Makefile
-│   ├── motd
-│   └── README.md
-├── docs
-│   ├── api.md
-│   ├── contributing.md
-│   ├── debugging.md
-│   ├── dicts
-│   │   ├── meta-dict-schema.md
-│   │   ├── non-sens-dict-schema.md
-│   │   ├── sens-dict-schema.md
-│   │   └── tables-dictionary.md
-│   ├── faq.md
-│   ├── how-it-works.md
-│   ├── installation-and-configuring.md
-│   ├── operations
-│   │   ├── dump.md
-│   │   ├── init.md
-│   │   ├── restore.md
-│   │   ├── scan.md
-│   │   ├── view-data.md
-│   │   └── view-fields.md
-│   └── sql-functions-library.md
-├── images
-│   ├── Create-dict-Terms.drawio.png
-│   ├── dbg-stage-1.png
-│   ├── dbg-stage-2.png
-│   ├── dbg-stage-3.png
-│   └── Dump-Resore-Terms.drawio.png
-├── pg_anon
-│   ├── app.py
-│   ├── cli.py
-│   ├── common
-│   │   ├── constants.py
-│   │   ├── db_queries.py
-│   │   ├── db_utils.py
-│   │   ├── dto.py
-│   │   ├── enums.py
-│   │   ├── errors.py
-│   │   ├── __init__.py
-│   │   ├── multiprocessing_utils.py
-│   │   └── utils.py
-│   ├── context.py
-│   ├── __init__.py
-│   ├── logger.py
-│   ├── __main__.py
-│   ├── modes
-│   │   ├── create_dict.py
-│   │   ├── dump.py
-│   │   ├── initialization.py
-│   │   ├── __init__.py
-│   │   ├── restore.py
-│   │   ├── view_data.py
-│   │   └── view_fields.py
-│   └── version.py
-├── rest_api
-│   ├── api.py
-│   ├── callbacks.py
-│   ├── constants.py
-│   ├── dependencies.py
-│   ├── enums.py
-│   ├── openapi.json
-│   ├── pydantic_models.py
-│   ├── runners
-│   │   ├── background
-│   │   ├── direct
-│   │   └── __init__.py
-│   └── utils.py
-├── tests
-│   ├── config.yml
-│   ├── expected_results
-│   │   ├── PGAnonMaskUnitTest_source_tables.result
-│   │   ├── PGAnonMaskUnitTest_target_tables.result
-│   │   ├── test_prepared_no_sens_dict_result_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_data_func_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_data_func_per_field_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_data_sql_condition_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_include_and_skip_rules_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_include_rule_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_partial_constants_expected.py
-│   │   ├── test_prepared_sens_dict_result_by_words_and_phrases_constants_expected.py
-│   │   ├── test_prepared_sens_dict_result_default_func_expected.py
-│   │   ├── test_prepared_sens_dict_result_expected.py
-│   │   ├── test_prepared_sens_dict_result_type_aliases_complex_expected.py
-│   │   ├── test_prepared_sens_dict_result_type_aliases_expected.py
-│   │   └── test_prepared_sens_dict_result_with_no_existing_schema.py
-│   ├── __init__.py
-│   ├── input_dict
-│   │   ├── mask_test.py
-│   │   ├── meta_data_func_per_field.py
-│   │   ├── meta_data_func.py
-│   │   ├── meta_data_sql_condition.py
-│   │   ├── meta_include_and_skip_rules.py
-│   │   ├── meta_include_rules.py
-│   │   ├── meta_partial_constants.py
-│   │   ├── meta_words_and_phrases_constants.py
-│   │   ├── test_dbg_stages.py
-│   │   ├── test_empty_dictionary.py
-│   │   ├── test_empty_meta_dict.py
-│   │   ├── test_exclude.py
-│   │   ├── test_meta_dict_default_func.py
-│   │   ├── test_meta_dict.py
-│   │   ├── test_meta_dict_type_aliases_complex.py
-│   │   ├── test_meta_dict_type_aliases.py
-│   │   ├── test_meta_not_existing_functions_in_datafunc.py
-│   │   ├── test_partial_exclude_tables_dict.py
-│   │   ├── test_partial_tables_dict.py
-│   │   ├── test.py
-│   │   ├── test_sens_with_sql_conditions.py
-│   │   ├── test_sync_data_2.py
-│   │   ├── test_sync_data.py
-│   │   └── test_sync_struct.py
-│   ├── sql
-│   │   ├── init_additional_simple_env.sql
-│   │   ├── init_env.sql
-│   │   ├── init_simple_env.sql
-│   │   └── init_stress_env.sql
-│   └── test_full.py
-├── .gitignore
-├── __init__.py
-├── init.sql
-├── MANIFEST.in
-├── pg_anon.py
-├── pyproject.toml
+├── Makefile
 ├── README.md
-└── setup.py
+├── pyproject.toml
+├── docker
+│   ├── Dockerfile
+│   ├── Makefile
+│   ├── README.md
+│   ├── entrypoint.sh
+│   ├── entrypoint_dbg.sh
+│   └── motd
+├── docs
+│   ├── api.md
+│   ├── contributing.md
+│   ├── debugging.md
+│   ├── dicts
+│   │   ├── meta-dict-schema.md
+│   │   ├── non-sens-dict-schema.md
+│   │   ├── sens-dict-schema.md
+│   │   └── tables-dictionary.md
+│   ├── faq.md
+│   ├── how-it-works.md
+│   ├── installation-and-configuring.md
+│   ├── operations
+│   │   ├── dump.md
+│   │   ├── init.md
+│   │   ├── restore.md
+│   │   ├── scan.md
+│   │   ├── view-data.md
+│   │   └── view-fields.md
+│   └── sql-functions-library.md
+├── images
+│   ├── Create-dict-Terms.drawio.png
+│   ├── Dump-Resore-Terms.drawio.png
+│   ├── dbg-stage-1.png
+│   ├── dbg-stage-2.png
+│   ├── dbg-stage-3.png
+│   └── scan_workflow.png
+├── pg_anon
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── app.py
+│   ├── cli.py
+│   ├── common
+│   │   ├── __init__.py
+│   │   ├── constants.py
+│   │   ├── db_queries.py
+│   │   ├── db_utils.py
+│   │   ├── dto.py
+│   │   ├── enums.py
+│   │   ├── errors.py
+│   │   ├── multiprocessing_utils.py
+│   │   └── utils.py
+│   ├── context.py
+│   ├── init.sql
+│   ├── logger.py
+│   ├── modes
+│   │   ├── __init__.py
+│   │   ├── create_dict.py
+│   │   ├── dump.py
+│   │   ├── initialization.py
+│   │   ├── restore.py
+│   │   ├── view_data.py
+│   │   └── view_fields.py
+│   └── version.py
+├── rest_api
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── api.py
+│   ├── callbacks.py
+│   ├── constants.py
+│   ├── dependencies.py
+│   ├── enums.py
+│   ├── openapi.json
+│   ├── pydantic_models.py
+│   ├── runners
+│   │   ├── __init__.py
+│   │   ├── background
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── dump.py
+│   │   │   ├── init.py
+│   │   │   ├── restore.py
+│   │   │   └── scan.py
+│   │   └── direct
+│   │       ├── __init__.py
+│   │       ├── preview.py
+│   │       ├── view_data.py
+│   │       └── view_fields.py
+│   └── utils.py
+└── tests
+    ├── __init__.py
+    ├── conftest.py
+    ├── infrastructure
+    │   ├── __init__.py
+    │   ├── assertions.py
+    │   ├── data.py
+    │   ├── db.py
+    │   ├── params.py
+    │   └── pg_anon.py
+    └── suites
+        ├── __init__.py
+        ├── test_dict_gen
+        ├── test_dump_restore
+        ├── test_mask
+        ├── test_partial
+        ├── test_pg_utils_options
+        ├── test_restore_clean
+        ├── test_stress
+        ├── test_validate
+        ├── test_view_data
+        └── test_view_fields
 ```
 
 ---
@@ -254,27 +244,18 @@ To facilitate the testing, here are instructions on how to set up PostgreSQL on 
 
 ### Executing Tests
 
-To validate that your setup is functioning correctly, run the unit tests:
+To validate that your setup is functioning correctly, run the test suite:
 
-```commandline
-export PYTHONPATH=$(pwd)
-python tests/test_full.py -v
+```bash
+pytest
 ```
 
-Upon successful execution, the output should resemble the following:
+Upon successful execution, all tests should pass.
 
-```commandline
-Ran N tests in ...
-OK
-```
+To run a specific test file:
 
-If all tests pass, the application is ready to use.
-
-To run a specific test case, use the following pattern:
-
-```commandline
-export PYTHONPATH=$(pwd)
-python tests/test_full.py -v PGAnonValidateUnitTest
+```bash
+pytest tests/suites/test_validate.py -v
 ```
 
 ### Test Database Configuration

@@ -1,8 +1,9 @@
 from asyncpg import Record
 
+from tests.infrastructure.params import TestParams
+
 from pg_anon.common.db_utils import create_connection
 from pg_anon.common.dto import ConnectionParams
-from tests.infrastructure.params import TestParams
 
 
 class DBManager:

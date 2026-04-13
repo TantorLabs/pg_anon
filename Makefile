@@ -7,10 +7,10 @@ clean:
 	rm -rf **/__pycache__; \
 
 init:
-	pip install .[rest]
+	pip install .[api]
 
 dev:
-	pip install .[rest,dev]
+	pip install .[api,dev]
 
 build-package:
 	python -m build

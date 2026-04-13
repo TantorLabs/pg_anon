@@ -1,11 +1,10 @@
 import json
 
+from .conftest import expected_result
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
 from pg_anon.modes.view_data import ViewDataMode
-
-from .conftest import expected_result
 
 
 def _build_view_data_options(db_params, source_db, extra_args: list[str]) -> list[str]:

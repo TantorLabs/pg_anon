@@ -1,7 +1,9 @@
 # Service specific
 output/
+pg_anon_output/
 log/
 runs/
+pg_anon_runs/
 tests_old/output_dict/
 tests_old/output/
 tests_old/saved_results/

@@ -1,8 +1,7 @@
+from .conftest import input_dict, output_dict
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
-
-from .conftest import input_dict, output_dict
 
 _elapsed_partial = None
 _elapsed_full = None

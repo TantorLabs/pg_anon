@@ -2,7 +2,7 @@
 > [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md)
 
 ### 1. Where can I find operation logs and launch parameters?
-All run data is stored in the `/path/to/pg_anon/runs` directory.  
+All run data is stored in the `pg_anon_runs/` directory (relative to the working directory or `$PG_ANON_HOME`).  
 Inside, the structure is: `<year>/<month>/<day>/<operation_id>`.
 
 Each operation folder contains:

@@ -4,7 +4,7 @@
 
 ## Overview
 
-All functions are contained in the `init.sql` file. After run pg_anon in `init` mode, they will reside in the `anon_funcs` schema in the source database.
+All functions are contained in the [init.sql](../pg_anon/init.sql) file. After run pg_anon in `init` mode, they will reside in the `anon_funcs` schema in the source database.
 If you want to write a new function, simply create it in the `anon_funcs` schema in your source database.
 
 List of some functions available for use in dictionaries:
@@ -144,4 +144,4 @@ SELECT decode('cSMq9gb1vOw=', 'base64')
 ---
 
 ## How to add your own functions
-Also, adding new anonymization functions can be performed by adding `init.sql` to the file and then run pg_anon in `init` mode.
+Also, adding new anonymization functions can be performed by adding [init.sql](../pg_anon/init.sql) to the file and then run pg_anon in `init` mode.

@@ -60,7 +60,7 @@ It is recommended to follow this quick start guide in a non-production environme
 ```bash
 git clone https://github.com/TantorLabs/pg_anon.git pg_anon
 cd pg_anon
-virtualenv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install .
 pg_anon --version

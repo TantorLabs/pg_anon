@@ -2,8 +2,6 @@ from pathlib import Path
 
 import pytest
 
-from pg_anon.common.enums import ResultCode
-
 SUITE = Path(__file__).resolve().parent
 
 SOURCE_DB = "test_rc_source"

@@ -240,7 +240,7 @@ class ConnectionParams:
             else:
                 ssl_ctx.check_hostname = False
                 ssl_ctx.verify_mode = ssl.CERT_NONE
-            if ssl_cert_file or ssl_key_file:
+            if ssl_cert_file:
                 ssl_ctx.load_cert_chain(certfile=ssl_cert_file, keyfile=ssl_key_file)
             self.ssl = ssl_ctx
 

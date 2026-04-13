@@ -2,11 +2,11 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from pg_anon.common.enums import ResultCode
-from pg_anon.common.utils import to_json
 from tests.infrastructure.assertions import check_rows, get_list_tables_with_diff_data
 
-from .conftest import SOURCE_DB, TARGET_DB, expected_result, input_dict, output_path
+from .conftest import expected_result, input_dict, output_path
+from pg_anon.common.enums import ResultCode
+from pg_anon.common.utils import to_json
 
 
 async def test_02_mask_dump(source_db, db_params, pg_anon_runner):

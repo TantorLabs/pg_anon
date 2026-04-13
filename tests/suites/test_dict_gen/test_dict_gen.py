@@ -4,10 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from pg_anon import PgAnonApp
-from pg_anon.cli import build_run_options
-from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
-from pg_anon.common.enums import ResultCode
 from tests.infrastructure.assertions import (
     assert_no_sens_dicts,
     assert_sens_dicts,
@@ -17,14 +13,11 @@ from tests.infrastructure.assertions import (
 )
 from tests.infrastructure.data import DEFAULT_ROWS
 
-from .conftest import (
-    SOURCE_DB,
-    TARGET_DB,
-    expected_result,
-    input_dict,
-    output_dict,
-    output_path,
-)
+from .conftest import expected_result, input_dict, output_dict, output_path
+from pg_anon import PgAnonApp
+from pg_anon.cli import build_run_options
+from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.enums import ResultCode
 
 pytestmark = pytest.mark.usefixtures("source_db")
 
@@ -116,22 +109,6 @@ async def test_03_dump(source_db, db_params):
 
 async def test_04_restore(source_db, target_db, db_manager, db_params):
     dump_input = output_path("test_03_dump")
-
-    dump_options = build_run_options([
-        "dump",
-        f"--db-host={db_params.test_db_host}",
-        f"--db-name={source_db}",
-        f"--db-user={db_params.test_db_user}",
-        f"--db-port={db_params.test_db_port}",
-        f"--db-user-password={db_params.test_db_user_password}",
-        f"--config={db_params.test_config}",
-        f"--prepared-sens-dict-file={SENS_DICT}",
-        f"--output-dir={dump_input}",
-        f"--processes={db_params.test_processes}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        "--clear-output-dir",
-        "--debug",
-    ])
 
     restore_options = build_run_options([
         "restore",

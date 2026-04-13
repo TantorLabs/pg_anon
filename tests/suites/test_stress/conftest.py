@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from pg_anon.common.enums import ResultCode
 from tests.infrastructure.data import DEFAULT_ROWS
+
+from pg_anon.common.enums import ResultCode
 
 SUITE = Path(__file__).resolve().parent
 

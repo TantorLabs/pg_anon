@@ -3,14 +3,13 @@ import re
 
 import pytest
 
+from .conftest import input_dict
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.db_utils import get_scan_fields_count
 from pg_anon.common.errors import PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.modes.view_fields import ViewFieldsMode
-
-from .conftest import input_dict
 
 
 def _build_view_fields_options(db_params, source_db, dict_file: str, extra_args: list[str] | None = None) -> list[str]:

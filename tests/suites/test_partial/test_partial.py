@@ -1,8 +1,7 @@
-from pg_anon.common.enums import ResultCode
 from tests.infrastructure.assertions import check_list_tables
 
-from .conftest import TARGET_DB, input_dict, output_path
-
+from .conftest import input_dict, output_path, TARGET_DB
+from pg_anon.common.enums import ResultCode
 
 TABLES_INCLUDE_ONLY = [
     ["_SCHM.$complex#имя;@&* a'", "_TBL.$complex#имя;@&* a'"],

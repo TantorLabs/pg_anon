@@ -8,8 +8,8 @@ from pg_anon.common.constants import RUNS_BASE_DIR
 
 
 def date_range_filter(
-    date_before: Annotated[date | None, Query(None, description="Filter: operations before this date")],
-    date_after: Annotated[date | None, Query(None, description="Filter: operations after this date")],
+    date_before: Annotated[date | None, Query(description="Filter: operations before this date")] = None,
+    date_after: Annotated[date | None, Query(description="Filter: operations after this date")] = None,
 ) -> dict[str, date | None]:
     """Validate and return date range query parameters."""
     if date_before and date_after and date_after > date_before:

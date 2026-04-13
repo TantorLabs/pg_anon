@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-
 ROWS_IN_INIT_ENV = 1512
 
 

@@ -85,7 +85,7 @@
 		},
 		{
 			"schema": "schm_mask_include_1",
-			"table_mask": "\w+\_\d+\_\d+",
+			"table_mask": r"\w+\_\d+\_\d+",
 			"fields": {
 				"val": "'text const'"
 			}

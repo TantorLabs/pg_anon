@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-RUNS_BASE_DIR = BASE_DIR / "runs"
+PACKAGE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(os.environ.get("PG_ANON_HOME", ".")).resolve()
+RUNS_BASE_DIR = BASE_DIR / "pg_anon_runs"
 
 LOGS_DIR_NAME = "logs"
 LOGS_FILE_NAME = "logs.log"

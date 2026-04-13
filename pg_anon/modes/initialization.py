@@ -1,6 +1,6 @@
 from asyncpg import Connection
 
-from pg_anon.common.constants import BASE_DIR
+from pg_anon.common.constants import PACKAGE_DIR
 from pg_anon.common.db_utils import create_connection
 from pg_anon.context import Context
 
@@ -23,7 +23,7 @@ class InitMode:
         await tr.start()
 
         try:
-            with (BASE_DIR / "init.sql").open() as f:
+            with (PACKAGE_DIR / "init.sql").open() as f:
                 data = f.read()
             await db_conn.execute(data)
             await tr.commit()

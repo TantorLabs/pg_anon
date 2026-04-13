@@ -18,10 +18,10 @@ However, this means that the system that integrates pg_anon must implement its o
 >
 > Not suitable for fully autonomous operation.
 >
-> All operation runs logs and info will be stored in the directory `/path_to_pg_anon/runs`.
-> All dumps will be stored in the directory `/path_to_pg_anon/output`.
-> If the REST API service is scaled, you must create a symlink to this directory on a shared disk.
-> This is required because restore operations also read dumps from `/path_to_pg_anon/output`.
+> All operation runs logs and info will be stored in the directory `pg_anon_runs/` (relative to the working directory or `PG_ANON_HOME`).
+> All dumps will be stored in the directory `pg_anon_output/` (relative to the working directory or `PG_ANON_HOME`).
+> If the REST API service is scaled, you must create a symlink to these directories on a shared disk.
+> This is required because restore operations also read dumps from `pg_anon_output/`.
 
 ---
 
@@ -35,7 +35,15 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `source venv/bin/activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[api]`
+    - CLI + REST API: `pip install ".[api]"`
+
+   Alternatively, build and install from wheel:
+    ```bash
+    pip install build
+    python -m build
+    pip install dist/pg_anon-*.whl           # CLI only
+    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
+    ```
 
 ## Windows
 
@@ -47,7 +55,15 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `.\venv\Scripts\activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[api]`
+    - CLI + REST API: `pip install ".[api]"`
+
+   Alternatively, build and install from wheel:
+    ```bash
+    pip install build
+    python -m build
+    pip install dist/pg_anon-*.whl           # CLI only
+    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
+    ```
 
 ## macOS
 
@@ -61,7 +77,15 @@ However, this means that the system that integrates pg_anon must implement its o
     - Activate the virtual environment: `source venv/bin/activate`
 5. Install the package:
     - CLI only: `pip install .`
-    - CLI + REST API: `pip install .[api]`
+    - CLI + REST API: `pip install ".[api]"`
+
+   Alternatively, build and install from wheel:
+    ```bash
+    pip install build
+    python -m build
+    pip install dist/pg_anon-*.whl           # CLI only
+    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
+    ```
 
 ---
 
@@ -71,7 +95,7 @@ To specify custom `pg_dump` and `pg_restore` utilities, use the `--pg-dump` and 
 
 Advanced configuration is also available:
 - CLI - use run parameter `--config`
-- REST API - config must be placed at `/path_to_pg_anon/config.yml`
+- REST API - config must be placed at `config.yml` in the working directory (or `$PG_ANON_HOME/config.yml`)
 
 This parameter accepts a YAML file in this format:
 ```yaml
@@ -107,11 +131,46 @@ For example, `pg_anon` can be run with this config on Postgres 16. In this case,
 
 ---
 
+## Working directory & PG_ANON_HOME
+
+pg_anon stores runtime data (operation logs, dumps) relative to the current working directory:
+
+| Directory | Contents |
+|-----------|----------|
+| `pg_anon_runs/<year>/<month>/<day>/<operation_id>/` | Operation logs and metadata |
+| `pg_anon_output/` | Dump files (used by REST API) |
+| `config.yml` | Optional configuration file for pg_dump/pg_restore paths |
+
+By default, these paths are resolved from the current working directory.
+
+To override the base directory, set the `PG_ANON_HOME` environment variable:
+
+```bash
+export PG_ANON_HOME=/opt/pg_anon/data
+pg_anon init --db-host=... --db-port=...
+```
+
+This is useful for systemd services, Docker containers, or any deployment where the working directory differs from the data directory.
+
+When `PG_ANON_HOME` is set:
+- `pg_anon_runs/` → `$PG_ANON_HOME/pg_anon_runs/`
+- `pg_anon_output/` → `$PG_ANON_HOME/pg_anon_output/`
+- `config.yml` → `$PG_ANON_HOME/config.yml`
+
+---
+
 ## Running REST API
-Run service command
+
+Run service command:
 ```sh
 pg_anon_api --host 0.0.0.0 --port 8000 --workers=3
 ```
+
+To specify a custom data directory:
+```sh
+PG_ANON_HOME=/opt/pg_anon/data pg_anon_api --host 0.0.0.0 --port 8000 --workers=3
+```
+
 - Recommended worker count = `2 * CPU_CORES + 1`
 - Service OpenAPI documentation will be able by address - http://0.0.0.0:8000/docs#/
 - Also, you can see [API documentation](api.md) 

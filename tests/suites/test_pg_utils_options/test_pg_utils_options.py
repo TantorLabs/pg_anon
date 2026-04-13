@@ -1,6 +1,5 @@
-from pg_anon.common.enums import ResultCode
-
 from .conftest import input_dict, output_path
+from pg_anon.common.enums import ResultCode
 
 
 async def test_02_dump_with_valid_pg_dump_options(source_db, db_params, pg_anon_runner):

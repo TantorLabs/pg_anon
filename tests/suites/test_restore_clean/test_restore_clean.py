@@ -1,10 +1,10 @@
-from pg_anon import PgAnonApp
-from pg_anon.cli import build_run_options
-from pg_anon.common.enums import ResultCode
 from tests.infrastructure.assertions import check_rows_count
 from tests.infrastructure.data import DEFAULT_ROWS
 
-from .conftest import SOURCE_DB, TARGET_DB, input_dict, output_path
+from .conftest import input_dict, output_path
+from pg_anon import PgAnonApp
+from pg_anon.cli import build_run_options
+from pg_anon.common.enums import ResultCode
 
 
 async def _init_db(db_manager, pg_anon_runner, test_data, db_name, rows=DEFAULT_ROWS):

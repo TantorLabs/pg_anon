@@ -85,7 +85,7 @@ def generate_openapi_doc_file() -> None:
         "500": {"model": ErrorResponse},
     },
 )
-async def db_connection_check(request: DbConnectionParams) -> JSONResponse | None:
+async def db_connection_check(request: DbConnectionParams) -> JSONResponse:
     """Verify database connectivity using the provided credentials."""
     connection_is_ok = await check_db_connection(
         connection_params=ConnectionParams(
@@ -104,7 +104,7 @@ async def db_connection_check(request: DbConnectionParams) -> JSONResponse | Non
                 ErrorResponse(error_code=ErrorCode.DB_CONNECTION_FAILED, message="Connection is unreachable")
             ),
         )
-    return None
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 
 @app.post(
@@ -344,7 +344,7 @@ async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(ge
 )
 async def stateless_operation_logs(
     operation_run_dir: Annotated[Path, Depends(get_operation_run_dir)],
-    tail_lines: Annotated[int, Query(1000, gt=0, description="Number of log lines to read from the end of the file")],
+    tail_lines: Annotated[int, Query(gt=0, description="Number of log lines to read from the end of the file")] = 1000,
 ) -> list[str]:
     """Return the tail of log files for a specific operation."""
     logs_file_path = operation_run_dir / LOGS_DIR_NAME
