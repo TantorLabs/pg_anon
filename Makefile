@@ -12,7 +12,7 @@ init:
 dev:
 	pip install .[api,dev]
 
-build-package:
+build:
 	python -m build
 
 check:

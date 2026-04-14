@@ -57,11 +57,11 @@ line-length = 120
 show-fixes = true
 target-version = "py311"
 output-format = "full"
-exclude = [
-    ".git",
+extend-exclude = [
     ".idea",
-    "mypy_cache",
-    "venv",
+    "tests/suites/*/expected/",
+    "tests/suites/*/input_dict/",
+    "tests/suites/*/output_dict/",
 ]
 
 [tool.ruff.lint]

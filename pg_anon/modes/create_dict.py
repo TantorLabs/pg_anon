@@ -5,7 +5,7 @@ import shutil
 import time
 from pathlib import Path
 
-from asyncpg import Connection
+from asyncpg import Connection, Pool
 
 from pg_anon.common.constants import DEFAULT_HASH_FUNC
 from pg_anon.common.db_queries import get_data_from_field_query
@@ -19,9 +19,14 @@ from pg_anon.common.db_utils import (
 )
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.enums import ScanMode
-from pg_anon.common.errors import PgAnonError, ErrorCode
-from pg_anon.common.utils import (exception_helper, setof_to_list, get_dict_rule_for_table,
-                                  save_dicts_info_file, safe_compile, get_base_field_type)
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.common.utils import (
+    get_base_field_type,
+    get_dict_rule_for_table,
+    safe_compile,
+    save_dicts_info_file,
+    setof_to_list,
+)
 from pg_anon.context import Context
 
 
@@ -606,8 +611,10 @@ class CreateDictMode:
         )
         return res
 
-    async def _run_scan_tasks(self, fields_info_list: List[FieldInfo]) -> list:
-        self.context.logger.info(f"Using {self.context.options.db_connections_per_process} concurrent connections")
+    async def _run_scan_tasks(self, fields_info_list: list[FieldInfo]) -> list:  # noqa: C901
+        self.context.logger.info(
+            "Using %s concurrent connections", self.context.options.db_connections_per_process
+        )
 
         pool = await create_pool(
             connection_params=self.context.connection_params,
@@ -616,8 +623,8 @@ class CreateDictMode:
             max_size=self.context.options.db_connections_per_process,
         )
 
-        results = []
-        tasks = set()
+        results: list = []
+        tasks: set[asyncio.Task] = set()
 
         status_ratio = 10
         if len(fields_info_list) > 1000:
@@ -653,7 +660,7 @@ class CreateDictMode:
 
                 if idx % status_ratio == 0:
                     progress_percents = round(float(idx) * 100 / fields_count, 2)
-                    self.context.logger.info(f"Progress {progress_percents}%")
+                    self.context.logger.info("Progress %s%%", progress_percents)
 
             while tasks:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

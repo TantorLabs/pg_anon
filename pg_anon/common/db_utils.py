@@ -124,14 +124,14 @@ async def get_fields_list(
     await db_conn.close()
     return fields_list
 
-async def get_all_fields_list(connection_params: ConnectionParams, exclude_schemas: List[str], server_settings: Dict = SERVER_SETTINGS) -> Dict[Tuple[str, str], List]:
-    """
-    Get fields for all tables in one query.
-    """
+
+async def get_all_fields_list(connection_params: ConnectionParams, exclude_schemas: list[str], server_settings: dict = SERVER_SETTINGS) -> dict[tuple[
+    str, str], list]:
+    """Get fields for all tables in one query."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     try:
         excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
-        placeholders = ', '.join(f"'{s}'" for s in excluded)
+        placeholders = ", ".join(f"'{s}'" for s in excluded)
 
         rows = await db_conn.fetch(f"""
             SELECT table_schema, table_name, column_name, udt_name, is_nullable, is_generated
@@ -142,9 +142,9 @@ async def get_all_fields_list(connection_params: ConnectionParams, exclude_schem
     finally:
         await db_conn.close()
 
-    result: Dict[Tuple[str, str], List] = {}
+    result: dict[tuple[str, str], list] = {}
     for row in rows:
-        key = (row['table_schema'], row['table_name'])
+        key = (row["table_schema"], row["table_name"])
         if key not in result:
             result[key] = []
         result[key].append(row)

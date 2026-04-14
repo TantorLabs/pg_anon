@@ -33,7 +33,7 @@ class PgAnonApp:
 
     def _bootstrap(self) -> None:
         self.context.logger.info(
-            "============> Started pg_anon (v%s) in mode: %s", __version__, self.context.options.mode.value
+            "============> Started pg_anon (v %s) in mode: %s", __version__, self.context.options.mode.value
         )
         if self.context.options.debug:
             params_info = "#--------------- Run options\n"
@@ -77,7 +77,7 @@ class PgAnonApp:
             if not anon_utils_schema_exists:
                 raise PgAnonError(
                     ErrorCode.SCHEMA_NOT_INITIALIZED,
-                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. First you need execute init, by run '--mode=init'",
+                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. Please run init mode first.",
                 )
 
     def _get_mode(self) -> DumpMode | RestoreMode | InitMode | CreateDictMode | ViewFieldsMode | ViewDataMode:

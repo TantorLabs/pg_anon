@@ -55,8 +55,8 @@
 	],
 	"funcs": {
 		"text": "anon_funcs.digest(\"%s\", 'salt_word', 'md5')",
-		"numeric": 'anon_funcs.noise("%s", 10)',
-		"numeric(30,4)": 'anon_funcs.noise("%s", 30)',
+		"numeric": "anon_funcs.noise(\"%s\", 10)",
+		"numeric(30,4)": "anon_funcs.noise(\"%s\", 30)",
 		"timestamp": "anon_funcs.dnoise(\"%s\",  interval '6 month')",
 		"bigint": "LPAD((10000000 + ROW_NUMBER() OVER (ORDER BY inn))::TEXT, 8, '0')",
 		"integer": "anon_funcs.random_int_between(1, 10)",

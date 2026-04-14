@@ -179,7 +179,7 @@ CREATE OR REPLACE FUNCTION anon_funcs.random_int_between(
   int_stop INTEGER
 )
 RETURNS INTEGER AS $$
-    SELECT CAST ( random()*(int_stop-int_start)+int_start AS INTEGER );
+    SELECT FLOOR(random()*(int_stop-int_start)+int_start)::INTEGER;
 $$
   LANGUAGE SQL
   VOLATILE
@@ -192,7 +192,7 @@ CREATE OR REPLACE FUNCTION anon_funcs.random_bigint_between(
   int_stop BIGINT
 )
 RETURNS BIGINT AS $$
-    SELECT CAST ( random()*(int_stop-int_start)+int_start AS BIGINT );
+    SELECT FLOOR(random()*(int_stop-int_start)+int_start)::BIGINT;
 $$
   LANGUAGE SQL
   VOLATILE
