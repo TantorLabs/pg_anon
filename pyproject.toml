@@ -36,11 +36,11 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
-pg_anon_api = "rest_api.__main__:main"
+pg_anon_api = "pg_anon.rest_api.__main__:main"
 
 [tool.setuptools]
 include-package-data = false
-packages.find.include = ["pg_anon", "pg_anon.*", "rest_api", "rest_api.*"]
+packages.find.include = ["pg_anon", "pg_anon.*"]
 packages.find.exclude = ["tests"]
 
 [tool.setuptools.package-data]
@@ -141,7 +141,7 @@ convention = "google"
 max-args = 8
 
 [tool.ruff.lint.isort]
-known-local-folder = ["pg_anon", "rest_api"]
+known-local-folder = ["pg_anon"]
 split-on-trailing-comma = false
 force-single-line = false
 case-sensitive = false

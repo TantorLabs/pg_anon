@@ -38,7 +38,7 @@ Main directories:
 - `docker/`: Dir with docker.
 - `docs/`: Documentation.
 - `pg_anon/`: Main python modules.
-- `rest_api/`: Additional python modules for starting rest service.
+- `pg_anon/rest_api/`: Additional python modules for starting rest service.
 - `tests/`: Contains tests and data for test.
 
 
@@ -67,23 +67,23 @@ The main logic of pg_anon is contained within the following Python modules:
 
 
 The logic of REST API service for pg_anon is contained within the following Python modules:
-- `rest_api/runners/background/`
+- `pg_anon/rest_api/runners/background/`
  - `base.py` - BaseRunner class for all background tasks.
  - `init.py` - InitRunner class for run in background pg_anon in mode `init`.
  - `scan.py` - ScanRunner class for run in background pg_anon in modes `create-dict`.
  - `dump.py` - DumpRunner class for run in background pg_anon in modes `dump`, `sync-struct-dump`, and `sync-data-dump`.
  - `restore.py` - RestoreRunner class for run in background pg_anon in modes `restore`, `sync-struct-restore`, and `sync-data-restore`.
-- `rest_api/runners/direct/`
+- `pg_anon/rest_api/runners/direct/`
   - `preview.py` - PreviewRunner class for get data for preview.
   - `view_fields.py` - ViewFieldsRunner class for run pg_anon in mode `view-fields`.
   - `view_data.py` - ViewDataRunner class for run pg_anon in mode `view-data`.
-- `rest_api/api.py` - Contains API routing and app object used as entrypoint for REST service
-- `rest_api/callbacks.py` - Callbacks functions used for sending background tasks results to webhook 
-- `rest_api/constants.py` - Constants for pg_anon REST API service.
-- `rest_api/dependencies.py`- FastAPI dependencies
-- `rest_api/enums.py` -  Enumerations for pg_anon REST API service.
-- `rest_api/pydantic_models.py` - Small classes for data transfer.
-- `rest_api/utils.py` - Common utility functions.
+- `pg_anon/rest_api/api.py` - Contains API routing and app object used as entrypoint for REST service
+- `pg_anon/rest_api/callbacks.py` - Callbacks functions used for sending background tasks results to webhook 
+- `pg_anon/rest_api/constants.py` - Constants for pg_anon REST API service.
+- `pg_anon/rest_api/dependencies.py`- FastAPI dependencies
+- `pg_anon/rest_api/enums.py` -  Enumerations for pg_anon REST API service.
+- `pg_anon/rest_api/pydantic_models.py` - Small classes for data transfer.
+- `pg_anon/rest_api/utils.py` - Common utility functions.
 
 
 `tree -L 4`:
@@ -153,32 +153,32 @@ pg_anon/
 │   │   ├── restore.py
 │   │   ├── view_data.py
 │   │   └── view_fields.py
-│   └── version.py
-├── rest_api
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── api.py
-│   ├── callbacks.py
-│   ├── constants.py
-│   ├── dependencies.py
-│   ├── enums.py
-│   ├── openapi.json
-│   ├── pydantic_models.py
-│   ├── runners
+│   ├── rest_api
 │   │   ├── __init__.py
-│   │   ├── background
+│   │   ├── __main__.py
+│   │   ├── api.py
+│   │   ├── callbacks.py
+│   │   ├── constants.py
+│   │   ├── dependencies.py
+│   │   ├── enums.py
+│   │   ├── openapi.json
+│   │   ├── pydantic_models.py
+│   │   ├── runners
 │   │   │   ├── __init__.py
-│   │   │   ├── base.py
-│   │   │   ├── dump.py
-│   │   │   ├── init.py
-│   │   │   ├── restore.py
-│   │   │   └── scan.py
-│   │   └── direct
-│   │       ├── __init__.py
-│   │       ├── preview.py
-│   │       ├── view_data.py
-│   │       └── view_fields.py
-│   └── utils.py
+│   │   │   ├── background
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── base.py
+│   │   │   │   ├── dump.py
+│   │   │   │   ├── init.py
+│   │   │   │   ├── restore.py
+│   │   │   │   └── scan.py
+│   │   │   └── direct
+│   │   │       ├── __init__.py
+│   │   │       ├── preview.py
+│   │   │       ├── view_data.py
+│   │   │       └── view_fields.py
+│   │   └── utils.py
+│   └── version.py
 └── tests
     ├── __init__.py
     ├── conftest.py

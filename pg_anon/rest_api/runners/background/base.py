@@ -3,9 +3,9 @@ import uuid
 from pg_anon.common.constants import BASE_DIR
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from rest_api.constants import BASE_TEMP_DIR
-from rest_api.pydantic_models import StatelessRunnerRequest
-from rest_api.utils import run_pg_anon_worker
+from pg_anon.rest_api.constants import BASE_TEMP_DIR
+from pg_anon.rest_api.pydantic_models import StatelessRunnerRequest
+from pg_anon.rest_api.utils import run_pg_anon_worker
 
 
 class BaseRunner:

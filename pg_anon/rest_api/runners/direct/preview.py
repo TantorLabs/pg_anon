@@ -3,7 +3,7 @@ from typing import Any, cast
 from pg_anon.common.db_utils import create_connection, get_schemas, get_tables_with_fields
 from pg_anon.common.dto import ConnectionParams
 from pg_anon.common.utils import get_dict_rule_for_table, read_dict_data
-from rest_api.pydantic_models import (
+from pg_anon.rest_api.pydantic_models import (
     PreviewFieldContent,
     PreviewSchemasRequest,
     PreviewSchemaTablesRequest,

@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_folder_size
-from rest_api.enums import ResponseStatus
-from rest_api.pydantic_models import (
+from pg_anon.rest_api.enums import ResponseStatus
+from pg_anon.rest_api.pydantic_models import (
     DumpRequest,
     DumpStatusResponse,
     RestoreRequest,
@@ -16,8 +16,8 @@ from rest_api.pydantic_models import (
     ScanStatusResponse,
     StatelessRunnerResponse,
 )
-from rest_api.runners.background import DumpRunner, InitRunner, RestoreRunner, ScanRunner
-from rest_api.utils import normalize_headers, read_dictionary_contents
+from pg_anon.rest_api.runners.background import DumpRunner, InitRunner, RestoreRunner, ScanRunner
+from pg_anon.rest_api.utils import normalize_headers, read_dictionary_contents
 
 logger = logging.getLogger(__name__)
 

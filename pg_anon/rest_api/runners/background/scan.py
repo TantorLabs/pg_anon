@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING
 
 from pg_anon.common.enums import AnonMode
-from rest_api.enums import ScanMode
-from rest_api.pydantic_models import ScanRequest
-from rest_api.runners.background import BaseRunner
-from rest_api.utils import write_dictionary_contents
+from pg_anon.rest_api.enums import ScanMode
+from pg_anon.rest_api.pydantic_models import ScanRequest
+from pg_anon.rest_api.runners.background import BaseRunner
+from pg_anon.rest_api.utils import write_dictionary_contents
 
 if TYPE_CHECKING:
     from pathlib import Path

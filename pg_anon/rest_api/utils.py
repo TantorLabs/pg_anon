@@ -11,8 +11,8 @@ from pg_anon.common.constants import QUEUE_POLL_TIMEOUT
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import simple_slugify, validate_exists_mode
-from rest_api.constants import DUMP_STORAGE_BASE_DIR
-from rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
+from pg_anon.rest_api.constants import DUMP_STORAGE_BASE_DIR
+from pg_anon.rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 
 def get_full_dump_path(dump_path: str) -> str:

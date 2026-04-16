@@ -3,7 +3,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from rest_api.enums import DumpMode, RestoreMode, ScanMode
+from pg_anon.rest_api.enums import DumpMode, RestoreMode, ScanMode
 
 
 #############################################
@@ -407,7 +407,7 @@ class DumpRequest(StatelessRunnerRequest):
     @model_validator(mode="after")
     def validate_model(self) -> Self:
         """Validate and resolve the output path."""
-        from rest_api.utils import get_full_dump_path  # noqa: PLC0415
+        from pg_anon.rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.output_path:
             self.validated_output_path = get_full_dump_path(self.output_path)
@@ -425,7 +425,7 @@ class DumpDeleteRequest(BaseModel):
     @model_validator(mode="after")
     def validate_model(self) -> Self:
         """Validate and resolve the dump path."""
-        from rest_api.utils import get_full_dump_path  # noqa: PLC0415
+        from pg_anon.rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.path:
             self.validated_path = get_full_dump_path(self.path)
@@ -453,7 +453,7 @@ class RestoreRequest(StatelessRunnerRequest):
     @model_validator(mode="after")
     def validate_model(self) -> Self:
         """Validate restore options and resolve the input path."""
-        from rest_api.utils import get_full_dump_path  # noqa: PLC0415
+        from pg_anon.rest_api.utils import get_full_dump_path  # noqa: PLC0415
 
         if self.clean_db and self.drop_db:
             raise ValueError("Only one of `clean_db` or `drop_db` can be set.")

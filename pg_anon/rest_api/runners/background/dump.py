@@ -1,8 +1,8 @@
 from pg_anon.common.enums import AnonMode
-from rest_api.enums import DumpMode
-from rest_api.pydantic_models import DumpRequest
-from rest_api.runners.background import BaseRunner
-from rest_api.utils import write_dictionary_contents
+from pg_anon.rest_api.enums import DumpMode
+from pg_anon.rest_api.pydantic_models import DumpRequest
+from pg_anon.rest_api.runners.background import BaseRunner
+from pg_anon.rest_api.utils import write_dictionary_contents
 
 
 class DumpRunner(BaseRunner):

@@ -1,8 +1,8 @@
 from pg_anon.common.enums import AnonMode
-from rest_api.enums import RestoreMode
-from rest_api.pydantic_models import RestoreRequest
-from rest_api.runners.background import BaseRunner
-from rest_api.utils import write_dictionary_contents
+from pg_anon.rest_api.enums import RestoreMode
+from pg_anon.rest_api.pydantic_models import RestoreRequest
+from pg_anon.rest_api.runners.background import BaseRunner
+from pg_anon.rest_api.utils import write_dictionary_contents
 
 
 class RestoreRunner(BaseRunner):
