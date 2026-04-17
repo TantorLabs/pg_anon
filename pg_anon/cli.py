@@ -96,18 +96,13 @@ def common_parser():
         default="",
         help="""Appends suffix for connection name. Just for comfortable automation.""",
     )
-    return parser
-
-
-def background_operation_parser():
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument(
+    parser.add_argument(
         "--internal-operation-id",
         type=str,
         default="",
         help="""Pre-generated operation ID. If not set, a random UUID is generated.""",
     )
-    return p
+    return parser
 
 
 def multiprocessing_common_parser():
@@ -462,7 +457,7 @@ def get_arg_parser():
 
     sub.add_parser(
         "create-dict",
-        parents=[common_parser(), multiprocessing_common_parser(), background_operation_parser(), scan_parser()],
+        parents=[common_parser(), multiprocessing_common_parser(), scan_parser()],
         help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
     )
 
@@ -474,7 +469,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), multiprocessing_common_parser(), background_operation_parser(), dump_parser()],
+            parents=[common_parser(), multiprocessing_common_parser(), dump_parser()],
             help=help_text,
         )
 
@@ -486,7 +481,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), background_operation_parser(), restore_parser()],
+            parents=[common_parser(), restore_parser()],
             help=help_text,
         )
 
