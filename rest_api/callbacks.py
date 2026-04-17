@@ -1,10 +1,14 @@
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Optional, Dict
 
 import aiohttp
+from concurrent_log_handler import ConcurrentRotatingFileHandler
 from pydantic import BaseModel
 
+from pg_anon.common.constants import LOGS_FILE_NAME
 from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.common.utils import get_folder_size
 from rest_api.enums import ResponseStatus
@@ -14,12 +18,38 @@ from rest_api.runners.background import ScanRunner, DumpRunner, InitRunner, Rest
 from rest_api.utils import read_dictionary_contents, normalize_headers
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+LOG_FORMATTER = logging.Formatter(
+    datefmt="%Y-%m-%d %H:%M:%S",
+    fmt="%(asctime)s,%(msecs)03d - %(levelname)8s - %(message)s",
+)
+
+
+def _attach_log_file_handler(log_dir: Path, enabled: bool):
+    if not enabled:
+        return None
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = ConcurrentRotatingFileHandler(
+        log_dir / LOGS_FILE_NAME,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=10,
+    )
+    handler.setFormatter(LOG_FORMATTER)
+    logger.addHandler(handler)
+    return handler
+
+
+def _detach_log_file_handler(handler):
+    if handler:
+        logger.removeHandler(handler)
+        handler.close()
 
 
 async def send_webhook(url: str, response_body: BaseModel, extra_headers: Optional[Dict[str, str]] = None,
                        verify_ssl: bool = True, max_retries: int = 5, base_delay: float = 1) -> None:
     payload = response_body.model_dump(by_alias=True)
-    logger.info(f'Starting webhook request to {url} with payload: {payload}')
+    logger.info(f'Starting webhook request to {url} with payload: {json.dumps(payload, ensure_ascii=False, default=str)}')
 
     headers = normalize_headers(extra_headers)
 
@@ -47,19 +77,19 @@ async def send_webhook(url: str, response_body: BaseModel, extra_headers: Option
 
 async def scan_callback(request: ScanRequest):
     logger.debug("Run scan callback")
-    scan_runner = None
+    scan_runner = ScanRunner(request)
+    _log_handler = _attach_log_file_handler(scan_runner.log_dir, request.web_debug)
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
         await init_runner.run()
-
-        scan_runner = ScanRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=scan_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -90,10 +120,10 @@ async def scan_callback(request: ScanRequest):
         scan_runner_params = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": scan_runner.internal_operation_id,
         }
-        if scan_runner and scan_runner.result:
+        if scan_runner.result:
             scan_runner_params.update({
-                "internal_operation_id": scan_runner.result.internal_operation_id,
                 "started": scan_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": scan_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": scan_runner.result.run_options.to_dict(),
@@ -110,6 +140,7 @@ async def scan_callback(request: ScanRequest):
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -130,23 +161,24 @@ async def scan_callback(request: ScanRequest):
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)
 
 
 async def dump_callback(request: DumpRequest):
     logger.debug("Run dump callback")
-    dump_runner = None
+    dump_runner = DumpRunner(request)
+    _log_handler = _attach_log_file_handler(dump_runner.log_dir, request.web_debug)
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
         await init_runner.run()
-
-        dump_runner = DumpRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=dump_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -170,10 +202,10 @@ async def dump_callback(request: DumpRequest):
         dump_runner_params = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": dump_runner.internal_operation_id,
         }
-        if dump_runner and dump_runner.result:
+        if dump_runner.result:
             dump_runner_params.update({
-                "internal_operation_id": dump_runner.result.internal_operation_id,
                 "started": dump_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": dump_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": dump_runner.result.run_options.to_dict(),
@@ -190,6 +222,7 @@ async def dump_callback(request: DumpRequest):
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -209,19 +242,21 @@ async def dump_callback(request: DumpRequest):
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)
 
 
 async def restore_callback(request: RestoreRequest):
-    logger.debug("Run scan callback")
-    restore_runner = None
+    logger.debug("Run restore callback")
+    restore_runner = RestoreRunner(request)
+    _log_handler = _attach_log_file_handler(restore_runner.log_dir, request.web_debug)
     try:
-        restore_runner = RestoreRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=restore_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -245,10 +280,10 @@ async def restore_callback(request: RestoreRequest):
         restore_runner_params = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": restore_runner.internal_operation_id,
         }
-        if restore_runner and restore_runner.result:
+        if restore_runner.result:
             restore_runner_params.update({
-                "internal_operation_id": restore_runner.result.internal_operation_id,
                 "started": restore_runner.result.start_date.isoformat(timespec="seconds"),
                 "ended": restore_runner.result.end_date.isoformat(timespec="seconds"),
                 "run_options": restore_runner.result.run_options.to_dict(),
@@ -265,6 +300,7 @@ async def restore_callback(request: RestoreRequest):
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -283,3 +319,4 @@ async def restore_callback(request: RestoreRequest):
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)

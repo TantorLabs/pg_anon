@@ -2,14 +2,12 @@ import argparse
 import asyncio
 import sys
 import uuid
-from datetime import datetime
 from typing import Optional, List
 
 from pg_anon import PgAnonApp
-from pg_anon.common.constants import RUNS_BASE_DIR
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, VerboseOptions, ScanMode, ResultCode
-from pg_anon.common.utils import parse_comma_separated_list
+from pg_anon.common.utils import parse_comma_separated_list, make_run_dir
 from pg_anon.version import __version__
 
 
@@ -99,6 +97,17 @@ def common_parser():
         help="""Appends suffix for connection name. Just for comfortable automation.""",
     )
     return parser
+
+
+def background_operation_parser():
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument(
+        "--internal-operation-id",
+        type=str,
+        default="",
+        help="""Pre-generated operation ID. If not set, a random UUID is generated.""",
+    )
+    return p
 
 
 def multiprocessing_common_parser():
@@ -453,7 +462,7 @@ def get_arg_parser():
 
     sub.add_parser(
         "create-dict",
-        parents=[common_parser(), multiprocessing_common_parser(), scan_parser()],
+        parents=[common_parser(), multiprocessing_common_parser(), background_operation_parser(), scan_parser()],
         help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
     )
 
@@ -465,7 +474,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), multiprocessing_common_parser(), dump_parser()],
+            parents=[common_parser(), multiprocessing_common_parser(), background_operation_parser(), dump_parser()],
             help=help_text,
         )
 
@@ -477,7 +486,7 @@ def get_arg_parser():
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), restore_parser()],
+            parents=[common_parser(), background_operation_parser(), restore_parser()],
             help=help_text,
         )
 
@@ -550,15 +559,8 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
     if args_dict.get('verbose'):
         args_dict['verbose'] = VerboseOptions(args_dict['verbose'])
 
-    internal_operation_id = str(uuid.uuid4())
-    start_date = datetime.today()
-    run_dir = str(
-        RUNS_BASE_DIR /
-        str(start_date.year) /
-        str(start_date.month) /
-        str(start_date.day) /
-        internal_operation_id
-    )
+    internal_operation_id = args_dict.pop('internal_operation_id', None) or str(uuid.uuid4())
+    run_dir = make_run_dir(internal_operation_id)
 
     args_dict.update({
         'pg_anon_version': __version__,
