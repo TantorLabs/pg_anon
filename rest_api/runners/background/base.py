@@ -1,9 +1,11 @@
 import uuid
+from pathlib import Path
 from typing import List
 
-from pg_anon.common.constants import BASE_DIR
+from pg_anon.common.constants import BASE_DIR, LOGS_DIR_NAME
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.utils import make_run_dir
 from rest_api.constants import BASE_TEMP_DIR
 from rest_api.pydantic_models import StatelessRunnerRequest
 from rest_api.utils import run_pg_anon_worker
@@ -13,12 +15,18 @@ class BaseRunner:
     mode: str
     request: StatelessRunnerRequest
     operation_id: str
+    internal_operation_id: str
+    run_dir: Path
+    log_dir: Path
     cli_params: List[str] = None
     result: PgAnonResult = None
 
     def __init__(self, request: StatelessRunnerRequest):
         self.request = request
         self.operation_id = request.operation_id
+        self.internal_operation_id = str(uuid.uuid4())
+        self.run_dir = Path(make_run_dir(self.internal_operation_id))
+        self.log_dir = self.run_dir / LOGS_DIR_NAME
         self.base_tmp_dir = BASE_TEMP_DIR / f'{self.operation_id}__{uuid.uuid4()}'
         self._prepare_cli_params()
 
@@ -44,7 +52,9 @@ class BaseRunner:
         ])
 
     def _prepare_cli_params(self):
-        self.cli_params = []
+        self.cli_params = [
+            f'--internal-operation-id={self.internal_operation_id}',
+        ]
         self._prepare_db_credentials_cli_params()
         self._prepare_config()
 

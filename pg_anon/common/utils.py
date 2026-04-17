@@ -6,12 +6,13 @@ import re
 import subprocess
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Union, Tuple, Set, Any
 
 import yaml
 
-from pg_anon.common.constants import BASE_TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME
+from pg_anon.common.constants import BASE_TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME, RUNS_BASE_DIR
 from pg_anon.common.dto import FieldInfo, RunOptions
 from pg_anon.common.errors import PgAnonError, ErrorCode
 from pg_anon.logger import get_logger
@@ -442,3 +443,14 @@ def save_dicts_info_file(options: RunOptions):
 
     saved_dicts_info_file = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
     save_json_file(saved_dicts_info_file, data)
+
+
+def make_run_dir(internal_operation_id: str) -> str:
+    today = datetime.today()
+    return str(
+        RUNS_BASE_DIR /
+        str(today.year) /
+        str(today.month) /
+        str(today.day) /
+        internal_operation_id
+    )
