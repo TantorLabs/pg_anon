@@ -1,9 +1,14 @@
 import asyncio
+import json
 import logging
+from pathlib import Path
+from typing import Optional, Dict
 
 import aiohttp
+from concurrent_log_handler import ConcurrentRotatingFileHandler
 from pydantic import BaseModel
 
+from pg_anon.common.constants import LOGS_FILE_NAME
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_folder_size
@@ -20,6 +25,32 @@ from pg_anon.rest_api.runners.background import DumpRunner, InitRunner, RestoreR
 from pg_anon.rest_api.utils import normalize_headers, read_dictionary_contents
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+LOG_FORMATTER = logging.Formatter(
+    datefmt="%Y-%m-%d %H:%M:%S",
+    fmt="%(asctime)s,%(msecs)03d - %(levelname)8s - %(message)s",
+)
+
+
+def _attach_log_file_handler(log_dir: Path, enabled: bool):
+    if not enabled:
+        return None
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = ConcurrentRotatingFileHandler(
+        log_dir / LOGS_FILE_NAME,
+        maxBytes=10 * 1024 * 1024,
+        backupCount=10,
+    )
+    handler.setFormatter(LOG_FORMATTER)
+    logger.addHandler(handler)
+    return handler
+
+
+def _detach_log_file_handler(handler):
+    if handler:
+        logger.removeHandler(handler)
+        handler.close()
 
 
 def _raise_if_failed(result: PgAnonResult) -> None:
@@ -38,7 +69,10 @@ async def send_webhook(
 ) -> None:
     """Send a webhook POST request with exponential backoff retries."""
     payload = response_body.model_dump(by_alias=True)
-    logger.info("Starting webhook request to %s with payload: %s", url, payload)
+    logger.info(
+        "Starting webhook request to %s with payload: %s",
+        url, json.dumps(payload, ensure_ascii=False, default=str)
+    )
 
     headers = normalize_headers(extra_headers)
 
@@ -70,18 +104,19 @@ async def scan_callback(request: ScanRequest) -> None:
     """Execute a scan operation and send status webhooks on progress and completion."""
     logger.debug("Run scan callback")
     result: PgAnonResult | None = None
+    scan_runner = ScanRunner(request)
+    _log_handler = _attach_log_file_handler(scan_runner.log_dir, request.web_debug)
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
         await init_runner.run()
-
-        scan_runner = ScanRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=ScanStatusResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=scan_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -111,11 +146,11 @@ async def scan_callback(request: ScanRequest) -> None:
         scan_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": scan_runner.internal_operation_id,
         }
         if result:
             scan_runner_params.update(
                 {
-                    "internal_operation_id": result.internal_operation_id or "",
                     "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
                     "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
                     "run_options": result.run_options.to_dict() if result.run_options else "",
@@ -133,6 +168,7 @@ async def scan_callback(request: ScanRequest) -> None:
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -153,24 +189,26 @@ async def scan_callback(request: ScanRequest) -> None:
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)
 
 
 async def dump_callback(request: DumpRequest) -> None:
     """Execute a dump operation and send status webhooks on progress and completion."""
     logger.debug("Run dump callback")
     result: PgAnonResult | None = None
+    dump_runner = DumpRunner(request)
+    _log_handler = _attach_log_file_handler(dump_runner.log_dir, request.web_debug)
     try:
         logger.debug("Run init")
         init_runner = InitRunner(request)
         await init_runner.run()
-
-        dump_runner = DumpRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=DumpStatusResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=dump_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -193,11 +231,11 @@ async def dump_callback(request: DumpRequest) -> None:
         dump_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": dump_runner.internal_operation_id,
         }
         if result:
             dump_runner_params.update(
                 {
-                    "internal_operation_id": result.internal_operation_id or "",
                     "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
                     "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
                     "run_options": result.run_options.to_dict() if result.run_options else "",
@@ -215,6 +253,7 @@ async def dump_callback(request: DumpRequest) -> None:
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -234,20 +273,23 @@ async def dump_callback(request: DumpRequest) -> None:
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)
 
 
 async def restore_callback(request: RestoreRequest) -> None:
     """Execute a restore operation and send status webhooks on progress and completion."""
     logger.debug("Run restore callback")
     result: PgAnonResult | None = None
+    restore_runner = RestoreRunner(request)
+    _log_handler = _attach_log_file_handler(restore_runner.log_dir, request.web_debug)
     try:
-        restore_runner = RestoreRunner(request)
 
         logger.info("Send RUN webhook")
         await send_webhook(
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
+                internal_operation_id=restore_runner.internal_operation_id,
                 status_id=ResponseStatus.IN_PROGRESS.value,
                 status=ResponseStatus.IN_PROGRESS.name.lower(),
                 webhook_metadata=request.webhook_metadata,
@@ -270,11 +312,11 @@ async def restore_callback(request: RestoreRequest) -> None:
         restore_runner_params: dict = {
             "error": str(ex),
             "error_code": error_code,
+            "internal_operation_id": restore_runner.internal_operation_id,
         }
         if result:
             restore_runner_params.update(
                 {
-                    "internal_operation_id": result.internal_operation_id or "",
                     "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
                     "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
                     "run_options": result.run_options.to_dict() if result.run_options else "",
@@ -292,6 +334,7 @@ async def restore_callback(request: RestoreRequest) -> None:
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
+        _detach_log_file_handler(_log_handler)
         return
 
     logger.debug("Send COMPLETE webhook")
@@ -310,3 +353,4 @@ async def restore_callback(request: RestoreRequest) -> None:
         verify_ssl=request.webhook_verify_ssl,
         extra_headers=request.webhook_extra_headers,
     )
+    _detach_log_file_handler(_log_handler)

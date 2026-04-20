@@ -338,7 +338,7 @@ class StatelessRunnerRequest(BaseModel):
     webhook_metadata: Any | None = None  # data what will be sent on webhook "as is"
     webhook_extra_headers: dict[str, str] | None = None
     webhook_verify_ssl: bool = True
-
+    web_debug: bool = False
 
 class StatelessRunnerResponse(BaseModel):
     operation_id: str

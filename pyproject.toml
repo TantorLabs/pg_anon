@@ -1,6 +1,6 @@
 [project]
 name = "pg_anon"
-version = "1.9.5"
+version = "1.9.6"
 description = "PostgreSQL anonymization tool."
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}

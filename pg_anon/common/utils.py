@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -437,3 +438,14 @@ def save_dicts_info_file(options: RunOptions) -> None:
 
     saved_dicts_info_file = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
     save_json_file(saved_dicts_info_file, data)
+
+
+def make_run_dir(internal_operation_id: str) -> str:
+    today = datetime.today()
+    return str(
+        RUNS_BASE_DIR /
+        str(today.year) /
+        str(today.month) /
+        str(today.day) /
+        internal_operation_id
+    )

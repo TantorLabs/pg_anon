@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import sys
 import uuid
-from datetime import datetime
 
 from pg_anon import PgAnonApp
 from pg_anon.common.constants import (
@@ -15,7 +14,7 @@ from pg_anon.common.constants import (
 )
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
-from pg_anon.common.utils import parse_comma_separated_list
+from pg_anon.common.utils import parse_comma_separated_list, make_run_dir
 from pg_anon.version import __version__
 
 
@@ -104,6 +103,12 @@ def common_parser() -> argparse.ArgumentParser:
         type=str,
         default="",
         help="""Appends suffix for connection name. Just for comfortable automation.""",
+    )
+    parser.add_argument(
+        "--internal-operation-id",
+        type=str,
+        default="",
+        help="""Pre-generated operation ID. If not set, a random UUID is generated.""",
     )
     return parser
 
@@ -566,11 +571,8 @@ def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
     if args_dict.get("verbose"):
         args_dict["verbose"] = VerboseOptions(args_dict["verbose"])
 
-    internal_operation_id = str(uuid.uuid4())
-    start_date = datetime.today()
-    run_dir = str(
-        RUNS_BASE_DIR / str(start_date.year) / str(start_date.month) / str(start_date.day) / internal_operation_id
-    )
+    internal_operation_id = args_dict.pop('internal_operation_id', None) or str(uuid.uuid4())
+    run_dir = make_run_dir(internal_operation_id)
 
     args_dict.update(
         {
