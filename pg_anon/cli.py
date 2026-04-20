@@ -10,11 +10,10 @@ from pg_anon.common.constants import (
     DEFAULT_PG_RESTORE_PATH,
     DEFAULT_PROCESSES,
     DEFAULT_SCAN_PARTIAL_ROWS,
-    RUNS_BASE_DIR,
 )
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
-from pg_anon.common.utils import parse_comma_separated_list, make_run_dir
+from pg_anon.common.utils import make_run_dir, parse_comma_separated_list
 from pg_anon.version import __version__
 
 
@@ -571,7 +570,7 @@ def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
     if args_dict.get("verbose"):
         args_dict["verbose"] = VerboseOptions(args_dict["verbose"])
 
-    internal_operation_id = args_dict.pop('internal_operation_id', None) or str(uuid.uuid4())
+    internal_operation_id = args_dict.pop("internal_operation_id", None) or str(uuid.uuid4())
     run_dir = make_run_dir(internal_operation_id)
 
     args_dict.update(

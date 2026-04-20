@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 import yaml
 
-from pg_anon.common.constants import BASE_TYPE_ALIASES, SAVED_DICTS_INFO_FILE_NAME, TRACEBACK_LINES_COUNT
+from pg_anon.common.constants import BASE_TYPE_ALIASES, RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME, TRACEBACK_LINES_COUNT
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.logger import get_logger
 
@@ -441,6 +441,7 @@ def save_dicts_info_file(options: RunOptions) -> None:
 
 
 def make_run_dir(internal_operation_id: str) -> str:
+    """Create dir for operation logs and data."""
     today = datetime.today()
     return str(
         RUNS_BASE_DIR /

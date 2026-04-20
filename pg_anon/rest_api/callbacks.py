@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict
 
 import aiohttp
 from concurrent_log_handler import ConcurrentRotatingFileHandler
@@ -33,7 +32,7 @@ LOG_FORMATTER = logging.Formatter(
 )
 
 
-def _attach_log_file_handler(log_dir: Path, enabled: bool):
+def _attach_log_file_handler(log_dir: Path, enabled: bool) -> ConcurrentRotatingFileHandler | None:
     if not enabled:
         return None
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -47,7 +46,7 @@ def _attach_log_file_handler(log_dir: Path, enabled: bool):
     return handler
 
 
-def _detach_log_file_handler(handler):
+def _detach_log_file_handler(handler: ConcurrentRotatingFileHandler | None) -> None:
     if handler:
         logger.removeHandler(handler)
         handler.close()
