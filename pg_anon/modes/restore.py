@@ -427,14 +427,33 @@ class RestoreMode:
 
         for extension_name, extension_data in self.metadata.extensions.items():
             query_parts = [f'CREATE EXTENSION IF NOT EXISTS {extension_name}']
+            extension_schema = extension_data['schema']
 
-            # Check necessary schemas exists or extension can be relocatable
-            if extension_data['schema'] not in available_schemas or extension_data['is_excluded_by_schema']:
+            # If user explicitly excluded the extension's schema, try to relocate the extension
+            # into the default schema; fail only if the extension is not relocatable.
+            if extension_data['is_excluded_by_schema']:
                 if not extension_data['relocatable']:
-                    raise PgAnonError(ErrorCode.EXTENSION_ERROR, f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists')
-                self.context.logger.warn(f'EXTENSION "{extension_name}" will restored into default schema, cause SCHEMA "{extension_data["schema"]}" is not exists')
+                    raise PgAnonError(
+                        ErrorCode.EXTENSION_ERROR,
+                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_schema}" is excluded'
+                    )
+                self.context.logger.warning(
+                    f'EXTENSION "{extension_name}" will be restored into default schema, '
+                    f'cause SCHEMA "{extension_schema}" is excluded'
+                )
             else:
-                query_parts.append(f'SCHEMA {extension_data["schema"]}')
+                # Extensions like pg_partman or postgis live in their own schema.
+                # Native pg_restore creates that schema from TOC before CREATE EXTENSION;
+                # pg_anon strips EXTENSION entries from TOC and runs CREATE EXTENSION before
+                # pre_data is restored, so we must ensure the schema exists here.
+                if extension_schema not in available_schemas:
+                    create_schema_query = f'CREATE SCHEMA IF NOT EXISTS "{extension_schema}"'
+                    self.context.logger.info("PARTIAL RESTORE MODE: " + create_schema_query)
+                    await connection.execute(create_schema_query)
+                    available_schemas.append(extension_schema)
+                    if extension_schema not in self._restored_schemas:
+                        self._restored_schemas.append(extension_schema)
+                query_parts.append(f'SCHEMA {extension_schema}')
 
             # Check extension exists in system
             available_extension_versions = available_extensions.get(extension_name)
