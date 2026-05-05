@@ -374,10 +374,9 @@ class RestoreMode:
                 schema = sequence_data["schema"].replace("'", "''")
                 sequence_name = sequence_data["seq_name"].replace("'", "''")
                 value = sequence_data["value"]
-                query = f"""
-                    SET search_path = '{schema}';
-                    SELECT setval(quote_ident('{sequence_name}'), {value} + 1);
-                """
+                query = (
+                    f"SELECT setval(quote_ident('{schema}') || '.' || quote_ident('{sequence_name}'), {value} + 1);"
+                )
                 self.context.logger.info(query)
                 await connection.execute(query)
 
@@ -426,7 +425,7 @@ class RestoreMode:
         available_schemas = await get_available_schemas(connection)
 
         for extension_name, extension_data in self.metadata.extensions.items():
-            query_parts = [f'CREATE EXTENSION IF NOT EXISTS {extension_name}']
+            query_parts = [f'CREATE EXTENSION IF NOT EXISTS "{extension_name}"']
             extension_schema = extension_data['schema']
 
             # If user explicitly excluded the extension's schema, try to relocate the extension
@@ -453,7 +452,7 @@ class RestoreMode:
                     available_schemas.append(extension_schema)
                     if extension_schema not in self._restored_schemas:
                         self._restored_schemas.append(extension_schema)
-                query_parts.append(f'SCHEMA {extension_schema}')
+                query_parts.append(f'SCHEMA "{extension_schema}"')
 
             # Check extension exists in system
             available_extension_versions = available_extensions.get(extension_name)
@@ -486,7 +485,7 @@ class RestoreMode:
             if version_specified['requires']:
                 for dependencies_extension in version_specified['requires']:
                     queries.extend([
-                        f'CREATE EXTENSION IF NOT EXISTS {extension}'
+                        f'CREATE EXTENSION IF NOT EXISTS "{extension}"'
                         for extension in resolve_dependencies(dependencies_extension, available_extensions)
                     ])
 
@@ -735,7 +734,7 @@ class RestoreMode:
             f"""
             CREATE DATABASE "{self.context.options.db_name}"
             WITH TEMPLATE template0
-                 OWNER {db_params[1]}
+                 OWNER "{db_params[1]}"
                  ENCODING '{db_params[2]}'
                  LC_COLLATE '{db_params[3]}'
                  LC_CTYPE '{db_params[4]}';
