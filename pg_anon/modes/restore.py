@@ -460,7 +460,7 @@ class RestoreMode:
 
         for extension_name, extension_data in self.metadata.extensions.items():
             query_parts = [f'CREATE EXTENSION IF NOT EXISTS "{extension_name}"']
-            extension_schema = extension_data['schema']
+            extension_schema = extension_data["schema"]
 
             # If user explicitly excluded the extension's schema, try to relocate the extension
             # into the default schema; fail only if the extension is not relocatable.
@@ -482,7 +482,7 @@ class RestoreMode:
                 # pre_data is restored, so we must ensure the schema exists here.
                 if extension_schema not in available_schemas:
                     create_schema_query = f'CREATE SCHEMA IF NOT EXISTS "{extension_schema}"'
-                    self.context.logger.info("PARTIAL RESTORE MODE: " + create_schema_query)
+                    self.context.logger.info("PARTIAL RESTORE MODE: %s", create_schema_query)
                     await connection.execute(create_schema_query)
                     available_schemas.append(extension_schema)
                     if extension_schema not in self._restored_schemas:

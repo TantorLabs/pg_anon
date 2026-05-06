@@ -22,6 +22,7 @@ from pg_anon.common.utils import get_folder_size
 from pg_anon.rest_api.callbacks import dump_callback, restore_callback, scan_callback
 from pg_anon.rest_api.dependencies import date_range_filter, get_operation_run_dir
 from pg_anon.rest_api.enums import DumpMode, ResponseStatus, RestoreMode, ScanMode
+from pg_anon.rest_api.logging_context import setup_rest_api_logging
 from pg_anon.rest_api.pydantic_models import (
     DbConnectionParams,
     DumpRequest,
@@ -45,6 +46,8 @@ from pg_anon.rest_api.runners.direct import ViewFieldsRunner
 from pg_anon.rest_api.runners.direct.preview import PreviewRunner
 from pg_anon.rest_api.runners.direct.view_data import ViewDataRunner
 from pg_anon.rest_api.utils import delete_folder, read_json_file, read_logs_from_tail
+
+setup_rest_api_logging()
 
 app = FastAPI(title="Stateless web service for pg_anon")
 

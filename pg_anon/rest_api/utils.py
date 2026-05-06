@@ -137,7 +137,7 @@ async def _terminate_subprocess(p: aioprocessing.AioProcess) -> None:
     p.terminate()
     try:
         await asyncio.wait_for(p.coro_join(), timeout=SUBPROCESS_TERMINATE_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         p.kill()
         await p.coro_join()
 
