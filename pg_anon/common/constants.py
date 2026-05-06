@@ -55,7 +55,7 @@ SENS_PG_TYPES = ["text", "character", "varchar", "mvarchar", "json", "integer", 
 SECRET_RUN_OPTIONS = ["db_user_password"]
 
 TRACEBACK_LINES_COUNT = 100
-QUEUE_POLL_TIMEOUT = 10
+QUEUE_POLL_TIMEOUT = 60
 
 # Default values for RunOptions
 DEFAULT_PROCESSES = 4

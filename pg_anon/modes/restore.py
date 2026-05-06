@@ -76,11 +76,13 @@ class RestoreMode:
 
         self._load_metadata()
 
-        self._db_must_be_empty = self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE) and not (
-            self.context.options.clean_db or self.context.options.drop_db
+        self._db_must_be_empty = (
+                self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
+                and not (self.context.options.clean_db or self.context.options.drop_db)
         )
         self._skip_pre_data_restore = (
-            self.context.options.mode == AnonMode.SYNC_DATA_RESTORE or self.metadata.dbg_stage_2_validate_data
+                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
+                or self.metadata.dbg_stage_2_validate_data
         )
         self._skip_post_data_restore = (
             self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
@@ -404,10 +406,9 @@ class RestoreMode:
                 schema = sequence_data["schema"].replace("'", "''")
                 sequence_name = sequence_data["seq_name"].replace("'", "''")
                 value = sequence_data["value"]
-                query = f"""
-                    SET search_path = '{schema}';
-                    SELECT setval(quote_ident('{sequence_name}'), {value} + 1);
-                """
+                query = (
+                    f"SELECT setval(quote_ident('{schema}') || '.' || quote_ident('{sequence_name}'), {value} + 1);"
+                )
                 self.context.logger.info(query)
                 await connection.execute(query)
 
@@ -458,22 +459,35 @@ class RestoreMode:
         available_schemas = await get_available_schemas(connection)
 
         for extension_name, extension_data in self.metadata.extensions.items():
-            query_parts = [f"CREATE EXTENSION IF NOT EXISTS {extension_name}"]
+            query_parts = [f'CREATE EXTENSION IF NOT EXISTS "{extension_name}"']
+            extension_schema = extension_data['schema']
 
-            # Check necessary schemas exists or extension can be relocatable
-            if extension_data["schema"] not in available_schemas or extension_data["is_excluded_by_schema"]:
+            # If user explicitly excluded the extension's schema, try to relocate the extension
+            # into the default schema; fail only if the extension is not relocatable.
+            if extension_data["is_excluded_by_schema"]:
                 if not extension_data["relocatable"]:
                     raise PgAnonError(
                         ErrorCode.EXTENSION_ERROR,
-                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_data["schema"]}" is not exists',
+                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_schema}" is excluded'
                     )
                 self.context.logger.warning(
-                    'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is not exists',
+                    'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is excluded',
                     extension_name,
-                    extension_data["schema"],
+                    extension_schema,
                 )
             else:
-                query_parts.append(f"SCHEMA {extension_data['schema']}")
+                # Extensions like pg_partman or postgis live in their own schema.
+                # Native pg_restore creates that schema from TOC before CREATE EXTENSION;
+                # pg_anon strips EXTENSION entries from TOC and runs CREATE EXTENSION before
+                # pre_data is restored, so we must ensure the schema exists here.
+                if extension_schema not in available_schemas:
+                    create_schema_query = f'CREATE SCHEMA IF NOT EXISTS "{extension_schema}"'
+                    self.context.logger.info("PARTIAL RESTORE MODE: " + create_schema_query)
+                    await connection.execute(create_schema_query)
+                    available_schemas.append(extension_schema)
+                    if extension_schema not in self._restored_schemas:
+                        self._restored_schemas.append(extension_schema)
+                query_parts.append(f'SCHEMA "{extension_schema}"')
 
             # Check extension exists in system
             available_extension_versions = available_extensions.get(extension_name)
@@ -512,7 +526,7 @@ class RestoreMode:
                 for dependencies_extension in version_specified["requires"]:
                     queries.extend(
                         [
-                            f"CREATE EXTENSION IF NOT EXISTS {extension}"
+                            f'CREATE EXTENSION IF NOT EXISTS "{extension}"'
                             for extension in resolve_dependencies(dependencies_extension, available_extensions)
                         ]
                     )
@@ -756,7 +770,7 @@ class RestoreMode:
             f"""
             CREATE DATABASE "{self.context.options.db_name}"
             WITH TEMPLATE template0
-                 OWNER {db_params[1]}
+                 OWNER "{db_params[1]}"
                  ENCODING '{db_params[2]}'
                  LC_COLLATE '{db_params[3]}'
                  LC_CTYPE '{db_params[4]}';

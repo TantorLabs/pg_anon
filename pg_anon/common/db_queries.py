@@ -228,31 +228,34 @@ def get_sequences_max_value_init_query() -> str:
     return """
     DO $$
     DECLARE
-        cmd text;
-        schema text;
+        rec record;
     BEGIN
-        FOR cmd, schema IN (
-            select
-               ('SELECT setval(''' || T.seq_name || ''', max("' || T.column_name || '") + 1) FROM "' || T.table_name || '"') as cmd,
-               T.table_schema as schema
-            FROM (
-                    select
-                       substring(t.column_default from 10 for length(t.column_default) - 21) as seq_name,
-                       t.table_schema,
-                       t.table_name,
-                       t.column_name
-                       FROM (
-                           SELECT table_schema, table_name, column_name, column_default
-                           FROM information_schema.columns
-                           WHERE column_default LIKE 'nextval%'
-                       ) T
-            ) T
-        ) LOOP
-            EXECUTE 'SET search_path = ''' || schema || ''';';
-            -- EXECUTE cmd;
-            raise notice '%', cmd;
+        FOR rec IN
+            SELECT
+                n.nspname AS schema_name,
+                c.relname AS table_name,
+                a.attname AS column_name,
+                pg_get_serial_sequence(
+                    quote_ident(n.nspname) || '.' || quote_ident(c.relname),
+                    a.attname
+                ) AS seq_fqn
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind = 'r'
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND pg_get_serial_sequence(
+                    quote_ident(n.nspname) || '.' || quote_ident(c.relname),
+                    a.attname
+                  ) IS NOT NULL
+        LOOP
+            EXECUTE format(
+                'SELECT setval(%L, COALESCE(max(%I), 0) + 1) FROM %I.%I',
+                rec.seq_fqn, rec.column_name, rec.schema_name, rec.table_name
+            );
         END LOOP;
-        SET search_path = 'public';
     END$$;"""
 
 

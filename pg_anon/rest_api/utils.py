@@ -1,5 +1,6 @@
 import asyncio
 import json
+import queue as std_queue
 import shutil
 from collections import deque
 from pathlib import Path
@@ -11,7 +12,7 @@ from pg_anon.common.constants import QUEUE_POLL_TIMEOUT
 from pg_anon.common.dto import PgAnonResult
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import simple_slugify, validate_exists_mode
-from pg_anon.rest_api.constants import DUMP_STORAGE_BASE_DIR
+from pg_anon.rest_api.constants import DUMP_STORAGE_BASE_DIR, SUBPROCESS_TERMINATE_TIMEOUT
 from pg_anon.rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
 
 
@@ -129,6 +130,18 @@ def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params
         loop.close()
 
 
+async def _terminate_subprocess(p: aioprocessing.AioProcess) -> None:
+    if not p.is_alive():
+        return
+
+    p.terminate()
+    try:
+        await asyncio.wait_for(p.coro_join(), timeout=SUBPROCESS_TERMINATE_TIMEOUT)
+    except asyncio.TimeoutError:
+        p.kill()
+        await p.coro_join()
+
+
 async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[str]) -> PgAnonResult:
     """Spawn a pg_anon worker process and await its result via an async queue."""
     if not validate_exists_mode(mode):
@@ -137,31 +150,35 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
     application_name_suffix = f"worker__{mode}__{operation_id}"
     cli_run_params.append(f"--application-name-suffix={application_name_suffix}")
 
-    queue = aioprocessing.AioQueue()
+    result_queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(
         name=f"pg_anon_{application_name_suffix}",
         target=run_pg_anon_subprocess_wrapper,
-        args=(queue, [mode, *cli_run_params]),
+        args=(result_queue, [mode, *cli_run_params]),
     )
     p.start()
 
     result: PgAnonResult | None = None
-    while True:
-        try:
-            coro_result = await queue.coro_get(timeout=QUEUE_POLL_TIMEOUT)
-        except queue.Empty:
-            if not p.is_alive():
-                raise PgAnonError(
-                    ErrorCode.OPERATION_FAILED,
-                    f"pg_anon worker process terminated unexpectedly (exit code: {p.exitcode})",
-                ) from None
-            continue
+    try:
+        while True:
+            try:
+                coro_result = await result_queue.coro_get(timeout=QUEUE_POLL_TIMEOUT)
+            except std_queue.Empty:
+                if not p.is_alive():
+                    raise PgAnonError(
+                        ErrorCode.OPERATION_FAILED,
+                        f"pg_anon worker process terminated unexpectedly (exit code: {p.exitcode})"
+                    ) from None
+                continue
 
-        if coro_result is None:
-            break
-        result = coro_result
-    await p.coro_join()
+            if coro_result is None:
+                break
+            result = coro_result
+        await p.coro_join()
+    except BaseException:
+        await _terminate_subprocess(p)
+        raise
 
     if result is None:
         raise PgAnonError(ErrorCode.OPERATION_FAILED, "Worker process completed without producing a result")
