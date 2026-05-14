@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict
 
 import aiohttp
 from pydantic import BaseModel
@@ -42,8 +41,7 @@ async def send_webhook(
     """Send a webhook POST request with exponential backoff retries."""
     payload = response_body.model_dump(by_alias=True)
     webhook_logger.info(
-        "Starting webhook request to %s with payload: %s",
-        url, json.dumps(payload, ensure_ascii=False, default=str)
+        "Starting webhook request to %s with payload: %s", url, json.dumps(payload, ensure_ascii=False, default=str)
     )
 
     headers = normalize_headers(extra_headers)
@@ -115,7 +113,7 @@ async def scan_callback(request: ScanRequest) -> None:
             logger.debug("Complete main operation")
         except Exception as ex:
             logger.debug("SCAN completed - FAIL")
-            logger.exception(f"SCAN failed with {type(ex).__name__}: {ex}")
+            logger.exception("SCAN failed with %s", type(ex).__name__)
             logger.debug("Send ERROR webhook")
 
             error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
@@ -171,9 +169,9 @@ async def dump_callback(request: DumpRequest) -> None:
     result: PgAnonResult | None = None
     dump_runner = DumpRunner(request)
     async with operation_logging_context(
-            operation_id=dump_runner.internal_operation_id,
-            log_dir=dump_runner.log_dir,
-            web_debug=request.web_debug,
+        operation_id=dump_runner.internal_operation_id,
+        log_dir=dump_runner.log_dir,
+        web_debug=request.web_debug,
     ):
         logger.debug("Run dump callback")
         try:
@@ -203,7 +201,7 @@ async def dump_callback(request: DumpRequest) -> None:
             dump_size = get_folder_size(dump_runner.full_dump_path)
         except Exception as ex:
             logger.debug("DUMP completed - FAIL")
-            logger.exception(f"DUMP failed with {type(ex).__name__}: {ex}")
+            logger.exception("DUMP failed with %s", type(ex).__name__)
 
             error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
             dump_runner_params: dict = {
@@ -226,7 +224,7 @@ async def dump_callback(request: DumpRequest) -> None:
                     status_id=ResponseStatus.ERROR.value,
                     status=ResponseStatus.ERROR.name.lower(),
                     webhook_metadata=request.webhook_metadata,
-                    **dump_runner_params
+                    **dump_runner_params,
                 ),
                 verify_ssl=request.webhook_verify_ssl,
                 extra_headers=request.webhook_extra_headers,
@@ -250,7 +248,6 @@ async def dump_callback(request: DumpRequest) -> None:
             verify_ssl=request.webhook_verify_ssl,
             extra_headers=request.webhook_extra_headers,
         )
-        _detach_log_file_handler(_log_handler)
 
 
 async def restore_callback(request: RestoreRequest) -> None:
@@ -285,7 +282,7 @@ async def restore_callback(request: RestoreRequest) -> None:
             logger.debug("RESTORE completed - OK")
         except Exception as ex:
             logger.debug("RESTORE completed - FAIL")
-            logger.exception(f"RESTORE failed with {type(ex).__name__}: {ex}")
+            logger.exception("RESTORE failed with %s", type(ex).__name__)
             logger.debug("Send ERROR webhook")
 
             error_code = ex.code if isinstance(ex, PgAnonError) else ErrorCode.INTERNAL_ERROR
@@ -297,9 +294,9 @@ async def restore_callback(request: RestoreRequest) -> None:
             if result:
                 restore_runner_params.update(
                     {
-                        "started": result.start_date.isoformat(timespec="seconds"),
-                        "ended": result.end_date.isoformat(timespec="seconds"),
-                        "run_options": result.run_options.to_dict(),
+                        "started": result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+                        "ended": result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+                        "run_options": result.run_options.to_dict() if result.run_options else "",
                     }
                 )
             await send_webhook(
@@ -309,7 +306,7 @@ async def restore_callback(request: RestoreRequest) -> None:
                     status_id=ResponseStatus.ERROR.value,
                     status=ResponseStatus.ERROR.name.lower(),
                     webhook_metadata=request.webhook_metadata,
-                    **restore_runner_params
+                    **restore_runner_params,
                 ),
                 verify_ssl=request.webhook_verify_ssl,
                 extra_headers=request.webhook_extra_headers,
@@ -321,12 +318,12 @@ async def restore_callback(request: RestoreRequest) -> None:
             url=request.webhook_status_url,
             response_body=StatelessRunnerResponse(
                 operation_id=request.operation_id,
-                internal_operation_id=restore_runner.result.internal_operation_id,
+                internal_operation_id=result.internal_operation_id,
                 status_id=ResponseStatus.SUCCESS.value,
                 status=ResponseStatus.SUCCESS.name.lower(),
-                started=restore_runner.result.start_date.isoformat(timespec="seconds") if result.start_date else "",
-                ended=restore_runner.result.end_date.isoformat(timespec="seconds") if result.end_date else "",
-                run_options=restore_runner.result.run_options.to_dict() if result.run_options else None,
+                started=result.start_date.isoformat(timespec="seconds") if result.start_date else "",
+                ended=result.end_date.isoformat(timespec="seconds") if result.end_date else "",
+                run_options=result.run_options.to_dict() if result.run_options else None,
                 webhook_metadata=request.webhook_metadata,
             ),
             verify_ssl=request.webhook_verify_ssl,

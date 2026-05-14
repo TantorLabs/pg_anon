@@ -19,8 +19,41 @@ class DBManager:
             password=self.params.test_db_user_password,
         )
 
+    async def _drop_subscriptions_for_db(self, db_name: str) -> None:
+        """Drop any logical-replication SUBSCRIPTIONs owned by db_name.
+
+        PG refuses `DROP DATABASE` while a SUBSCRIPTION points at it, so
+        tests that exercise publications/subscriptions leave stale entries
+        that block the next run. Runs in the context of db_name itself so
+        that ALTER SUBSCRIPTION ... SET (slot_name = NONE) hits the right
+        object (SUBSCRIPTION DDL is per-db).
+        """
+        try:
+            subs = await self.fetch("postgres", f"""
+                SELECT s.subname FROM pg_subscription s
+                JOIN pg_database d ON d.oid = s.subdbid
+                WHERE d.datname = '{db_name}'
+            """)
+        except Exception:
+            return
+        for row in subs:
+            sub = row["subname"]
+            try:
+                await self.execute(db_name, f"ALTER SUBSCRIPTION {sub} DISABLE")
+            except Exception:
+                pass
+            try:
+                await self.execute(db_name, f"ALTER SUBSCRIPTION {sub} SET (slot_name = NONE)")
+            except Exception:
+                pass
+            try:
+                await self.execute(db_name, f"DROP SUBSCRIPTION {sub}")
+            except Exception:
+                pass
+
     async def create_db(self, db_name: str) -> None:
         """Drop (if exists) and create a fresh database."""
+        await self._drop_subscriptions_for_db(db_name)
         await self.execute("postgres", f"""
             SELECT pg_terminate_backend(pid)
             FROM pg_stat_activity
@@ -42,6 +75,7 @@ class DBManager:
         """Drop database if exists. Skipped when KEEP_TEST_DBS is set."""
         if self.params.keep_test_dbs:
             return
+        await self._drop_subscriptions_for_db(db_name)
         await self.execute("postgres", f"""
             SELECT pg_terminate_backend(pid)
             FROM pg_stat_activity
@@ -58,10 +92,27 @@ class DBManager:
         finally:
             await db_conn.close()
 
-    async def fetch(self, db_name: str, query: str) -> list[Record]:
-        """Execute query and return results."""
+    async def fetch(self, db_name: str, query: str, *, text_dates: bool = False) -> list[Record]:
+        """Execute query and return results.
+
+        Pass ``text_dates=True`` to return date/timestamp columns as raw
+        strings. Needed for BC dates and 'infinity' values that Python's
+        datetime can't represent (asyncpg's default binary codec raises
+        ``ValueError: ordinal must be >= 1``). Off by default because
+        registering a text codec on a timestamp type breaks asyncpg's
+        handling of range types built on it (e.g. tstzrange).
+        """
         db_conn = await create_connection(self._connection_params(db_name))
         try:
+            if text_dates:
+                for type_name in ("date", "timestamp", "timestamptz"):
+                    await db_conn.set_type_codec(
+                        type_name,
+                        schema="pg_catalog",
+                        encoder=str,
+                        decoder=str,
+                        format="text",
+                    )
             return await db_conn.fetch(query)
         finally:
             await db_conn.close()

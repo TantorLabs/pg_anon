@@ -612,9 +612,7 @@ class CreateDictMode:
         return res
 
     async def _run_scan_tasks(self, fields_info_list: list[FieldInfo]) -> list:  # noqa: C901
-        self.context.logger.info(
-            "Using %s concurrent connections", self.context.options.db_connections_per_process
-        )
+        self.context.logger.info("Using %s concurrent connections", self.context.options.db_connections_per_process)
 
         pool = await create_pool(
             connection_params=self.context.connection_params,

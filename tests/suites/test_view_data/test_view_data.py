@@ -1,14 +1,16 @@
+"""Tests for `view-data` mode: preview rows of a single table with dict applied."""
+from __future__ import annotations
+
 import json
 
-from .conftest import expected_result
+from .conftest import input_dict
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
 from pg_anon.modes.view_data import ViewDataMode
 
 
-def _build_view_data_options(db_params, source_db, extra_args: list[str]) -> list[str]:
-    """Build base view-data CLI args, appending any extra flags."""
+def _options(db_params, source_db, dict_file: str, extra: list[str]) -> list[str]:
     base = [
         "view-data",
         f"--db-host={db_params.test_db_host}",
@@ -17,81 +19,65 @@ def _build_view_data_options(db_params, source_db, extra_args: list[str]) -> lis
         f"--db-port={db_params.test_db_port}",
         f"--db-user-password={db_params.test_db_user_password}",
         f"--config={db_params.test_config}",
+        f"--prepared-sens-dict-file={dict_file}",
         "--debug",
     ]
-    base.extend(extra_args)
+    base.extend(extra)
     return base
 
 
-async def test_02_view_data_print(source_db, db_params):
-    """View-data in print mode with prepared sens dict, schema=public, table=contracts."""
-    options = build_run_options(
-        _build_view_data_options(db_params, source_db, [
-            f"--prepared-sens-dict-file={expected_result('test_prepared_sens_dict_result_expected.py')}",
-            "--schema-name=public",
-            "--table-name=contracts",
-            "--limit=10",
-            "--offset=0",
-        ])
-    )
+async def test_view_data_print_hr_employee(source_db, db_params):
+    """Print mode on a table with masking rules in the dict."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
+        "--schema-name=hr",
+        "--table-name=employee",
+        "--limit=10",
+        "--offset=0",
+    ]))
     res = await PgAnonApp(options).run()
     assert res.result_code == ResultCode.DONE
 
 
-async def test_03_view_data_json(source_db, db_params):
-    """View-data with --json flag. All fields in json output must have equal number of rows."""
-    options = build_run_options(
-        _build_view_data_options(db_params, source_db, [
-            f"--prepared-sens-dict-file={expected_result('test_prepared_sens_dict_result_expected.py')}",
-            "--json",
-            "--schema-name=public",
-            "--table-name=contracts",
-            "--limit=10",
-            "--offset=0",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewDataMode(context)
-    await executor.run()
-
-    row_len = {len(row) for row in list(json.loads(executor.json).values())}
-    assert len(row_len) == 1
-
-
-async def test_04_view_data_null(source_db, db_params):
-    """View-data with high offset (null rows). Both print and json modes should return DONE."""
-    base_args = _build_view_data_options(db_params, source_db, [
-        f"--prepared-sens-dict-file={expected_result('test_prepared_sens_dict_result_expected.py')}",
-        "--schema-name=schm_mask_ext_exclude_2",
-        "--table-name=card_numbers",
+async def test_view_data_json_has_uniform_row_length(source_db, db_params):
+    """JSON output: every column key must map to the same number of rows."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
+        "--json",
+        "--schema-name=billing",
+        "--table-name=payment_card",
         "--limit=10",
-        "--offset=30235",
-    ])
-
-    options_print = build_run_options(base_args)
-    res_print = await PgAnonApp(options_print).run()
-    assert res_print.result_code == ResultCode.DONE
-
-    options_json = build_run_options(base_args + ["--json"])
-    res_json = await PgAnonApp(options_json).run()
-    assert res_json.result_code == ResultCode.DONE
-
-
-async def test_05_view_data_without_matched_rule(source_db, db_params):
-    """View-data with a dict that has no matching schema. Table should still have rows."""
-    options = build_run_options(
-        _build_view_data_options(db_params, source_db, [
-            f"--prepared-sens-dict-file={expected_result('test_prepared_sens_dict_result_with_no_existing_schema.py')}",
-            "--schema-name=schm_mask_ext_exclude_2",
-            "--table-name=card_numbers",
-            "--limit=10",
-            "--offset=0",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewDataMode(context)
+        "--offset=0",
+    ]))
+    executor = ViewDataMode(PgAnonApp(options).context)
     await executor.run()
 
+    lengths = {len(col) for col in json.loads(executor.json).values()}
+    assert len(lengths) == 1
+
+
+async def test_view_data_offset_past_end_still_succeeds(source_db, db_params):
+    """Offset past the last row should succeed with empty result — both print and json."""
+    base = [
+        "--schema-name=hr",
+        "--table-name=employee",
+        "--limit=10",
+        "--offset=999999",
+    ]
+    for extra in ([], ["--json"]):
+        options = build_run_options(
+            _options(db_params, source_db, input_dict("view_data.py"), base + extra)
+        )
+        res = await PgAnonApp(options).run()
+        assert res.result_code == ResultCode.DONE
+
+
+async def test_view_data_dict_without_matching_rule_still_shows_rows(source_db, db_params):
+    """If the dict has no rule for the viewed table, rows are still returned (raw)."""
+    options = build_run_options(_options(db_params, source_db, input_dict("unrelated.py"), [
+        "--schema-name=hr",
+        "--table-name=employee",
+        "--limit=10",
+        "--offset=0",
+    ]))
+    executor = ViewDataMode(PgAnonApp(options).context)
+    await executor.run()
     assert len(executor.table.rows) > 0

@@ -144,7 +144,7 @@ def get_sequences_query(excluded_schemas: list[str] | None = None) -> str:
     """Build a SQL query to retrieve sequences linked to table columns."""
     excluded_schemas_filter = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_str = ", ".join("'" + v.replace("'", "''") + "'" for v in excluded_schemas)
         excluded_schemas_filter = f"AND pn_t.nspname not in ({excluded_schemas_str})"
 
     return rf"""

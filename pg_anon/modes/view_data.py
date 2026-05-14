@@ -47,6 +47,12 @@ class ViewDataMode:
             self.field_names = []
 
         for field in fields_list:
+            # generated-always columns cannot be included in INSERT / COPY,
+            # so `get_dump_query` omits them. Keeping them in raw_field_names
+            # would raise a KeyError when we project the fetched record.
+            if field["is_generated"] == "ALWAYS":
+                continue
+
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
 

@@ -340,6 +340,7 @@ class StatelessRunnerRequest(BaseModel):
     webhook_verify_ssl: bool = True
     web_debug: bool = False
 
+
 class StatelessRunnerResponse(BaseModel):
     operation_id: str
     internal_operation_id: str | None = None

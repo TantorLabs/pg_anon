@@ -126,9 +126,19 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    "D102",  # missing docstring in public method (test methods are self-documenting)
-    "D103",  # missing docstring in public function (test methods are self-documenting)
-    "S101",  # use of assert (expected in tests)
+    "D102",   # missing docstring in public method (test methods are self-documenting)
+    "D103",   # missing docstring in public function (test methods are self-documenting)
+    "S101",   # use of assert (expected in tests)
+    "ANN001", # missing type annotation for function argument (pytest fixtures provide types)
+    "ANN201", # missing return type annotation for public function (tests always return None)
+    "ANN202", # missing return type annotation for private function (test helpers)
+    "ARG001", # unused function argument (pytest fixtures with side-effects)
+    "D205",   # blank line required between summary and description (too strict for tests)
+    "D400",   # first line should end with a period (too strict for tests)
+    "D401",   # first line should be in imperative mood (too strict for tests)
+    "D403",   # first word should be capitalized (too strict for tests)
+    "S110",   # try-except-pass without logging (probe-style assertions)
+    "SIM105", # use contextlib.suppress (probe-style assertions)
 ]
 
 [tool.ruff.lint.flake8-quotes]
@@ -162,3 +172,8 @@ no_implicit_reexport = true
 [[tool.mypy.overrides]]
 module = ["aioprocessing", "asyncpg", "yaml"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+check_untyped_defs = false
+disallow_untyped_defs = false

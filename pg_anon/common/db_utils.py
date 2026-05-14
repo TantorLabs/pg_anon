@@ -22,6 +22,11 @@ from pg_anon.logger import get_logger
 logger = get_logger()
 
 
+def _sql_quote_list(values: list[str]) -> str:
+    """Quote a list of identifiers as SQL string literals with proper escaping."""
+    return ", ".join("'" + v.replace("'", "''") + "'" for v in values)
+
+
 async def create_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> Connection:
     """Create a new asyncpg database connection."""
     return await asyncpg.connect(
@@ -125,13 +130,14 @@ async def get_fields_list(
     return fields_list
 
 
-async def get_all_fields_list(connection_params: ConnectionParams, exclude_schemas: list[str], server_settings: dict = SERVER_SETTINGS) -> dict[tuple[
-    str, str], list]:
+async def get_all_fields_list(
+    connection_params: ConnectionParams, exclude_schemas: list[str], server_settings: dict = SERVER_SETTINGS
+) -> dict[tuple[str, str], list]:
     """Get fields for all tables in one query."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     try:
         excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
-        placeholders = ", ".join(f"'{s}'" for s in excluded)
+        placeholders = _sql_quote_list(excluded)
 
         rows = await db_conn.fetch(f"""
             SELECT table_schema, table_name, column_name, udt_name, is_nullable, is_generated
@@ -152,8 +158,54 @@ async def get_all_fields_list(connection_params: ConnectionParams, exclude_schem
     return result
 
 
+async def get_event_triggers_in_schemas(
+    connection: Connection,
+    schemas: list[str] | None,
+) -> list[str]:
+    """Return names of EVENT TRIGGERs whose backing function lives in one of `schemas`."""
+    if not schemas:
+        return []
+    rows = await connection.fetch(
+        """
+        SELECT et.evtname
+        FROM pg_event_trigger et
+        JOIN pg_proc p ON p.oid = et.evtfoid
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = ANY($1::text[])
+        """,
+        list(schemas),
+    )
+    return [row["evtname"] for row in rows]
+
+
+async def get_legacy_inheritance_parents(
+    connection_params: ConnectionParams,
+    exclude_schemas: list[str] | None = None,
+    server_settings: dict = SERVER_SETTINGS,
+) -> set[tuple[str, str]]:
+    """Return (schema, table) pairs that are legacy-INHERITS parents (not declarative partitions)."""
+    excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
+    placeholders = _sql_quote_list(excluded)
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    try:
+        rows = await db_conn.fetch(f"""
+            SELECT DISTINCT
+                np.nspname AS parent_schema,
+                p.relname AS parent_table
+            FROM pg_inherits inh
+            JOIN pg_class p ON p.oid = inh.inhparent
+            JOIN pg_namespace np ON np.oid = p.relnamespace
+            WHERE p.relkind = 'r'
+              AND np.nspname NOT IN ({placeholders})
+        """)
+    finally:
+        await db_conn.close()
+
+    return {(row["parent_schema"], row["parent_table"]) for row in rows}
+
+
 async def get_rows_count(
-        connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+    connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
 ) -> int:
     """Get the row count for a table."""
     query = get_count_query(schema_name=schema_name, table_name=table_name)
@@ -190,6 +242,46 @@ async def exec_data_scan_func_per_field_query(
     return await statement.fetchval(field_info.nspname, field_info.relname, field_info.column_name, field_info.type)
 
 
+async def get_partitioned_ancestors(
+    connection: Connection,
+    tables: list[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return declarative-partitioning ancestors of the given tables."""
+    if not tables:
+        return set()
+
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
+    args = [item for pair in tables for item in pair]
+
+    rows = await connection.fetch(
+        f"""
+        WITH RECURSIVE
+        input_oids AS (
+            SELECT c.oid
+              FROM (VALUES {values_placeholders}) AS v(s, t)
+              JOIN pg_namespace n ON n.nspname = v.s
+              JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
+        ),
+        walk(child_oid, parent_oid) AS (
+            SELECT inh.inhrelid, inh.inhparent
+              FROM pg_inherits inh
+             WHERE inh.inhrelid IN (SELECT oid FROM input_oids)
+            UNION
+            SELECT inh.inhrelid, inh.inhparent
+              FROM pg_inherits inh
+              JOIN walk w ON w.parent_oid = inh.inhrelid
+        )
+        SELECT DISTINCT n.nspname, c.relname
+          FROM walk w
+          JOIN pg_class c ON c.oid = w.parent_oid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind = 'p'
+        """,
+        *args,
+    )
+    return {(r["nspname"], r["relname"]) for r in rows}
+
+
 async def get_db_tables(
     connection: Connection,
     excluded_schemas: list[str] | None = None,
@@ -197,7 +289,7 @@ async def get_db_tables(
     """Get the list of non-partitioned base tables in the database."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
+    excluded_schemas_str = _sql_quote_list([*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS])
 
     query = f"""
             SELECT t.table_schema, t.table_name
@@ -280,7 +372,7 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: lis
     """Get DDL statements for user-defined functions not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
+    excluded_schemas_str = _sql_quote_list([*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS])
 
     query = f"""
     SELECT pg_get_functiondef(p.oid) AS ddl
@@ -304,7 +396,7 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[
     """Get DDL statements for user-defined domains not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["pg_catalog", "information_schema", *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
 
     query = f"""
     SELECT
@@ -335,7 +427,7 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
     """Get DDL statements for user-defined composite and enum types."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["pg_catalog", "information_schema", *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
 
     query = f"""
     WITH user_types AS (
@@ -348,10 +440,10 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
             t.typbasetype
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
+        LEFT JOIN pg_class c ON c.oid = t.typrelid
             WHERE n.nspname NOT IN ({excluded_schemas_str})
-            AND t.typtype IN ('c', 'e') -- composite, enum
-            -- excluding row-types
-            AND (t.typtype != 'c' OR t.typrelid = 0)
+            AND t.typtype IN ('c', 'e')
+            AND (t.typtype != 'c' OR c.relkind = 'c')
             AND NOT EXISTS (
                 SELECT 1
                 FROM pg_depend d
@@ -390,11 +482,55 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
     return [row[0] for row in result]
 
 
+async def get_custom_ranges_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined range types not owned by extensions."""
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
+
+    query = f"""
+    SELECT
+        'DO $$' || E'\n' ||
+        'BEGIN' || E'\n' ||
+        '    IF NOT EXISTS (SELECT 1 FROM pg_type pt JOIN pg_namespace pn ON pn.oid = pt.typnamespace'
+        || ' WHERE pn.nspname = ' || quote_literal(n.nspname)
+        || ' AND pt.typname = ' || quote_literal(t.typname) || ') THEN' || E'\n' ||
+        '        CREATE TYPE ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
+        ' AS RANGE (subtype = ' || pg_catalog.format_type(r.rngsubtype, NULL) ||
+        COALESCE(
+            CASE WHEN col.collname IS NOT NULL AND col.collname <> 'default'
+                 THEN ', collation = ' || quote_ident(coln.nspname) || '.' || quote_ident(col.collname)
+                 ELSE NULL END,
+            ''
+        ) || ');' || E'\n' ||
+        '    END IF;' || E'\n' ||
+        'END;' || E'\n' ||
+        '$$;' AS ddl
+    FROM pg_range r
+    JOIN pg_type t ON t.oid = r.rngtypid
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    LEFT JOIN pg_collation col ON col.oid = r.rngcollation
+    LEFT JOIN pg_namespace coln ON coln.oid = col.collnamespace
+    WHERE n.nspname NOT IN ({excluded_schemas_str})
+        AND NOT EXISTS (
+            SELECT 1
+            FROM pg_depend d
+            WHERE d.classid = 'pg_type'::regclass
+              AND d.objid = t.oid
+              AND d.deptype = 'e'
+        )
+    ORDER BY n.nspname, t.typname;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
 async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     """Get DDL statements for user-defined casts not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ["information_schema", *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["information_schema", *excluded_schemas])
 
     query = f"""
     SELECT
@@ -435,6 +571,12 @@ async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[st
               AND d.objid = c.oid
               AND d.deptype = 'e'
         )
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_cast'::regclass
+              AND d.objid = c.oid
+              AND d.deptype IN ('i', 'a')
+        )
         -- source type not owned by extension
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -470,7 +612,7 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: lis
     excluded_schemas_filter = ""
     excluded_schemas_str = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_str = _sql_quote_list(excluded_schemas)
         excluded_schemas_filter = f"AND nf.nspname not in ({excluded_schemas_str})"
 
     query = f"""
@@ -505,7 +647,7 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: li
     excluded_schemas_filter = ""
     excluded_schemas_str = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
+        excluded_schemas_str = _sql_quote_list(excluded_schemas)
         excluded_schemas_filter = f"AND ns.nspname not in ({excluded_schemas_str})"
 
     query = f"""
@@ -538,19 +680,38 @@ async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]
     values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
-    WITH tables_to_check AS (
+    WITH RECURSIVE tables_to_check(schema_name, table_name) AS (
         VALUES {values_placeholders}
+    ),
+    expanded_tables(schema_name, table_name) AS (
+        SELECT
+            (schema_name::text COLLATE "C") AS schema_name,
+            (table_name::text COLLATE "C") AS table_name
+        FROM tables_to_check
+        UNION
+        SELECT an.nspname::text, a.relname::text
+        FROM expanded_tables et
+        JOIN pg_namespace n ON n.nspname = et.schema_name
+        JOIN pg_class c ON c.relname = et.table_name AND c.relnamespace = n.oid
+        JOIN pg_inherits inh ON inh.inhrelid = c.oid
+        JOIN pg_class a ON a.oid = inh.inhparent
+        JOIN pg_namespace an ON an.oid = a.relnamespace
     )
     SELECT
         n.nspname as "schema"
         ,t.relname as "table"
         ,i.relname AS "index_name"
-        ,tt.column1 IS null as "is_excluded"
+        ,tt.schema_name IS null as "is_excluded"
+        ,parent_n.nspname AS "parent_index_schema"
+        ,parent_i.relname AS "parent_index_name"
     FROM pg_index ix
     JOIN pg_class i ON i.oid = ix.indexrelid
     JOIN pg_class t ON t.oid = ix.indrelid
     JOIN pg_namespace n ON n.oid = t.relnamespace
-    LEFT JOIN tables_to_check tt ON tt.column1 = n.nspname AND tt.column2 = t.relname
+    LEFT JOIN expanded_tables tt ON tt.schema_name = n.nspname AND tt.table_name = t.relname
+    LEFT JOIN pg_inherits idx_inh ON idx_inh.inhrelid = i.oid
+    LEFT JOIN pg_class parent_i ON parent_i.oid = idx_inh.inhparent AND parent_i.relkind = 'I'
+    LEFT JOIN pg_namespace parent_n ON parent_n.oid = parent_i.relnamespace
     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
     """
 
@@ -609,33 +770,104 @@ async def get_views_related_to_tables(connection: Connection, tables: list[tuple
     return await connection.fetch(query, *args)
 
 
-async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list:
-    """Get foreign key constraints referencing the given tables."""
-    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
-    args = [item for table_data in tables for item in table_data]
-    query = f"""
-    WITH tables_to_check AS (
-        VALUES {values_placeholders}
-    )
-    select
-        n_from.nspname AS "table_schema_from"
-        ,c_from.relname AS "table_name_from"
-        ,conname AS "constraint_name"
-        ,n_to.nspname AS "table_schema_to"
-        ,c_to.relname AS "table_name_to"
-        ,t_to.column1 IS NULL AS "is_excluded"
-    FROM pg_constraint con
-    JOIN pg_class c_to ON c_to.oid = con.confrelid
-    JOIN pg_namespace n_to ON n_to.oid = c_to.relnamespace
-    LEFT JOIN tables_to_check t_to   ON t_to.column1 = n_to.nspname   AND t_to.column2 = c_to.relname
-    JOIN pg_class c_from ON c_from.oid = con.conrelid
-    JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
-    LEFT JOIN tables_to_check t_from ON t_from.column1 = n_from.nspname AND t_from.column2 = c_from.relname
-    WHERE con.contype IN ('p','f')
-      AND n_to.nspname NOT IN ('pg_catalog', 'information_schema')
-    """
+async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[dict]:
+    """Get foreign key and primary key constraints with partition-aware metadata."""
+    table_set = {(s, t) for s, t in tables}
 
-    return await connection.fetch(query, *args)
+    rows = await connection.fetch(
+        """
+        SELECT
+            n_from.nspname AS table_schema_from,
+            c_from.relname AS table_name_from,
+            con.conname    AS constraint_name,
+            n_to.nspname   AS table_schema_to,
+            c_to.relname   AS table_name_to,
+            c_to.relkind::text   AS referenced_relkind,
+            c_from.relkind::text AS referrer_relkind,
+            con.contype::text    AS contype,
+            c_to.oid   AS confrelid,
+            c_from.oid AS conrelid
+        FROM pg_constraint con
+        JOIN pg_class c_to ON c_to.oid = con.confrelid
+        JOIN pg_namespace n_to ON n_to.oid = c_to.relnamespace
+        JOIN pg_class c_from ON c_from.oid = con.conrelid
+        JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
+        WHERE con.contype IN ('p', 'f')
+          AND n_to.nspname NOT IN ('pg_catalog', 'information_schema')
+        """
+    )
+
+    if not rows:
+        return []
+
+    partitioned_oids: set[int] = set()
+    for r in rows:
+        if r["referenced_relkind"] == "p":
+            partitioned_oids.add(r["confrelid"])
+        if r["referrer_relkind"] == "p":
+            partitioned_oids.add(r["conrelid"])
+
+    leaves_by_oid: dict[int, list[tuple[str, str]]] = {}
+    if partitioned_oids:
+        leaf_rows = await connection.fetch(
+            """
+            WITH RECURSIVE descendants(root_oid, desc_oid, desc_relkind) AS (
+                SELECT c.oid, c.oid, c.relkind
+                  FROM pg_class c
+                 WHERE c.oid = ANY($1::oid[])
+                UNION ALL
+                SELECT d.root_oid, ch.oid, ch.relkind
+                  FROM descendants d
+                  JOIN pg_inherits inh ON inh.inhparent = d.desc_oid
+                  JOIN pg_class ch ON ch.oid = inh.inhrelid
+                 WHERE d.desc_relkind = 'p'
+            )
+            SELECT
+                d.root_oid,
+                n.nspname AS leaf_schema,
+                c.relname AS leaf_name
+            FROM descendants d
+            JOIN pg_class c ON c.oid = d.desc_oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE d.desc_relkind <> 'p'
+            """,
+            list(partitioned_oids),
+        )
+        for r in leaf_rows:
+            leaves_by_oid.setdefault(r["root_oid"], []).append((r["leaf_schema"], r["leaf_name"]))
+
+    result: list[dict] = []
+    for r in rows:
+        is_pk = r["contype"] == "p"
+        ref_table = (r["table_schema_to"], r["table_name_to"])
+        from_table = (r["table_schema_from"], r["table_name_from"])
+
+        ref_leaves = leaves_by_oid.get(r["confrelid"], []) if r["referenced_relkind"] == "p" else [ref_table]
+        from_leaves = leaves_by_oid.get(r["conrelid"], []) if r["referrer_relkind"] == "p" else [from_table]
+
+        if is_pk:
+            is_excluded = ref_table not in table_set
+        else:
+            is_excluded = any(leaf not in table_set for leaf in (ref_leaves + from_leaves))
+
+        result.append(
+            {
+                "table_schema_from": r["table_schema_from"],
+                "table_name_from": r["table_name_from"],
+                "constraint_name": r["constraint_name"],
+                "table_schema_to": r["table_schema_to"],
+                "table_name_to": r["table_name_to"],
+                "is_excluded": is_excluded,
+                "referenced_relkind": r["referenced_relkind"],
+                "referrer_relkind": r["referrer_relkind"],
+                "referenced_partition_leaves": [[s, t] for s, t in ref_leaves]
+                if r["referenced_relkind"] == "p"
+                else None,
+                "referrer_partition_leaves": [[s, t] for s, t in from_leaves] if r["referrer_relkind"] == "p" else None,
+            }
+        )
+
+    return result
 
 
 async def check_db_is_empty(connection: Connection) -> bool:
@@ -729,9 +961,15 @@ async def get_dump_query(  # noqa: C901, PLR0912
     nulls_last: bool = False,
     files: dict | None = None,
     fields_cache: dict | None = None,
+    legacy_inherits_parents: set[tuple[str, str]] | None = None,
 ) -> str | None:
     """Build the SELECT query used to dump a table with optional anonymization rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
+    from_clause_target = (
+        f"ONLY {table_name_full}"
+        if legacy_inherits_parents and (table_schema, table_name) in legacy_inherits_parents
+        else table_name_full
+    )
 
     # black list has the highest priority for pg_dump / pg_restore
     if ctx.black_listed_tables and (table_schema, table_name) in ctx.black_listed_tables:
@@ -804,7 +1042,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
             fields.append(f'"{column_name}" as "{column_name}"')
 
     fields_expr = ",\n".join(fields)
-    query = f"SELECT {fields_expr}\nFROM {table_name_full}"
+    query = f"SELECT {fields_expr}\nFROM {from_clause_target}"
     if sql_condition := table_rule and table_rule.get("sql_condition"):
         condition = re.sub(r"^\s*where\b\s*", "", sql_condition, flags=re.IGNORECASE)
         query += f"\nWHERE {condition}"

@@ -1,11 +1,10 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
 
 SUITE = Path(__file__).resolve().parent
-
-SOURCE_DB = "test_rc_source"
-TARGET_DB = "test_rc_target"
 
 
 def input_dict(name: str) -> str:
@@ -13,20 +12,23 @@ def input_dict(name: str) -> str:
 
 
 def output_path(name: str) -> str:
-    d = SUITE / "output" / name
-    d.mkdir(parents=True, exist_ok=True)
-    return str(d)
+    out = SUITE / "output" / name
+    out.mkdir(parents=True, exist_ok=True)
+    return str(out)
 
 
-@pytest.fixture(scope="module")
-async def source_db(db_manager):
-    await db_manager.create_db(SOURCE_DB)
-    yield SOURCE_DB
-    await db_manager.drop_db(SOURCE_DB)
+@pytest.fixture
+async def source_db(db_manager, request):
+    """Fresh source per test — these tests mutate it (re-init, add extras)."""
+    name = f"pg_anon_clean_src_{request.node.name}"[:60]
+    await db_manager.create_db(name)
+    yield name
+    await db_manager.drop_db(name)
 
 
-@pytest.fixture(scope="module")
-async def target_db(db_manager):
-    await db_manager.create_db(TARGET_DB)
-    yield TARGET_DB
-    await db_manager.drop_db(TARGET_DB)
+@pytest.fixture
+async def target_db(db_manager, request):
+    name = f"pg_anon_clean_tgt_{request.node.name}"[:60]
+    await db_manager.create_db(name)
+    yield name
+    await db_manager.drop_db(name)

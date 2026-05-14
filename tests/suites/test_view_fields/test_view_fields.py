@@ -1,3 +1,11 @@
+"""Tests for `view-fields` mode (scan-like preview without writing).
+
+Each test invokes ViewFieldsMode directly against the source DB; no dump/restore
+happens. We check the same invariants as the old test_view_fields suite but
+against the domain-oriented fixture so expectations stay legible.
+"""
+from __future__ import annotations
+
 import json
 import re
 
@@ -6,14 +14,13 @@ import pytest
 from .conftest import input_dict
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
-from pg_anon.common.db_utils import get_scan_fields_count
+from pg_anon.common.db_utils import get_scan_fields_list
 from pg_anon.common.errors import PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.modes.view_fields import ViewFieldsMode
 
 
-def _build_view_fields_options(db_params, source_db, dict_file: str, extra_args: list[str] | None = None) -> list[str]:
-    """Build base view-fields CLI args, appending any extra flags."""
+def _options(db_params, source_db, dict_file: str, extra: list[str] | None = None) -> list[str]:
     base = [
         "view-fields",
         f"--db-host={db_params.test_db_host}",
@@ -25,245 +32,170 @@ def _build_view_fields_options(db_params, source_db, dict_file: str, extra_args:
         f"--prepared-sens-dict-file={dict_file}",
         "--debug",
     ]
-    if extra_args:
-        base.extend(extra_args)
+    if extra:
+        base.extend(extra)
     return base
 
 
-def _count_fields_by_type(executor: ViewFieldsMode) -> dict[str, int]:
-    """Count fields that are in the dictionary vs not in the dictionary."""
-    counters = {"in_dict": 0, "not_in_dict": 0}
-    for field in executor.fields:
+def _count_sens_vs_plain(executor: ViewFieldsMode) -> tuple[int, int]:
+    sens = plain = 0
+    for field in executor.fields or []:
         if field.rule != "---":
-            dict_rule = get_dict_rule_for_table(
+            rule = get_dict_rule_for_table(
                 dictionary_rules=executor.context.prepared_dictionary_obj["dictionary"],
                 schema=field.nspname,
                 table=field.relname,
             )
-            if dict_rule and (field.column_name in dict_rule.get("fields", {}) or dict_rule.get("raw_sql")):
-                counters["in_dict"] += 1
+            if rule and (field.column_name in rule.get("fields", {}) or rule.get("raw_sql")):
+                sens += 1
         else:
-            counters["not_in_dict"] += 1
-    return counters
+            plain += 1
+    return sens, plain
 
 
-async def test_02_view_fields_full(source_db, db_params):
-    """View all fields. Row count should equal scan fields minus excluded fields."""
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"))
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_returns_every_scannable_field_minus_excluded(source_db, db_params):
+    """Full view: count rows must equal scan-fields-count minus `dictionary_exclude` entries."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py")))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    all_rows_count = await get_scan_fields_count(context.connection_params)
-    excluded_fields_count = 1
-    assert len(executor.table.rows) == all_rows_count - excluded_fields_count
-
-    fields_counters = _count_fields_by_type(executor)
-    assert all_rows_count - excluded_fields_count == fields_counters["in_dict"] + fields_counters["not_in_dict"]
-
-
-async def test_03_view_fields_full_by_schema(source_db, db_params):
-    """View fields filtered by --schema-name=public. All fields must belong to public schema."""
-    schema_name = "public"
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--schema-name={schema_name}",
-        ])
+    scan_fields = await get_scan_fields_list(executor.context.connection_params)
+    scan_total = len(scan_fields)
+    excluded = sum(
+        1 for f in scan_fields
+        if f["nspname"] == "quirks" and f["relname"] == "with_nulls"
     )
-    context = PgAnonApp(options).context
+    assert excluded > 0, "fixture invariant: quirks.with_nulls must have scannable fields"
 
-    executor = ViewFieldsMode(context)
+    assert len(executor.table.rows) == scan_total - excluded
+    sens, plain = _count_sens_vs_plain(executor)
+    assert sens + plain == scan_total - excluded
+
+
+async def test_view_fields_filter_by_schema_name(source_db, db_params):
+    """--schema-name=hr filters to hr only."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--schema-name=hr",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    for field in executor.fields:
-        assert field.nspname == schema_name
+    assert executor.fields
+    assert all(f.nspname == "hr" for f in executor.fields)
 
 
-async def test_04_view_fields_full_by_schema_mask(source_db, db_params):
-    """View fields filtered by --schema-mask=^pub.*. All fields must match the regex."""
-    schema_mask = "^pub.*"
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--schema-mask={schema_mask}",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_filter_by_schema_mask(source_db, db_params):
+    """Regex schema mask keeps only matching schemas."""
+    mask = r"^bill"
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        f"--schema-mask={mask}",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    for field in executor.fields:
-        assert re.search(schema_mask, field.nspname) is not None
+    assert executor.fields
+    assert all(re.search(mask, f.nspname) for f in executor.fields)
 
 
-async def test_05_view_fields_full_by_table(source_db, db_params):
-    """View fields filtered by --table-name=inn_info. All fields must belong to inn_info."""
-    table_name = "inn_info"
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--table-name={table_name}",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_filter_by_table_name(source_db, db_params):
+    """--table-name=employee limits to hr.employee rows."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--table-name=employee",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    for field in executor.fields:
-        assert field.relname == table_name
+    assert executor.fields
+    assert all(f.relname == "employee" for f in executor.fields)
 
 
-async def test_06_view_fields_full_by_table_mask(source_db, db_params):
-    r"""View fields filtered by --table-mask=.*\d$. All fields must match the regex."""
-    table_mask = r".*\d$"
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--table-mask={table_mask}",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_filter_by_table_mask(source_db, db_params):
+    r"""--table-mask=^payment keeps only payment_* tables."""
+    mask = r"^payment"
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        f"--table-mask={mask}",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    for field in executor.fields:
-        assert re.search(table_mask, field.relname) is not None
+    assert executor.fields
+    assert all(re.search(mask, f.relname) for f in executor.fields)
 
 
-async def test_07_view_fields_full_with_cut_output_and_notice(source_db, db_params):
-    """View fields with --fields-count=5. Output should be cut to exactly 5 fields."""
-    fields_scan_length = 5
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--fields-count={fields_scan_length}",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_respects_fields_count_limit(source_db, db_params):
+    """--fields-count=5 must truncate output to exactly 5."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--fields-count=5",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
-    all_rows_count = await get_scan_fields_count(context.connection_params)
-    assert len(executor.table.rows) != all_rows_count
-    assert len(executor.table.rows) == fields_scan_length
-    assert len(executor.fields) == fields_scan_length
+    assert len(executor.fields) == 5
+    assert len(executor.table.rows) == 5
     assert executor.fields_cut_by_limits is True
 
 
-async def test_08_view_fields_with_only_sensitive_fields(source_db, db_params):
-    """Compare --view-only-sensitive-fields run with full run. Sensitive sets must match."""
-    dict_file = input_dict("test.py")
+async def test_view_fields_only_sensitive_equals_sensitive_subset_of_full(source_db, db_params):
+    """--view-only-sensitive-fields must produce exactly the sensitive subset of the full run."""
+    dict_file = input_dict("view_fields.py")
 
-    options_only_sensitive = build_run_options(
-        _build_view_fields_options(db_params, source_db, dict_file, [
-            "--view-only-sensitive-fields",
-        ])
-    )
-    context_only_sensitive = PgAnonApp(options_only_sensitive).context
-    executor_only_sensitive = ViewFieldsMode(context_only_sensitive)
-    await executor_only_sensitive.run()
+    only_sens = ViewFieldsMode(PgAnonApp(build_run_options(
+        _options(db_params, source_db, dict_file, ["--view-only-sensitive-fields"])
+    )).context)
+    await only_sens.run()
 
-    options_full = build_run_options(
-        _build_view_fields_options(db_params, source_db, dict_file)
-    )
-    context_full = PgAnonApp(options_full).context
-    executor_full = ViewFieldsMode(context_full)
-    await executor_full.run()
+    full = ViewFieldsMode(PgAnonApp(build_run_options(
+        _options(db_params, source_db, dict_file)
+    )).context)
+    await full.run()
 
-    all_rows_count = await get_scan_fields_count(context_full.connection_params)
-    excluded_fields_count = 1
-
-    assert len(executor_full.fields) != len(executor_only_sensitive.fields)
-    assert len(executor_full.table.rows) == all_rows_count - excluded_fields_count
-    assert len(executor_only_sensitive.table.rows) != all_rows_count - excluded_fields_count
-
-    sensitive_fields_in_full_executor = {
-        str(field) for field in executor_full.fields if field.rule != "---"
-    }
-    executor_only_sensitive_fields_set = {str(field) for field in executor_only_sensitive.fields}
-
-    assert sensitive_fields_in_full_executor == executor_only_sensitive_fields_set
+    sensitive_of_full = {str(f) for f in full.fields if f.rule != "---"}
+    only_sens_set = {str(f) for f in only_sens.fields}
+    assert sensitive_of_full == only_sens_set
+    assert len(only_sens.fields) < len(full.fields)
 
 
-async def test_09_view_filter_json_output(source_db, db_params):
-    """View fields with --json. Table should be None, json output length should match field count."""
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            "--json",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_json_output_matches_field_count(source_db, db_params):
+    """--json → .table is None, .json decodes to a list with one entry per field."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--json",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
 
     assert executor.table is None
     assert executor.json is not None
-
-    all_rows_count = await get_scan_fields_count(context.connection_params)
-    excluded_fields_count = 1
-    json_data_len = len(json.loads(executor.json))
-    assert json_data_len == all_rows_count - excluded_fields_count
-    assert json_data_len == len(executor.fields)
+    assert len(json.loads(executor.json)) == len(executor.fields)
 
 
-async def test_10_view_fields_exception_on_zero_fields(source_db, db_params):
-    """View fields with --fields-count=0 should raise PgAnonError."""
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            "--fields-count=0",
-        ])
-    )
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
+async def test_view_fields_raises_on_zero_fields_count(source_db, db_params):
+    """--fields-count=0 is invalid input → PgAnonError."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--fields-count=0",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
     with pytest.raises(PgAnonError):
         await executor.run()
-
     assert executor.fields is None
     assert executor.table is None
 
 
-async def test_10_view_fields_exception_on_filter_to_zero_fields(source_db, db_params):
-    """View fields with non-existent schema. Should NOT raise, but return 0 fields."""
-    schema_name = "not_exists_schema_name"
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test.py"), [
-            f"--schema-name={schema_name}",
-        ])
-    )
-    executor_failed = False
+async def test_view_fields_non_existent_schema_returns_zero_fields(source_db, db_params):
+    """Filter to a missing schema → returns 0 fields, no exception."""
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
+        "--schema-name=does_not_exist",
+    ]))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
+    await executor.run()
 
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
-    try:
-        await executor.run()
-    except ValueError:
-        executor_failed = True
-
-    assert executor_failed is False
-    assert len(executor.fields) == 0
+    assert executor.fields == []
     assert executor.table is not None
     assert executor.fields_cut_by_limits is False
 
 
-async def test_12_view_fields_exception_on_empty_prepared_dictionary(source_db, db_params):
-    """View fields with empty dictionary. Should NOT raise ValueError."""
-    options = build_run_options(
-        _build_view_fields_options(db_params, source_db, input_dict("test_empty_dictionary.py"))
-    )
-    executor_failed = False
-
-    context = PgAnonApp(options).context
-
-    executor = ViewFieldsMode(context)
-    try:
-        await executor.run()
-    except ValueError:
-        executor_failed = True
-
-    assert executor_failed is False
+async def test_view_fields_empty_dictionary_is_allowed(source_db, db_params):
+    """Empty dictionary must not raise — every field is simply 'not in dict'."""
+    options = build_run_options(_options(db_params, source_db, input_dict("empty.py")))
+    executor = ViewFieldsMode(PgAnonApp(options).context)
+    await executor.run()
+    assert executor.fields is not None

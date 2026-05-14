@@ -272,10 +272,12 @@ class Metadata:
         self.extensions: dict[str, dict[str, Any]] | None = None
         self.partial_dump_types: list[str] | None = None
         self.partial_dump_domains: list[str] | None = None
+        self.partial_dump_ranges: list[str] | None = None
         self.partial_dump_functions: list[str] | None = None
         self.partial_dump_casts: list[str] | None = None
         self.partial_dump_operators: list[str] | None = None
         self.partial_dump_aggregates: list[str] | None = None
+        self.excluded_event_triggers: list[str] | None = None
 
     def _serialize_data(self) -> dict:  # noqa: C901, PLR0912
         data = {
@@ -298,10 +300,12 @@ class Metadata:
             "extensions": self.extensions,
             "partial_dump_types": self.partial_dump_types,
             "partial_dump_domains": self.partial_dump_domains,
+            "partial_dump_ranges": self.partial_dump_ranges,
             "partial_dump_functions": self.partial_dump_functions,
             "partial_dump_casts": self.partial_dump_casts,
             "partial_dump_operators": self.partial_dump_operators,
             "partial_dump_aggregates": self.partial_dump_aggregates,
+            "excluded_event_triggers": self.excluded_event_triggers,
         }
 
         if self.sequences_last_values is None:
@@ -330,6 +334,8 @@ class Metadata:
             del data["partial_dump_types"]
         if self.partial_dump_domains is None:
             del data["partial_dump_domains"]
+        if self.partial_dump_ranges is None:
+            del data["partial_dump_ranges"]
         if self.partial_dump_functions is None:
             del data["partial_dump_functions"]
         if self.partial_dump_casts is None:
@@ -338,6 +344,8 @@ class Metadata:
             del data["partial_dump_operators"]
         if self.partial_dump_aggregates is None:
             del data["partial_dump_aggregates"]
+        if self.excluded_event_triggers is None:
+            del data["excluded_event_triggers"]
 
         return data
 
@@ -370,10 +378,12 @@ class Metadata:
         self.partial_dump_schemas = data.get("partial_dump_schemas")
         self.partial_dump_types = data.get("partial_dump_types")
         self.partial_dump_domains = data.get("partial_dump_domains")
+        self.partial_dump_ranges = data.get("partial_dump_ranges")
         self.partial_dump_functions = data.get("partial_dump_functions")
         self.partial_dump_casts = data.get("partial_dump_casts")
         self.partial_dump_operators = data.get("partial_dump_operators")
         self.partial_dump_aggregates = data.get("partial_dump_aggregates")
+        self.excluded_event_triggers = data.get("excluded_event_triggers")
 
     def save_into_file(self, file_path: Path) -> None:
         """Serialize and save metadata to a JSON file."""

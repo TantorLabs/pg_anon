@@ -1,4 +1,5 @@
 from pg_anon.common.enums import AnonMode
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.rest_api.enums import DumpMode
 from pg_anon.rest_api.pydantic_models import DumpRequest
 from pg_anon.rest_api.runners.background import BaseRunner
@@ -10,8 +11,13 @@ class DumpRunner(BaseRunner):
 
     def __init__(self, request: DumpRequest) -> None:
         self.mode: str = AnonMode.DUMP.value
-        self.full_dump_path: str | None = None
         super().__init__(request)
+        if request.validated_output_path is None:
+            raise PgAnonError(
+                ErrorCode.INVALID_OUTPUT_DIR,
+                "DumpRequest is missing validated_output_path",
+            )
+        self.full_dump_path: str = request.validated_output_path
         self._set_mode()
 
     def _set_mode(self) -> None:
@@ -50,7 +56,6 @@ class DumpRunner(BaseRunner):
             )
 
     def _prepare_dump_path_cli_params(self) -> None:
-        self.full_dump_path = self.request.validated_output_path
         self.cli_params.extend(
             [
                 f"--output-dir={self.full_dump_path}",

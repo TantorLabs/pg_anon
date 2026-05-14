@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
@@ -5,10 +7,7 @@ import pytest
 from pg_anon.common.enums import ResultCode
 
 SUITE = Path(__file__).resolve().parent
-
-SOURCE_DB = "test_vl_source"
-TARGET_DB = "test_vl_target"
-TARGET_DB_2 = "test_vl_target_2"
+SOURCE_DB = "pg_anon_validate_source"
 
 
 def input_dict(name: str) -> str:
@@ -16,38 +15,24 @@ def input_dict(name: str) -> str:
 
 
 def output_path(name: str) -> str:
-    d = SUITE / "output" / name
-    d.mkdir(parents=True, exist_ok=True)
-    return str(d)
+    out = SUITE / "output" / name
+    out.mkdir(parents=True, exist_ok=True)
+    return str(out)
 
 
 @pytest.fixture(scope="module")
-async def source_db(db_manager, pg_anon_runner, test_data):
+async def source_db(db_manager, pg_anon_runner, fixtures):
     await db_manager.create_db(SOURCE_DB)
     res = await pg_anon_runner.run("init", SOURCE_DB)
     assert res.result_code == ResultCode.DONE
-
-    await test_data.core_tables(SOURCE_DB)
-    await test_data.customer_domain(SOURCE_DB)
-    await test_data.mask_include_tables(SOURCE_DB)
-    await test_data.mask_exclude_tables(SOURCE_DB)
-    await test_data.misc_public_tables(SOURCE_DB)
-    await test_data.complex_schema_tables(SOURCE_DB)
-    await test_data.schm_other_extras(SOURCE_DB)
-
+    await fixtures.build_minimal_env(SOURCE_DB)
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)
 
 
-@pytest.fixture(scope="module")
-async def target_db(db_manager):
-    await db_manager.create_db(TARGET_DB)
-    yield TARGET_DB
-    await db_manager.drop_db(TARGET_DB)
-
-
-@pytest.fixture(scope="module")
-async def target_db_2(db_manager):
-    await db_manager.create_db(TARGET_DB_2)
-    yield TARGET_DB_2
-    await db_manager.drop_db(TARGET_DB_2)
+@pytest.fixture
+async def target_db(db_manager, request):
+    name = f"pg_anon_validate_tgt_{request.node.name}"[:60]
+    await db_manager.create_db(name)
+    yield name
+    await db_manager.drop_db(name)

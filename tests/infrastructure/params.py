@@ -38,7 +38,7 @@ class TestParams:
         if os.environ.get("KEEP_TEST_DBS", "").lower() in ("1", "true", "yes"):
             self.keep_test_dbs = True
         if os.environ.get("TEST_DB_CONNECTIONS_PER_PROCESS") is not None:
-            self.db_connections_per_process = os.environ["TEST_DB_CONNECTIONS_PER_PROCESS"]
+            self.db_connections_per_process = int(os.environ["TEST_DB_CONNECTIONS_PER_PROCESS"])
         if os.environ.get("TEST_PROCESSES") is not None:
-            self.test_processes = os.environ["TEST_PROCESSES"]
+            self.test_processes = int(os.environ["TEST_PROCESSES"])
         self.test_config = os.environ.get("TEST_CONFIG", config_path)

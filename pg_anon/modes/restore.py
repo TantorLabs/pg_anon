@@ -76,13 +76,11 @@ class RestoreMode:
 
         self._load_metadata()
 
-        self._db_must_be_empty = (
-                self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE)
-                and not (self.context.options.clean_db or self.context.options.drop_db)
+        self._db_must_be_empty = self.context.options.mode in (AnonMode.RESTORE, AnonMode.SYNC_STRUCT_RESTORE) and not (
+            self.context.options.clean_db or self.context.options.drop_db
         )
         self._skip_pre_data_restore = (
-                self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
-                or self.metadata.dbg_stage_2_validate_data
+            self.context.options.mode == AnonMode.SYNC_DATA_RESTORE or self.metadata.dbg_stage_2_validate_data
         )
         self._skip_post_data_restore = (
             self.context.options.mode == AnonMode.SYNC_DATA_RESTORE
@@ -140,6 +138,44 @@ class RestoreMode:
                 ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!"
             )
 
+    async def _check_no_extra_tables_in_target(self, connection: Connection) -> None:
+        if not self.context.options.clean_db:
+            return
+        if self.context.options.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
+            return
+        if self.context.black_listed_tables or self._whitelist_active:
+            return
+
+        dumped_tables = {(info["schema"], info["table"]) for info in (self.metadata.files or {}).values()}
+
+        rows = await connection.fetch(
+            """
+            SELECT n.nspname, c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_inherits inh ON inh.inhrelid = c.oid
+            LEFT JOIN pg_class p ON p.oid = inh.inhparent AND p.relkind = 'p'
+            WHERE c.relkind IN ('r', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
+              AND p.oid IS NULL
+            """
+        )
+        target_tables = {(r[0], r[1]) for r in rows}
+        extras = target_tables - dumped_tables
+        if not extras:
+            return
+
+        sorted_extras = sorted(extras)
+        preview = ", ".join(f'"{s}"."{t}"' for s, t in sorted_extras[:10])
+        if len(sorted_extras) > 10:
+            preview += f", ... (+{len(sorted_extras) - 10} more)"
+        raise PgAnonError(
+            ErrorCode.TARGET_HAS_EXTRA_TABLES,
+            f"Target DB has {len(sorted_extras)} table(s) not present in the dump: {preview}. "
+            "--clean-db would leave them untouched — aborting to avoid silent data loss.",
+        )
+
     async def _check_free_disk_space(self, connection: Connection) -> None:
         data_directory_location: str | None = await connection.fetchval(
             """
@@ -195,7 +231,9 @@ class RestoreMode:
                     )
 
         if self.metadata.indexes:
-            for index in self.metadata.indexes.values():
+            indexes_values = list(self.metadata.indexes.values())
+
+            for index in indexes_values:
                 # Update blacklist for INDEX
                 if index["is_excluded"] or (index["schema"], index["table"]) in self.context.black_listed_tables:
                     blacklist.append(
@@ -206,6 +244,24 @@ class RestoreMode:
                 if not index["is_excluded"] and (index["schema"], index["table"]) in self.context.white_listed_tables:
                     whitelist.append(
                         re.compile(rf".*INDEX {re.escape(index['schema'])} {re.escape(index['index_name'])}")
+                    )
+
+            excluded_index_keys: set[tuple[str, str]] = {
+                (idx["schema"], idx["index_name"])
+                for idx in indexes_values
+                if idx["is_excluded"] or (idx["schema"], idx["table"]) in self.context.black_listed_tables
+            }
+            for idx in indexes_values:
+                parent_schema = idx.get("parent_index_schema")
+                parent_name = idx.get("parent_index_name")
+                if not parent_schema or not parent_name:
+                    continue
+                if (parent_schema, parent_name) in excluded_index_keys:
+                    blacklist.append(
+                        re.compile(
+                            rf".*INDEX ATTACH {re.escape(idx['schema'])} "
+                            rf"{re.escape(idx['index_name'])}"
+                        )
                     )
 
         if self.metadata.views:
@@ -232,40 +288,42 @@ class RestoreMode:
             for constraint in self.metadata.constraints.values():
                 constraint_table_to = (constraint["table_schema_to"], constraint["table_name_to"])
                 constraint_table_from = (constraint["table_schema_from"], constraint["table_name_from"])
-                one_of_constraint_tables_in_black_list = (
-                    constraint_table_to in self.context.black_listed_tables
-                    or constraint_table_from in self.context.black_listed_tables
-                )
-                if constraint["is_excluded"] or one_of_constraint_tables_in_black_list:
-                    # Update blacklist for FK CONSTRAINT
-                    blacklist.extend(
-                        [
-                            re.compile(
-                                rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}"
-                            )
-                        ]
-                    )
 
-                constraint_tables_both_in_white_list = (
-                    constraint_table_to in self.context.white_listed_tables
-                    and constraint_table_from in self.context.white_listed_tables
+                ref_leaves_raw = constraint.get("referenced_partition_leaves") or [list(constraint_table_to)]
+                from_leaves_raw = constraint.get("referrer_partition_leaves") or [list(constraint_table_from)]
+                ref_leaves = [tuple(x) for x in ref_leaves_raw]
+                from_leaves = [tuple(x) for x in from_leaves_raw]
+                all_leaves = ref_leaves + from_leaves
+
+                in_black = any(leaf in self.context.black_listed_tables for leaf in all_leaves)
+                all_in_white = all(leaf in self.context.white_listed_tables for leaf in all_leaves)
+                fully_dumped = not constraint.get("is_excluded", False)
+
+                fk_regex = re.compile(
+                    rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} "
+                    rf"{re.escape(constraint['table_name_from'])} "
+                    rf"{re.escape(constraint['constraint_name'])}"
                 )
-                if not constraint["is_excluded"] and constraint_tables_both_in_white_list:
-                    # Update whitelist for FK CONSTRAINT
-                    whitelist.extend(
-                        [
-                            re.compile(
-                                rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} {re.escape(constraint['table_name_from'])} {re.escape(constraint['constraint_name'])}"
-                            )
-                        ]
-                    )
+
+                if not fully_dumped or in_black:
+                    blacklist.append(fk_regex)
+                elif self._whitelist_active:
+                    if all_in_white:
+                        whitelist.append(fk_regex)
+                    else:
+                        blacklist.append(fk_regex)
 
         if self._restored_schemas:
             blacklist.extend([re.compile(rf".*SCHEMA - {re.escape(schema)}") for schema in self._restored_schemas])
 
+        if self.metadata.excluded_event_triggers:
+            for trigger_name in self.metadata.excluded_event_triggers:
+                blacklist.append(re.compile(rf".*EVENT TRIGGER - {re.escape(trigger_name)}\b"))
+
         has_custom_ddl = bool(
             self.metadata.partial_dump_types
             or self.metadata.partial_dump_domains
+            or self.metadata.partial_dump_ranges
             or self.metadata.partial_dump_functions
             or self.metadata.partial_dump_casts
             or self.metadata.partial_dump_operators
@@ -406,9 +464,7 @@ class RestoreMode:
                 schema = sequence_data["schema"].replace("'", "''")
                 sequence_name = sequence_data["seq_name"].replace("'", "''")
                 value = sequence_data["value"]
-                query = (
-                    f"SELECT setval(quote_ident('{schema}') || '.' || quote_ident('{sequence_name}'), {value} + 1);"
-                )
+                query = f"SELECT setval(quote_ident('{schema}') || '.' || quote_ident('{sequence_name}'), {value} + 1);"
                 self.context.logger.info(query)
                 await connection.execute(query)
 
@@ -468,7 +524,7 @@ class RestoreMode:
                 if not extension_data["relocatable"]:
                     raise PgAnonError(
                         ErrorCode.EXTENSION_ERROR,
-                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_schema}" is excluded'
+                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_schema}" is excluded',
                     )
                 self.context.logger.warning(
                     'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is excluded',
@@ -545,6 +601,9 @@ class RestoreMode:
         if self.metadata.partial_dump_domains:
             ddl_list.extend(self.metadata.partial_dump_domains)
 
+        if self.metadata.partial_dump_ranges:
+            ddl_list.extend(self.metadata.partial_dump_ranges)
+
         if self.metadata.partial_dump_functions:
             ddl_list.extend(self.metadata.partial_dump_functions)
 
@@ -613,7 +672,7 @@ class RestoreMode:
         transaction_snapshot_id: str,
     ) -> None:
         self.context.logger.info("%s Started task copy_to_table %s.%s", ">" * 20, schema_name, table_name)
-        extracted_file = Path(dump_file.stem)
+        extracted_file = dump_file.with_suffix("")
 
         await asyncio.to_thread(self._extract_file, dump_file, extracted_file)
 
@@ -621,6 +680,7 @@ class RestoreMode:
             async with pool.acquire() as connection:
                 async with connection.transaction(isolation="repeatable_read"):
                     await connection.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
+                    await connection.execute("SET LOCAL session_replication_role = 'replica';")
 
                     result = await connection.copy_to_table(
                         schema_name=schema_name,
@@ -911,6 +971,7 @@ class RestoreMode:
             await check_required_connections(connection, self.context.options.db_connections_per_process)
 
             await self._check_db_is_empty(connection)
+            await self._check_no_extra_tables_in_target(connection)
             self._check_utils_version_for_dump()
 
             self.context.read_partial_tables_dicts()

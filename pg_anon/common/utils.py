@@ -100,6 +100,7 @@ def pretty_size(bytes_v: int) -> str:
 
     return f"{int(value)} {units[-1]}"
 
+
 def recordset_to_list_flat(rs: list) -> list:
     """Convert a recordset to a list of flat value lists."""
     return [list(dict(rec).values()) for rec in rs]
@@ -443,10 +444,4 @@ def save_dicts_info_file(options: RunOptions) -> None:
 def make_run_dir(internal_operation_id: str) -> str:
     """Create dir for operation logs and data."""
     today = datetime.today()
-    return str(
-        RUNS_BASE_DIR /
-        str(today.year) /
-        str(today.month) /
-        str(today.day) /
-        internal_operation_id
-    )
+    return str(RUNS_BASE_DIR / str(today.year) / str(today.month) / str(today.day) / internal_operation_id)

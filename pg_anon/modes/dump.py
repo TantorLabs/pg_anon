@@ -25,12 +25,16 @@ from pg_anon.common.db_utils import (
     get_custom_domains_ddl,
     get_custom_functions_ddl,
     get_custom_operators_ddl,
+    get_custom_ranges_ddl,
     get_custom_types_ddl,
     get_db_size,
     get_db_tables,
     get_dump_query,
+    get_event_triggers_in_schemas,
     get_extensions,
     get_indexes_data,
+    get_legacy_inheritance_parents,
+    get_partitioned_ancestors,
     get_schemas,
     get_views_related_to_tables,
 )
@@ -66,6 +70,7 @@ class DumpMode:
         self._views_for_including: list[str] = []
         self._views_for_excluding: list[str] = []
         self._all_db_schemas: list[str] = []
+        self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
 
         if self.context.options.db_user_password:
             os.environ["PGPASSWORD"] = self.context.options.db_user_password
@@ -179,12 +184,14 @@ class DumpMode:
             if not view_data["is_excluded"]
         ]
         indexes_data = await get_indexes_data(connection, self.context.tables + views_list)
-        for schema, table, index_name, is_excluded in indexes_data:
-            self._indexes[index_name] = {
-                "schema": schema,
-                "table": table,
-                "index_name": index_name,
-                "is_excluded": is_excluded,
+        for row in indexes_data:
+            self._indexes[row["index_name"]] = {
+                "schema": row["schema"],
+                "table": row["table"],
+                "index_name": row["index_name"],
+                "is_excluded": row["is_excluded"],
+                "parent_index_schema": row["parent_index_schema"],
+                "parent_index_name": row["parent_index_name"],
             }
 
     async def _prepare_views(self, connection: Connection) -> None:
@@ -207,21 +214,18 @@ class DumpMode:
         self._constraints = {}
         constraints_data = await get_constraints_to_excluded_tables(connection, self.context.tables)
 
-        for (
-            table_schema_from,
-            table_name_from,
-            constraint_name,
-            table_schema_to,
-            table_name_to,
-            is_excluded,
-        ) in constraints_data:
-            self._constraints[constraint_name] = {
-                "table_schema_from": table_schema_from,
-                "table_name_from": table_name_from,
-                "constraint_name": constraint_name,
-                "table_schema_to": table_schema_to,
-                "table_name_to": table_name_to,
-                "is_excluded": is_excluded,
+        for row in constraints_data:
+            self._constraints[row["constraint_name"]] = {
+                "table_schema_from": row["table_schema_from"],
+                "table_name_from": row["table_name_from"],
+                "constraint_name": row["constraint_name"],
+                "table_schema_to": row["table_schema_to"],
+                "table_name_to": row["table_name_to"],
+                "is_excluded": row["is_excluded"],
+                "referenced_relkind": row["referenced_relkind"],
+                "referrer_relkind": row["referrer_relkind"],
+                "referenced_partition_leaves": row["referenced_partition_leaves"],
+                "referrer_partition_leaves": row["referrer_partition_leaves"],
             }
 
     async def _prepare_extensions(self, connection: Connection) -> None:
@@ -291,10 +295,8 @@ class DumpMode:
             specific_tables.extend([item for sublist in black_list for item in sublist])
 
         if self.context.white_listed_tables:
-            white_list = [
-                ("-t", f'"{table_schema}"."{table_name}"')
-                for table_schema, table_name in self.context.white_listed_tables
-            ]
+            full_whitelist = set(self.context.white_listed_tables) | self._pg_dump_partitioned_ancestors
+            white_list = [("-t", f'"{table_schema}"."{table_name}"') for table_schema, table_name in full_whitelist]
             specific_tables.extend([item for sublist in white_list for item in sublist])
 
             if self._sequences_data:
@@ -305,7 +307,11 @@ class DumpMode:
                 ]
                 specific_tables.extend([item for sublist in seq_list for item in sublist])
 
-        exclude_schemas = [item for v in self.context.exclude_schemas for item in ["--exclude-schema", v]]
+        exclude_schemas = [
+            item
+            for v in self.context.exclude_schemas
+            for item in ["--exclude-schema", '"' + v.replace('"', '""') + '"']
+        ]
 
         command = [
             self.context.pg_dump,
@@ -404,7 +410,9 @@ class DumpMode:
         task_id = uuid.uuid4()
         self.context.logger.info(
             "================> Task [%s] Started task %s to file %s",
-            task_id, query, binary_output_file_path,
+            task_id,
+            query,
+            binary_output_file_path,
         )
 
         try:
@@ -453,6 +461,12 @@ class DumpMode:
             server_settings=self.context.server_settings,
         )
 
+        legacy_inherits_parents = await get_legacy_inheritance_parents(
+            connection_params=self.context.connection_params,
+            exclude_schemas=self.context.exclude_schemas,
+            server_settings=self.context.server_settings,
+        )
+
         for table_schema, table_name in self.context.tables:
             table_rule = get_dict_rule_for_table(
                 dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
@@ -467,6 +481,7 @@ class DumpMode:
                 table_rule=table_rule,
                 files=self._data_dump_files,
                 fields_cache=fields_cache,
+                legacy_inherits_parents=legacy_inherits_parents,
             )
 
             if query:
@@ -500,9 +515,7 @@ class DumpMode:
             result_dict, file_path = done_task.result()
             results.update(result_dict)
             if not self.context.options.dbg_stage_1_validate_dict:
-                compress_tasks.add(
-                    asyncio.create_task(self._compress_with_semaphore(file_path, compression_semaphore))
-                )
+                compress_tasks.add(asyncio.create_task(self._compress_with_semaphore(file_path, compression_semaphore)))
 
         try:
             query_tasks_count = len(query_tasks)
@@ -642,9 +655,24 @@ class DumpMode:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
 
-    async def _prepare_schemas_lists(self, connection: Connection) -> None:
+        if self.context.white_listed_tables:
+            self._pg_dump_partitioned_ancestors = await get_partitioned_ancestors(
+                connection, list(self.context.white_listed_tables)
+            )
+        else:
+            self._pg_dump_partitioned_ancestors = set()
+
+    async def _prepare_schemas_lists(self, connection: Connection) -> None:  # noqa: C901
         self._all_db_schemas = await get_schemas(connection)
         excluded_schemas = []
+
+        protected_schemas: set[str] = set()
+        for rule in self.context.prepared_dictionary_obj.get("dictionary", []):
+            if schema := rule.get("schema"):
+                protected_schemas.add(schema)
+        for rule in self.context.prepared_dictionary_obj.get("validate_tables", []):
+            if schema := rule.get("schema"):
+                protected_schemas.add(schema)
 
         for rule in self.context.prepared_dictionary_obj.get("dictionary_exclude", []):
             table_mask = rule.get("table_mask")
@@ -656,6 +684,8 @@ class DumpMode:
                 schema_mask_pattern = safe_compile(schema_mask)
 
             for schema in self._all_db_schemas:
+                if schema in protected_schemas:
+                    continue
                 if rule.get("schema") == schema:
                     excluded_schemas.append(schema)
                     break
@@ -666,10 +696,14 @@ class DumpMode:
         self._schemas = list(set(self._all_db_schemas) - set(excluded_schemas))
         self.context.exclude_schemas.extend(excluded_schemas)
 
+        if excluded_schemas:
+            self.metadata.excluded_event_triggers = await get_event_triggers_in_schemas(connection, excluded_schemas)
+
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection) -> None:
         if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
+            self.metadata.partial_dump_ranges = await get_custom_ranges_ddl(connection, self.context.exclude_schemas)
             self.metadata.partial_dump_functions = await get_custom_functions_ddl(
                 connection, self.context.exclude_schemas
             )

@@ -168,7 +168,7 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
                 if not p.is_alive():
                     raise PgAnonError(
                         ErrorCode.OPERATION_FAILED,
-                        f"pg_anon worker process terminated unexpectedly (exit code: {p.exitcode})"
+                        f"pg_anon worker process terminated unexpectedly (exit code: {p.exitcode})",
                     ) from None
                 continue
 

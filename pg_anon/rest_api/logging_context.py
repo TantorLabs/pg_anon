@@ -19,38 +19,33 @@ webhook_logger = logging.getLogger(WEBHOOK_LOGGER_NAME)
 
 
 class OperationIdFormatter(logging.Formatter):
-    """Injects the current operation_id from contextvars into every record."""
-
     def format(self, record: logging.LogRecord) -> str:
+        """Injects the current operation_id from contextvars into every record."""
         record.operation_id = operation_id_var.get() or "-"
         return super().format(record)
 
 
 class OperationFileFilter(logging.Filter):
-    """Passes records only for a specific operation — used by per-operation file handlers."""
-
-    def __init__(self, target_operation_id: str):
+    def __init__(self, target_operation_id: str) -> None:
         super().__init__()
         self.target_operation_id = target_operation_id
 
-    def filter(self, record: logging.LogRecord) -> bool:
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        """Passes records only for a specific operation — used by per-operation file handlers."""
         return operation_id_var.get() == self.target_operation_id
 
 
 class WebhookDebugFilter(logging.Filter):
-    """Suppresses webhook logs unless web_debug is explicitly enabled for the current operation.
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        """Suppresses webhook logs unless web_debug is explicitly enabled for the current operation.
 
-    Attached to the webhook logger itself so it blocks propagation to every handler
-    (stdout + per-operation file) when web_debug is False.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
+        Attached to the webhook logger itself so it blocks propagation to every handler
+        (stdout + per-operation file) when web_debug is False.
+        """
         return web_debug_var.get() is True
 
 
-LOG_FORMAT = (
-    "%(asctime)s,%(msecs)03d - %(levelname)8s - [id=%(operation_id)s] - %(message)s"
-)
+LOG_FORMAT = "%(asctime)s,%(msecs)03d - %(levelname)8s - [id=%(operation_id)s] - %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
