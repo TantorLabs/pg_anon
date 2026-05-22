@@ -1,4 +1,3 @@
-"""Tests for `view-data` mode: preview rows of a single table with dict applied."""
 from __future__ import annotations
 
 import json
@@ -27,7 +26,6 @@ def _options(db_params, source_db, dict_file: str, extra: list[str]) -> list[str
 
 
 async def test_view_data_print_hr_employee(source_db, db_params):
-    """Print mode on a table with masking rules in the dict."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
         "--schema-name=hr",
         "--table-name=employee",
@@ -39,7 +37,6 @@ async def test_view_data_print_hr_employee(source_db, db_params):
 
 
 async def test_view_data_json_has_uniform_row_length(source_db, db_params):
-    """JSON output: every column key must map to the same number of rows."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
         "--json",
         "--schema-name=billing",
@@ -55,7 +52,6 @@ async def test_view_data_json_has_uniform_row_length(source_db, db_params):
 
 
 async def test_view_data_offset_past_end_still_succeeds(source_db, db_params):
-    """Offset past the last row should succeed with empty result — both print and json."""
     base = [
         "--schema-name=hr",
         "--table-name=employee",
@@ -71,7 +67,6 @@ async def test_view_data_offset_past_end_still_succeeds(source_db, db_params):
 
 
 async def test_view_data_dict_without_matching_rule_still_shows_rows(source_db, db_params):
-    """If the dict has no rule for the viewed table, rows are still returned (raw)."""
     options = build_run_options(_options(db_params, source_db, input_dict("unrelated.py"), [
         "--schema-name=hr",
         "--table-name=employee",

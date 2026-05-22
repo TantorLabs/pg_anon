@@ -394,23 +394,7 @@ async def remove_operation(
 )
 async def task_statuses() -> list[TaskStatus]:
     """Return the list of available task statuses."""
-    return [
-        TaskStatus(
-            id=1,
-            title="В процессе",  # noqa: RUF001
-            slug="in_process",
-        ),
-        TaskStatus(
-            id=2,
-            title="Завершено",
-            slug="done",
-        ),
-        TaskStatus(
-            id=3,
-            title="Ошибка",
-            slug="error",
-        ),
-    ]
+    return [TaskStatus(id=s.value, title=s.name.lower()) for s in ResponseStatus]
 
 
 @app.get(
@@ -420,20 +404,7 @@ async def task_statuses() -> list[TaskStatus]:
 )
 async def dump_types() -> list[DumpType]:
     """Return the list of available dump types."""
-    return [
-        DumpType(
-            title="Полный",
-            slug=DumpMode.FULL.value,
-        ),
-        DumpType(
-            title="Только структура",
-            slug=DumpMode.STRUCT.value,
-        ),
-        DumpType(
-            title="Только данные",
-            slug=DumpMode.DATA.value,
-        ),
-    ]
+    return [DumpType(title=t.value) for t in DumpMode]
 
 
 @app.get(
@@ -443,20 +414,7 @@ async def dump_types() -> list[DumpType]:
 )
 async def restore_types() -> list[RestoreType]:
     """Return the list of available restore types."""
-    return [
-        RestoreType(
-            title="Полный",
-            slug=RestoreMode.FULL.value,
-        ),
-        RestoreType(
-            title="Только структура",
-            slug=RestoreMode.STRUCT.value,
-        ),
-        RestoreType(
-            title="Только данные",
-            slug=RestoreMode.DATA.value,
-        ),
-    ]
+    return [RestoreType(title=t.value) for t in RestoreMode]
 
 
 @app.get(
@@ -466,13 +424,5 @@ async def restore_types() -> list[RestoreType]:
 )
 async def scan_types() -> list[ScanType]:
     """Return the list of available scan types."""
-    return [
-        ScanType(
-            title="Полное сканирование",
-            slug=ScanMode.FULL.value,
-        ),
-        ScanType(
-            title="Частичное сканирование",
-            slug=ScanMode.PARTIAL.value,
-        ),
-    ]
+    return [ScanType(title=t.value) for t in ScanMode]
+

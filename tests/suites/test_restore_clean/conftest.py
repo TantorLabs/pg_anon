@@ -19,7 +19,6 @@ def output_path(name: str) -> str:
 
 @pytest.fixture
 async def source_db(db_manager, request):
-    """Fresh source per test — these tests mutate it (re-init, add extras)."""
     name = f"pg_anon_clean_src_{request.node.name}"[:60]
     await db_manager.create_db(name)
     yield name

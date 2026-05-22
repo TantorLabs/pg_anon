@@ -1,4 +1,3 @@
-"""Fixtures for test_view_data. Read-only source, single module-scoped DB."""
 from __future__ import annotations
 
 from pathlib import Path

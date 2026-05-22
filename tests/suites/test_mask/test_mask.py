@@ -1,11 +1,3 @@
-"""Tests for dictionary masking rules.
-
-Two things are verified:
-
-1. Masked columns in the TARGET match the constant/SQL expression from the dict.
-2. Columns NOT referenced by the dict are bit-for-bit identical between SOURCE
-   and TARGET (we compare row checksums so we don't care about physical order).
-"""
 from __future__ import annotations
 
 from tests.infrastructure.assertions import check_rows, checksum_tables
@@ -36,7 +28,6 @@ async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, *, 
 async def test_mask_replaces_constants_in_hr_and_billing(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """String/integer constants from the dict must appear in target rows."""
     await _dump_and_restore(
         pg_anon_runner, db_params, source_db, target_db, name="replace_constants",
     )
@@ -67,7 +58,6 @@ async def test_mask_replaces_constants_in_hr_and_billing(
 async def test_mask_raw_sql_overrides_entire_row(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """A dict rule with raw_sql must produce rows straight from the SELECT, not the table."""
     await _dump_and_restore(
         pg_anon_runner, db_params, source_db, target_db, name="raw_sql",
     )
@@ -80,7 +70,6 @@ async def test_mask_raw_sql_overrides_entire_row(
 async def test_mask_does_not_touch_unrelated_tables(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Tables not covered by dict rules must be identical between source and target."""
     await _dump_and_restore(
         pg_anon_runner, db_params, source_db, target_db, name="untouched",
     )
@@ -101,11 +90,6 @@ async def test_mask_does_not_touch_unrelated_tables(
 async def test_mask_leaves_non_masked_columns_of_masked_table_intact(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Within a masked table, columns not in `fields:` must retain original values.
-
-    hr.employee rules touch email/phone/salary; first_name, last_name, ssn, etc.
-    must survive unchanged — we pick a deterministic row (id=1) and compare.
-    """
     await _dump_and_restore(
         pg_anon_runner, db_params, source_db, target_db, name="partial_columns",
     )

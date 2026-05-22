@@ -23,7 +23,6 @@ def output_path(name: str) -> str:
 
 @pytest.fixture(scope="module")
 async def source_db(db_manager, pg_anon_runner, fixtures):
-    """Build the full zoo env once per module. These tests never mutate source."""
     await db_manager.create_db(SOURCE_DB)
     res = await pg_anon_runner.run("init", SOURCE_DB)
     assert res.result_code == ResultCode.DONE

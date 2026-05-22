@@ -1,9 +1,3 @@
-"""Tests for `restore --clean-db`.
-
---clean-db should DROP all objects the dump knows about and recreate them,
-even if the target DB already contains those objects. It must fail, however,
-if the target has extra tables not present in the dump (to avoid silent data loss).
-"""
 from __future__ import annotations
 
 from tests.infrastructure.assertions import check_rows_count
@@ -43,7 +37,6 @@ async def _restore_clean(pg_anon_runner, db_params, target_db, in_dir):
 async def test_clean_db_replaces_existing_data(
     source_db, target_db, db_manager, pg_anon_runner, db_params, fixtures,
 ):
-    """Dump small env, seed target with 5x data, --clean-db restore must reset to dumped counts."""
     out = output_path("replace_data")
 
     await _init_env(fixtures, pg_anon_runner, source_db, SMALL)
@@ -61,7 +54,6 @@ async def test_clean_db_replaces_existing_data(
 async def test_clean_db_fails_when_target_has_extra_tables(
     source_db, target_db, db_manager, pg_anon_runner, db_params, fixtures,
 ):
-    """Target has tables not present in the dump → restore must FAIL to protect data."""
     out = output_path("extra_tables")
 
     await _init_env(fixtures, pg_anon_runner, source_db, SMALL)

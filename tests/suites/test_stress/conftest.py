@@ -1,6 +1,3 @@
-"""Fixtures for test_stress. Uses MEDIUM fixture sizes so runs are meaningful
-but still CI-friendly. Scale up via env var PG_ANON_STRESS_ROWS if desired.
-"""
 from __future__ import annotations
 
 import os

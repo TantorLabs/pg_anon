@@ -1,8 +1,3 @@
-"""Shared fixtures for test_mask.
-
-source_db is built once (module) with the full zoo — masking rules reference
-hr, billing, ecommerce tables. target_db is re-created per test for isolation.
-"""
 from __future__ import annotations
 
 from pathlib import Path

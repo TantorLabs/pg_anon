@@ -30,7 +30,6 @@ async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, out
 async def test_full_clone_preserves_every_table(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Every source table/partition must appear in target with the same schema."""
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_tables"))
     missing = await diff_schema(db_manager, source_db, target_db)
@@ -40,9 +39,6 @@ async def test_full_clone_preserves_every_table(
 async def test_full_clone_preserves_catalog_objects(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Schemas, views, materialized views, types, functions, triggers, policies,
-    sequences, indexes, and constraints must all round-trip.
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_catalog"))
     diffs = await diff_catalog(db_manager, source_db, target_db)
@@ -52,7 +48,6 @@ async def test_full_clone_preserves_catalog_objects(
 async def test_full_clone_preserves_row_content(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Row-for-row checksums on key tables must match across source and target."""
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_rows"))
 
@@ -67,7 +62,6 @@ async def test_full_clone_preserves_row_content(
 async def test_full_clone_preserves_data_types_round_trip(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Every PG type in data_types.sample must survive dump/restore unchanged."""
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_types"))
 
@@ -81,9 +75,6 @@ async def test_full_clone_preserves_data_types_round_trip(
 async def test_full_clone_preserves_data_type_edge_cases(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Boundary values (NaN/Infinity, BC/infinity dates, 1MB+ text/bytea TOAST,
-    NUL-bytes, escape sequences) must round-trip identically.
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_edge_cases"))
 
@@ -118,9 +109,6 @@ async def test_full_clone_preserves_data_type_edge_cases(
 async def test_full_clone_restores_circular_fk_tables(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Two tables with mutual DEFERRABLE INITIALLY DEFERRED FKs must restore
-    cleanly via parallel COPY. Exercises session_replication_role='replica'.
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("circular_fk"))
 
@@ -135,10 +123,6 @@ async def test_full_clone_restores_circular_fk_tables(
 async def test_full_clone_preserves_table_variants(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Exotic table features must round-trip: GENERATED AS IDENTITY, UNLOGGED,
-    INHERITS, custom SEQUENCE (OWNED BY, non-default increment), RULE ON INSERT
-    DO INSTEAD on a view, and event trigger functions.
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_variants"))
 
@@ -184,12 +168,6 @@ async def test_full_clone_preserves_table_variants(
 async def test_full_clone_preserves_privileges(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """GRANT/REVOKE on tables and columns and DEFAULT PRIVILEGES must round-trip.
-
-    OWNER is intentionally NOT preserved: pg_anon always passes --no-owner to
-    pg_dump/pg_restore because anonymized copies target dev/test DBs where the
-    source's roles typically don't exist.
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_privileges"))
 
@@ -244,11 +222,6 @@ async def test_full_clone_preserves_privileges(
 async def test_full_clone_preserves_publications(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Logical replication PUBLICATIONs must round-trip: name, FOR-clause,
-    publish actions. SUBSCRIPTIONs are out of scope (single-node test cluster
-    can't run real logical replication, and a degraded subscription blocks
-    DROP DATABASE on teardown).
-    """
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db,
                             output_path("preserve_publications"))
 
@@ -289,9 +262,6 @@ async def test_full_clone_preserves_publications(
 async def test_full_clone_with_no_publications_strips_them(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """`--pg-dump-options=--no-publications` must keep PUBLICATIONs out of
-    the resulting target DB even if they exist in source.
-    """
     out = output_path("no_publications")
     res = await pg_anon_runner.run("dump", source_db, [
         f"--prepared-sens-dict-file={input_dict('empty.py')}",
@@ -322,7 +292,6 @@ async def test_full_clone_with_no_publications_strips_them(
 async def test_full_clone_with_drop_db_is_idempotent(
     source_db, target_db, db_params, pg_anon_runner,
 ):
-    """Running clone twice into the same target must succeed with --drop-db."""
     out = output_path("idempotent")
     await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, out)
 

@@ -1,6 +1,3 @@
-"""Tests that `--pg-dump-options` and `--pg-restore-options` are forwarded
-correctly and surface errors when given invalid flags.
-"""
 from __future__ import annotations
 
 import pytest

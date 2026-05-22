@@ -1,9 +1,3 @@
-"""End-to-end dump/restore scenarios covered by the original test_dump_restore
-suite, rewritten around the domain-oriented fixtures.
-
-Each test stands alone: it creates a fresh target_db, runs dump (if needed),
-then restore, and asserts on the target. The source_db is shared (read-only).
-"""
 from __future__ import annotations
 
 import filecmp
@@ -45,9 +39,6 @@ async def _restore(pg_anon_runner, db_params, target_db, *, in_dir, extra=None):
 async def test_dump_then_restore_preserves_all_tables(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Baseline: dump with anonymization rules, restore, verify every source table
-    exists in the target.
-    """
     out = output_path("dump_then_restore")
     res = await _dump(pg_anon_runner, db_params, source_db,
                       out_dir=out, dict_file=input_dict("full_sens.py"))
@@ -63,9 +54,6 @@ async def test_dump_then_restore_preserves_all_tables(
 async def test_dump_with_exclude_all_keeps_validated_table(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """`dictionary_exclude: {schema:*, table:*}` should exclude everything except
-    tables listed in `validate_tables` (here: hr.department).
-    """
     out = output_path("exclude_all")
     res = await _dump(pg_anon_runner, db_params, source_db,
                       out_dir=out, dict_file=input_dict("exclude_all.py"))
@@ -95,7 +83,6 @@ async def test_dump_with_exclude_all_keeps_validated_table(
 async def test_sync_struct_restores_empty_tables(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """sync-struct-dump + sync-struct-restore must create all tables but zero rows."""
     out = output_path("sync_struct")
     res = await pg_anon_runner.run("sync-struct-dump", source_db, [
         f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
@@ -121,7 +108,6 @@ async def test_sync_struct_restores_empty_tables(
 async def test_sync_data_after_sync_struct(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """After sync-struct, sync-data populates a few tables without touching others."""
     struct_out = output_path("sync_data_struct")
     data_out = output_path("sync_data_data")
 
@@ -205,7 +191,6 @@ async def test_sync_struct_restore_with_clean_db(
 async def test_restore_into_non_empty_db_fails(
     source_db, target_db, db_params, pg_anon_runner, fixtures,
 ):
-    """Restoring into a DB that already has objects (no --drop-db/--clean-db) must fail."""
     out = output_path("nonempty_fail")
     res = await _dump(pg_anon_runner, db_params, source_db,
                       out_dir=out, dict_file=input_dict("full_sens.py"))
@@ -220,7 +205,6 @@ async def test_restore_into_non_empty_db_fails(
 async def test_restore_with_drop_db_succeeds(
     source_db, target_db, db_params, pg_anon_runner, fixtures,
 ):
-    """Same as above but with --drop-db: restore recreates the DB and succeeds."""
     out = output_path("drop_db_ok")
     res = await _dump(pg_anon_runner, db_params, source_db,
                       out_dir=out, dict_file=input_dict("full_sens.py"))
@@ -236,7 +220,6 @@ async def test_restore_with_drop_db_succeeds(
 async def test_dump_with_sql_conditions_filters_rows(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """`sql_condition` on a dict rule should limit which rows end up in the dump."""
     out = output_path("sql_conditions")
     res = await _dump(pg_anon_runner, db_params, source_db,
                       out_dir=out, dict_file=input_dict("sql_conditions.py"))
@@ -255,10 +238,6 @@ async def test_dump_with_sql_conditions_filters_rows(
 async def test_dump_with_save_dicts_snapshots_inputs(
     source_db, db_params,
 ):
-    """dump --save-dicts must materialize the run-dir with the exact input
-    dicts (sens/partial-tables/partial-exclude) used for the run, so the run
-    is reproducible later.
-    """
     out = output_path("dump_save_dicts")
     sens = input_dict("full_sens.py")
     partial = input_dict("partial_tables.py")
@@ -307,9 +286,6 @@ async def test_dump_with_save_dicts_snapshots_inputs(
 async def test_restore_with_save_dicts_snapshots_inputs(
     source_db, target_db, db_params, pg_anon_runner,
 ):
-    """restore --save-dicts must materialize a run-dir with the partial-tables
-    dicts used for the restore, proving the restore is reproducible.
-    """
     out = output_path("restore_save_dicts_seed")
     partial = input_dict("partial_tables.py")
     partial_exclude = input_dict("partial_exclude.py")

@@ -1,8 +1,3 @@
-"""Shared fixtures for the dump-restore suite.
-
-source_db is built once per module (zoo env). Each test receives a freshly
-created target_db so tests stay independent and can be parallelized later.
-"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,7 +33,6 @@ async def source_db(db_manager, pg_anon_runner, fixtures):
 
 @pytest.fixture
 async def target_db(db_manager, request):
-    """Fresh target DB per test. Named after the test for easier debugging."""
     name = f"pg_anon_dr_tgt_{request.node.name.replace('[', '_').replace(']', '')}"
     # DB name length limit is 63
     name = name[:60]

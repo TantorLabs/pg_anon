@@ -1,7 +1,3 @@
-"""Shared fixtures for test_partial.
-
-source_db is read-only, module-scoped. Each scenario gets a fresh target_db.
-"""
 from __future__ import annotations
 
 from pathlib import Path

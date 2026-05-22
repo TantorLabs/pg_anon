@@ -1,9 +1,3 @@
-"""Tests for --partial-tables-dict-file and --partial-tables-exclude-dict-file.
-
-The flags are accepted on BOTH dump and restore. All 4 placement combinations
-must produce the same final table set in the target — this guards against the
-"the filter only worked on dump" class of bug we've seen before.
-"""
 from __future__ import annotations
 
 from tests.infrastructure.assertions import check_list_tables
@@ -90,7 +84,6 @@ async def _restore(pg_anon_runner, db_params, target_db, out, extra=None):
 async def test_partial_include_at_dump(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Include filter at dump time only — restore takes everything from dump."""
     out = output_path("include_at_dump")
     await _dump(pg_anon_runner, db_params, source_db, out, extra=[
         f"--partial-tables-dict-file={input_dict('include.py')}",
@@ -102,7 +95,6 @@ async def test_partial_include_at_dump(
 async def test_partial_exclude_at_dump(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Exclude filter at dump time only."""
     out = output_path("exclude_at_dump")
     await _dump(pg_anon_runner, db_params, source_db, out, extra=[
         f"--partial-tables-exclude-dict-file={input_dict('exclude.py')}",
@@ -114,7 +106,6 @@ async def test_partial_exclude_at_dump(
 async def test_partial_include_exclude_at_dump(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Both filters at dump. Include ∩ (complement of Exclude) = INCLUDE_EXPECTED."""
     out = output_path("include_exclude_at_dump")
     await _dump(pg_anon_runner, db_params, source_db, out, extra=[
         f"--partial-tables-dict-file={input_dict('include.py')}",
@@ -127,7 +118,6 @@ async def test_partial_include_exclude_at_dump(
 async def test_partial_include_at_dump_exclude_at_restore(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Include at dump + exclude at restore. Same net effect as both-at-dump."""
     out = output_path("include_dump_exclude_restore")
     await _dump(pg_anon_runner, db_params, source_db, out, extra=[
         f"--partial-tables-dict-file={input_dict('include.py')}",
@@ -141,7 +131,6 @@ async def test_partial_include_at_dump_exclude_at_restore(
 async def test_partial_exclude_at_dump_include_at_restore(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Exclude at dump + include at restore. Same net effect."""
     out = output_path("exclude_dump_include_restore")
     await _dump(pg_anon_runner, db_params, source_db, out, extra=[
         f"--partial-tables-exclude-dict-file={input_dict('exclude.py')}",
@@ -155,7 +144,6 @@ async def test_partial_exclude_at_dump_include_at_restore(
 async def test_partial_full_dump_both_filters_at_restore(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):
-    """Full dump, both filters applied at restore only."""
     out = output_path("both_at_restore")
     await _dump(pg_anon_runner, db_params, source_db, out)
     await _restore(pg_anon_runner, db_params, target_db, out, extra=[

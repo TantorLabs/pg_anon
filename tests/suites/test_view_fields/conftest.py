@@ -1,7 +1,3 @@
-"""Shared fixtures for test_view_fields.
-
-view-fields is read-only → single module-scoped source_db is enough.
-"""
 from __future__ import annotations
 
 from pathlib import Path

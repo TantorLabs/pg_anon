@@ -11,13 +11,13 @@ class DumpRunner(BaseRunner):
 
     def __init__(self, request: DumpRequest) -> None:
         self.mode: str = AnonMode.DUMP.value
-        super().__init__(request)
         if request.validated_output_path is None:
             raise PgAnonError(
                 ErrorCode.INVALID_OUTPUT_DIR,
                 "DumpRequest is missing validated_output_path",
             )
         self.full_dump_path: str = request.validated_output_path
+        super().__init__(request)
         self._set_mode()
 
     def _set_mode(self) -> None:

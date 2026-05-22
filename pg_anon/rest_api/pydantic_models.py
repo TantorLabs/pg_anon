@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
@@ -7,321 +6,33 @@ from pg_anon.rest_api.enums import DumpMode, RestoreMode, ScanMode
 
 
 #############################################
-# Common
+# Handbooks
+#############################################
+class TaskStatus(BaseModel):
+    id: int
+    title: str
+
+
+class ScanType(BaseModel):
+    title: str
+
+
+class DumpType(BaseModel):
+    title: str
+
+
+class RestoreType(BaseModel):
+    title: str
+
+
+#############################################
+# Stateless | Common
 #############################################
 class ErrorResponse(BaseModel):
     error_code: str
     message: str
 
 
-class Content(BaseModel):
-    content: str
-
-
-#############################################
-# Handbooks
-#############################################
-
-
-class TaskStatus(BaseModel):
-    id: int
-    title: str
-    slug: str
-
-
-class ScanType(BaseModel):
-    title: str
-    slug: str
-
-
-class DumpType(BaseModel):
-    title: str
-    slug: str
-
-
-class RestoreType(BaseModel):
-    title: str
-    slug: str
-
-
-#############################################
-# DB Connections
-#############################################
-
-
-class DbConnection(BaseModel):
-    id: int
-    title: str
-    slug: str
-
-    host: str
-    port: int
-    database: str
-
-    user: str | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class DbConnectionCreate(BaseModel):
-    title: str
-    slug: str
-
-    host: str
-    port: int
-    database: str
-
-    user: str | None = None
-    password: str | None = None
-
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class DbConnectionUpdate(BaseModel):
-    title: str | None = None
-    slug: str
-
-    host: str | None = None
-    port: int | None = None
-    database: str | None = None
-
-    user: str | None = None
-    password: str | None = None
-
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class DbCheckConnectionStatus(BaseModel):
-    status: bool
-
-
-class DbConnectionCredentials(BaseModel):
-    user: str
-    password: str
-
-
-class DbConnectionFullCredentials(BaseModel):
-    host: str
-    port: int
-    database: str
-    user: str
-    password: str
-
-
-#############################################
-# Projects
-#############################################
-
-
-class Project(BaseModel):
-    id: int
-    title: str
-    slug: str
-
-    created: datetime
-    updated: datetime
-
-    custom_pg_dump_path: str | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-    last_scan_run: datetime | None = None  # Computed values. Not for manual edit
-    last_scan_task_status_id: int | None = None  # Computed values. Not for manual edit
-    last_dump_run: datetime | None = None  # Computed values. Not for manual edit
-    last_dump_task_status_id: int | None = None  # Computed values. Not for manual edit
-
-
-class ProjectCreate(BaseModel):
-    title: str
-    custom_pg_dump_path: str | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class ProjectUpdate(BaseModel):
-    title: str | None = None
-    custom_pg_dump_path: str | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-#############################################
-# Dictionaries
-#############################################
-
-
-class DictionaryShort(BaseModel):
-    id: int
-    title: str
-    slug: str
-    project_id: int
-
-    type_id: int
-    is_predefined: bool = False
-    attributes: str | None = None  # some custom attributes for integrations
-
-    created: datetime
-    updated: datetime
-
-    scan_title: str | None = None  # Computed values. Not for manual edit
-
-
-class DictionaryDetailed(BaseModel):
-    id: int
-    title: str
-    slug: str
-    project_id: int
-
-    type_id: int
-    is_predefined: bool = False
-    content: str
-    attributes: str | None = None  # some custom attributes for integrations
-
-    created: datetime
-    updated: datetime
-
-    scan_title: str | None = None  # Computed values. Not for manual edit
-
-
-class DictionaryCreate(BaseModel):
-    project_id: int
-
-    title: str
-    type_id: int
-    content: str
-
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class DictionaryUpdate(BaseModel):
-    title: str
-    content: str
-
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class DictionaryDuplicate(BaseModel):
-    title: str
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-#############################################
-# Scan
-#############################################
-
-
-class Scan(BaseModel):
-    id: int
-    title: str
-    slug: str
-    project_id: int
-
-    type_id: int
-    depth: int | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-    source_db: DbConnection
-
-    input_meta_dict_titles: list[int]  # Computed values. Not for manual edit
-    input_sens_dict_titles: list[int] | None = None  # Computed values. Not for manual edit
-    input_no_sens_dict_titles: list[int] | None = None  # Computed values. Not for manual edit
-
-    status_id: int  # Computed values. Not for manual edit
-    created: datetime  # Computed values. Not for manual edit
-    updated: datetime  # Computed values. Not for manual edit
-
-
-class ScanCreate(BaseModel):
-    project_id: int
-
-    title: str
-    slug: int
-
-    type_id: int
-    depth: int | None = None
-    source_db_id: int
-
-    input_meta_dict_ids: list[int]
-    input_sens_dict_ids: list[int] | None = None
-    input_no_sens_dict_ids: list[int] | None = None
-
-    output_sens_dict_name: str
-    output_no_sens_dict_name: str | None = None
-
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-#############################################
-# Dump
-#############################################
-
-
-class Dump(BaseModel):
-    id: int
-    title: str
-    slug: str
-    project_id: int
-
-    type_id: int
-    source_db: DbConnection
-
-    custom_path: str | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-    input_sens_dict_titles: list[int] | None = None  # Computed values. Not for manual edit
-
-    status: str  # Computed values. Not for manual edit
-    created: datetime  # Computed values. Not for manual edit
-    updated: datetime  # Computed values. Not for manual edit
-    size: str | None = None  # Computed values. Not for manual edit
-
-
-class DumpCreate(BaseModel):
-    project_id: int
-    source_db_id: int
-    title: str
-
-    type_id: int
-    custom_path: str | None = None
-
-    input_sens_dict_ids: list[int]
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-#############################################
-# Preview
-#############################################
-
-
-class Preview(BaseModel):
-    id: int
-    title: str
-    slug: str
-    project_id: int
-    source_db: DbConnection
-
-    input_sens_dict_titles: list[int] | None = None  # Computed values. Not for manual edit
-    attributes: str | None = None  # some custom attributes for integrations
-
-    created: datetime  # Computed values. Not for manual edit
-    updated: datetime  # Computed values. Not for manual edit
-
-
-class PreviewCreate(BaseModel):
-    project_id: int
-    title: str
-    source_db_id: int
-
-    input_sens_dict_ids: list[int]
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-class PreviewUpdate(BaseModel):
-    title: str | None = None
-    source_db_id: int | None = None
-
-    input_sens_dict_ids: list[int] | None = None
-    attributes: str | None = None  # some custom attributes for integrations
-
-
-#############################################
-# Stateless
-#############################################
 class DbConnectionParams(BaseModel):
     host: str
     port: int

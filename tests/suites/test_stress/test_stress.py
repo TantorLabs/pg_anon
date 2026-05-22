@@ -1,11 +1,3 @@
-"""Stress tests — MEDIUM-sized zoo (~1k rows per table).
-
-Two concerns:
-
-1. Scale — all modes must complete without crashing on a non-trivial DB.
-2. Performance — partial-scan must be meaningfully faster than full-scan,
-   otherwise the flag has regressed.
-"""
 from __future__ import annotations
 
 from .conftest import input_dict, output_dict, output_path
@@ -36,7 +28,6 @@ def _create_dict_options(db_params, source_db, *, scan_mode: str, sens_out: str,
 
 
 async def test_stress_partial_scan_completes(source_db, db_params):
-    """Partial scan on MEDIUM zoo must finish successfully; record elapsed."""
     options = _create_dict_options(
         db_params, source_db,
         scan_mode="partial",
@@ -49,7 +40,6 @@ async def test_stress_partial_scan_completes(source_db, db_params):
 
 
 async def test_stress_full_scan_completes(source_db, db_params):
-    """Full scan on the same data — correctness + elapsed recording."""
     options = _create_dict_options(
         db_params, source_db,
         scan_mode="full",
@@ -62,9 +52,6 @@ async def test_stress_full_scan_completes(source_db, db_params):
 
 
 async def test_stress_partial_is_faster_than_full(source_db):
-    """Partial scan must be at least 2x faster than full. Generous ratio to
-    avoid flakes on slow CI, but tight enough to catch a broken partial mode.
-    """
     assert "partial" in _elapsed and "full" in _elapsed, (
         "previous tests must have run to populate _elapsed"
     )
@@ -76,7 +63,6 @@ async def test_stress_partial_is_faster_than_full(source_db):
 
 
 async def test_stress_dump_restore_roundtrip(source_db, target_db, db_params, pg_anon_runner):
-    """End-to-end dump → restore at MEDIUM scale must succeed."""
     out = output_path("stress_dump")
     res = await pg_anon_runner.run("dump", source_db, [
         f"--prepared-sens-dict-file={input_dict('empty.py')}",

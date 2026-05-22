@@ -1,9 +1,3 @@
-"""Tests for `view-fields` mode (scan-like preview without writing).
-
-Each test invokes ViewFieldsMode directly against the source DB; no dump/restore
-happens. We check the same invariants as the old test_view_fields suite but
-against the domain-oriented fixture so expectations stay legible.
-"""
 from __future__ import annotations
 
 import json
@@ -54,7 +48,6 @@ def _count_sens_vs_plain(executor: ViewFieldsMode) -> tuple[int, int]:
 
 
 async def test_view_fields_returns_every_scannable_field_minus_excluded(source_db, db_params):
-    """Full view: count rows must equal scan-fields-count minus `dictionary_exclude` entries."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py")))
     executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
@@ -73,7 +66,6 @@ async def test_view_fields_returns_every_scannable_field_minus_excluded(source_d
 
 
 async def test_view_fields_filter_by_schema_name(source_db, db_params):
-    """--schema-name=hr filters to hr only."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--schema-name=hr",
     ]))
@@ -85,7 +77,6 @@ async def test_view_fields_filter_by_schema_name(source_db, db_params):
 
 
 async def test_view_fields_filter_by_schema_mask(source_db, db_params):
-    """Regex schema mask keeps only matching schemas."""
     mask = r"^bill"
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         f"--schema-mask={mask}",
@@ -98,7 +89,6 @@ async def test_view_fields_filter_by_schema_mask(source_db, db_params):
 
 
 async def test_view_fields_filter_by_table_name(source_db, db_params):
-    """--table-name=employee limits to hr.employee rows."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--table-name=employee",
     ]))
@@ -110,7 +100,6 @@ async def test_view_fields_filter_by_table_name(source_db, db_params):
 
 
 async def test_view_fields_filter_by_table_mask(source_db, db_params):
-    r"""--table-mask=^payment keeps only payment_* tables."""
     mask = r"^payment"
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         f"--table-mask={mask}",
@@ -123,7 +112,6 @@ async def test_view_fields_filter_by_table_mask(source_db, db_params):
 
 
 async def test_view_fields_respects_fields_count_limit(source_db, db_params):
-    """--fields-count=5 must truncate output to exactly 5."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--fields-count=5",
     ]))
@@ -136,7 +124,6 @@ async def test_view_fields_respects_fields_count_limit(source_db, db_params):
 
 
 async def test_view_fields_only_sensitive_equals_sensitive_subset_of_full(source_db, db_params):
-    """--view-only-sensitive-fields must produce exactly the sensitive subset of the full run."""
     dict_file = input_dict("view_fields.py")
 
     only_sens = ViewFieldsMode(PgAnonApp(build_run_options(
@@ -156,7 +143,6 @@ async def test_view_fields_only_sensitive_equals_sensitive_subset_of_full(source
 
 
 async def test_view_fields_json_output_matches_field_count(source_db, db_params):
-    """--json → .table is None, .json decodes to a list with one entry per field."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--json",
     ]))
@@ -169,7 +155,6 @@ async def test_view_fields_json_output_matches_field_count(source_db, db_params)
 
 
 async def test_view_fields_raises_on_zero_fields_count(source_db, db_params):
-    """--fields-count=0 is invalid input → PgAnonError."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--fields-count=0",
     ]))
@@ -181,7 +166,6 @@ async def test_view_fields_raises_on_zero_fields_count(source_db, db_params):
 
 
 async def test_view_fields_non_existent_schema_returns_zero_fields(source_db, db_params):
-    """Filter to a missing schema → returns 0 fields, no exception."""
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py"), [
         "--schema-name=does_not_exist",
     ]))
@@ -194,7 +178,6 @@ async def test_view_fields_non_existent_schema_returns_zero_fields(source_db, db
 
 
 async def test_view_fields_empty_dictionary_is_allowed(source_db, db_params):
-    """Empty dictionary must not raise — every field is simply 'not in dict'."""
     options = build_run_options(_options(db_params, source_db, input_dict("empty.py")))
     executor = ViewFieldsMode(PgAnonApp(options).context)
     await executor.run()
