@@ -282,6 +282,61 @@ async def get_partitioned_ancestors(
     return {(r["nspname"], r["relname"]) for r in rows}
 
 
+async def get_partition_ancestors_map(
+    connection: Connection,
+    tables: list[tuple[str, str]],
+) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """Map each input table to its declarative-partitioning ancestors, closest first.
+
+    Only declarative partitioning parents (relkind='p') are reported; legacy INHERITS
+    parents are intentionally skipped, matching get_partitioned_ancestors.
+    """
+    if not tables:
+        return {}
+
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
+    args = [item for pair in tables for item in pair]
+
+    rows = await connection.fetch(
+        f"""
+        WITH RECURSIVE
+        input_oids AS (
+            SELECT c.oid
+              FROM (VALUES {values_placeholders}) AS v(s, t)
+              JOIN pg_namespace n ON n.nspname = v.s
+              JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
+        ),
+        walk(start_oid, parent_oid, lvl) AS (
+            SELECT inh.inhrelid, inh.inhparent, 1
+              FROM pg_inherits inh
+             WHERE inh.inhrelid IN (SELECT oid FROM input_oids)
+            UNION ALL
+            SELECT w.start_oid, inh.inhparent, w.lvl + 1
+              FROM pg_inherits inh
+              JOIN walk w ON w.parent_oid = inh.inhrelid
+        )
+        SELECT sn.nspname AS start_schema,
+               sc.relname AS start_table,
+               pn.nspname AS ancestor_schema,
+               pc.relname AS ancestor_table
+          FROM walk w
+          JOIN pg_class sc ON sc.oid = w.start_oid
+          JOIN pg_namespace sn ON sn.oid = sc.relnamespace
+          JOIN pg_class pc ON pc.oid = w.parent_oid
+          JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+         WHERE pc.relkind = 'p'
+         ORDER BY w.start_oid, w.lvl
+        """,
+        *args,
+    )
+
+    result: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for r in rows:
+        key = (r["start_schema"], r["start_table"])
+        result.setdefault(key, []).append((r["ancestor_schema"], r["ancestor_table"]))
+    return result
+
+
 async def get_db_tables(
     connection: Connection,
     excluded_schemas: list[str] | None = None,

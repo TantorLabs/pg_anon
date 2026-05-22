@@ -307,6 +307,110 @@ async def test_partial_whitelist_legacy_inherits_child_does_not_pull_parent(
         )
 
 
+async def _events_descr(db_manager, db: str, evt_id: int) -> str | None:
+    rows = await db_manager.fetch(
+        db, f"SELECT descr FROM fkpart.events WHERE id = {evt_id}"
+    )
+    return rows[0]["descr"] if rows else None
+
+
+async def test_anon_rule_on_partitioned_parent_applies_to_leaves(
+    source_db, target_db, db_manager, db_params, pg_anon_runner,
+):
+    out = output_path("anon_parent_rule")
+
+    res = await pg_anon_runner.run("dump", source_db, [
+        f"--prepared-sens-dict-file={input_dict('anon_parent_rule.py')}",
+        f"--output-dir={out}",
+        f"--processes={db_params.test_processes}",
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        "--clear-output-dir",
+    ])
+    assert res.result_code == ResultCode.DONE, "dump must succeed"
+
+    res = await pg_anon_runner.run("restore", target_db, [
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        f"--input-dir={out}",
+        "--drop-custom-check-constr",
+    ])
+    assert res.result_code == ResultCode.DONE, "restore must succeed"
+
+    q1 = await _events_descr(db_manager, target_db, 1)
+    q2 = await _events_descr(db_manager, target_db, 2)
+    assert q1 != "secret-q1", (
+        "правило родителя fkpart.events должно анонимизировать descr в партиции "
+        f"events_2025_q1, но получено исходное значение {q1!r}"
+    )
+    assert q2 != "secret-q2", (
+        "правило родителя fkpart.events должно анонимизировать descr в партиции "
+        f"events_2025_q2, но получено исходное значение {q2!r}"
+    )
+
+
+async def test_anon_rule_on_partition_leaves_directly(
+    source_db, target_db, db_manager, db_params, pg_anon_runner,
+):
+    out = output_path("anon_leaf_rules")
+
+    res = await pg_anon_runner.run("dump", source_db, [
+        f"--prepared-sens-dict-file={input_dict('anon_leaf_rules.py')}",
+        f"--output-dir={out}",
+        f"--processes={db_params.test_processes}",
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        "--clear-output-dir",
+    ])
+    assert res.result_code == ResultCode.DONE, "dump must succeed"
+
+    res = await pg_anon_runner.run("restore", target_db, [
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        f"--input-dir={out}",
+        "--drop-custom-check-constr",
+    ])
+    assert res.result_code == ResultCode.DONE, "restore must succeed"
+
+    q1 = await _events_descr(db_manager, target_db, 1)
+    q2 = await _events_descr(db_manager, target_db, 2)
+    assert q1 != "secret-q1", (
+        f"правило для events_2025_q1 должно анонимизировать descr, получено {q1!r}"
+    )
+    assert q2 != "secret-q2", (
+        f"правило для events_2025_q2 должно анонимизировать descr, получено {q2!r}"
+    )
+
+
+async def test_anon_partition_rule_overrides_parent_rule(
+    source_db, target_db, db_manager, db_params, pg_anon_runner,
+):
+    out = output_path("anon_parent_and_leaf_rules")
+
+    res = await pg_anon_runner.run("dump", source_db, [
+        f"--prepared-sens-dict-file={input_dict('anon_parent_and_leaf_rules.py')}",
+        f"--output-dir={out}",
+        f"--processes={db_params.test_processes}",
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        "--clear-output-dir",
+    ])
+    assert res.result_code == ResultCode.DONE, "dump must succeed"
+
+    res = await pg_anon_runner.run("restore", target_db, [
+        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        f"--input-dir={out}",
+        "--drop-custom-check-constr",
+    ])
+    assert res.result_code == ResultCode.DONE, "restore must succeed"
+
+    q1 = await _events_descr(db_manager, target_db, 1)
+    q2 = await _events_descr(db_manager, target_db, 2)
+    assert q1 == "REDACTED_Q1", (
+        "собственное правило партиции events_2025_q1 должно иметь приоритет над "
+        f"правилом родителя, ожидалось 'REDACTED_Q1', получено {q1!r}"
+    )
+    assert q2 not in ("secret-q2", "REDACTED_Q1"), (
+        "партиция events_2025_q2 без своего правила должна наследовать правило "
+        f"родителя (digest), получено {q2!r}"
+    )
+
+
 async def test_partial_blacklist_one_leaf_drops_fk(
     source_db, target_db, db_manager, db_params, pg_anon_runner,
 ):

@@ -41,6 +41,9 @@ _CUSTOM_OBJECTS_TOC_RE = re.compile(
 
 _EXTENSION_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
 
+_TOC_FAILED_ENTRY_RE = re.compile(r"from TOC entry (\d+)")
+_TOC_LIST_LINE_RE = re.compile(r"^(\d+);\s")
+
 
 class RestoreMode:
     context: Context
@@ -377,10 +380,22 @@ class RestoreMode:
         if self._toc_list_post_data_file_path:
             self._toc_list_post_data_file_path.unlink(missing_ok=True)
 
-    async def _run_pg_restore(self, section: str) -> None:  # noqa: C901
+    def _make_pg_restore_env(self) -> dict[str, str]:
+        # LC_ALL=C is required so we can parse "from TOC entry NNN" markers from stderr
+        # regardless of the system locale (default would localize pg_restore messages).
+        env = os.environ.copy()
+        env["LC_ALL"] = "C"
+        env["LC_MESSAGES"] = "C"
         if self.context.options.db_user_password:
-            os.environ["PGPASSWORD"] = self.context.options.db_user_password
+            env["PGPASSWORD"] = self.context.options.db_user_password
+        return env
 
+    def _build_pg_restore_command(
+        self,
+        section: str,
+        parallelism: int,
+        toc_override: Path | None = None,
+    ) -> list[str]:
         command: list[str] = [
             self.context.pg_restore,
             "-h",
@@ -394,7 +409,7 @@ class RestoreMode:
             "-d",
             self.context.options.db_name,
             "-j",
-            str(self.context.options.db_connections_per_process),
+            str(parallelism),
             "--no-owner",
             str((self.input_dir / section.replace("-", "_")).with_suffix(".backup")),
         ]
@@ -405,17 +420,14 @@ class RestoreMode:
             del command[command.index("-U") : command.index("-U") + 2]
 
         if self.context.options.clean_db:
-            command.extend(
-                [
-                    "--clean",
-                    "--if-exists",
-                ]
-            )
+            command.extend(["--clean", "--if-exists"])
 
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
-        if self._toc_list_pre_data_file_path:
+        if toc_override is not None:
+            command.extend(["-L", str(toc_override)])
+        elif self._toc_list_pre_data_file_path:
             toc_path = (
                 self._toc_list_pre_data_file_path if section == "pre-data" else self._toc_list_post_data_file_path
             )
@@ -425,20 +437,108 @@ class RestoreMode:
         if self.context.options.pg_restore_options:
             command.extend(shlex.split(self.context.options.pg_restore_options))
 
-        self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # pg_restore put command result into stdout if not using "-f" option, else stdout is empty
-        # pg_restore put logs into stderr
-        _, pg_restore_logs_bytes = proc.communicate()
-        pg_restore_logs = pg_restore_logs_bytes.decode("utf-8", errors="replace")
+        return command
 
-        for log_line in pg_restore_logs.split("\n"):
+    def _invoke_pg_restore(self, command: list[str]) -> tuple[str, int]:
+        env = self._make_pg_restore_env()
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        # pg_restore writes logs to stderr; stdout stays empty unless -f is used
+        _, stderr_bytes = proc.communicate()
+        return stderr_bytes.decode("utf-8", errors="replace"), proc.returncode
+
+    @staticmethod
+    def _parse_failed_toc_ids(stderr_text: str) -> set[int]:
+        return {int(m) for m in _TOC_FAILED_ENTRY_RE.findall(stderr_text)}
+
+    def _build_retry_toc(self, section: str, failed_ids: set[int]) -> Path | None:
+        # Materialize a -L file containing only the lines for failed TOC ids.
+        # We get the canonical formatting by running `pg_restore -l` on the archive
+        # and filtering its output rather than hand-crafting line content.
+        backup_path = (self.input_dir / section.replace("-", "_")).with_suffix(".backup")
+        if not backup_path.exists():
+            return None
+
+        cmd = [self.context.pg_restore, "-l", str(backup_path)]
+        env = self._make_pg_restore_env()
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        stdout_bytes, _ = proc.communicate()
+        if proc.returncode != 0:
+            return None
+
+        wanted = {str(i) for i in failed_ids}
+        matching: list[str] = []
+        for line in stdout_bytes.decode("utf-8", errors="replace").split("\n"):
+            match = _TOC_LIST_LINE_RE.match(line)
+            if match and match.group(1) in wanted:
+                matching.append(line)
+
+        if not matching:
+            return None
+
+        retry_toc = self.input_dir / f"toc_{section.replace('-', '_')}_retry.list"
+        retry_toc.write_text("\n".join(matching) + "\n", encoding="utf-8")
+        return retry_toc
+
+    async def _run_pg_restore(self, section: str) -> None:
+        if self.context.options.db_user_password:
+            os.environ["PGPASSWORD"] = self.context.options.db_user_password
+
+        parallelism = self.context.options.db_connections_per_process
+        command = self._build_pg_restore_command(section, parallelism=parallelism)
+
+        self.context.logger.debug(str(command))
+        stderr_text, returncode = self._invoke_pg_restore(command)
+
+        for log_line in stderr_text.split("\n"):
             self.context.logger.info(log_line)
 
-        if proc.returncode != 0:
+        if returncode == 0:
+            return
+
+        failed_ids = self._parse_failed_toc_ids(stderr_text)
+        if not failed_ids:
             msg = "ERROR: database restore has failed!"
             self.context.logger.error(msg)
             raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
+
+        self.context.logger.warning(
+            "Parallel %s restore reported %d failed TOC entries: %s. Retrying serially.",
+            section,
+            len(failed_ids),
+            sorted(failed_ids),
+        )
+
+        retry_toc = self._build_retry_toc(section, failed_ids)
+        if retry_toc is None:
+            msg = "ERROR: database restore has failed; could not build retry TOC list!"
+            self.context.logger.error(msg)
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
+
+        retry_command = self._build_pg_restore_command(
+            section,
+            parallelism=1,
+            toc_override=retry_toc,
+        )
+        self.context.logger.debug(str(retry_command))
+        stderr_text, returncode = self._invoke_pg_restore(retry_command)
+
+        for log_line in stderr_text.split("\n"):
+            self.context.logger.info(log_line)
+
+        if returncode != 0:
+            retry_failed_ids = self._parse_failed_toc_ids(stderr_text)
+            msg = (
+                "ERROR: database restore has failed! Serial retry could not recover "
+                f"{len(retry_failed_ids)} TOC entries: {sorted(retry_failed_ids)}"
+            )
+            self.context.logger.error(msg)
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
+
+        self.context.logger.info(
+            "Serial retry of %d TOC entries succeeded for %s.",
+            len(failed_ids),
+            section,
+        )
 
     async def _sequences_init(self, connection: Connection) -> None:
         if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:

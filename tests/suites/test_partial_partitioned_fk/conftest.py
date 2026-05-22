@@ -34,6 +34,7 @@ async def source_db(db_manager, pg_anon_runner):
             id bigint NOT NULL,
             occurred_at timestamptz NOT NULL,
             payload jsonb,
+            descr text,
             PRIMARY KEY (id, occurred_at)
         ) PARTITION BY RANGE (occurred_at);
 
@@ -48,9 +49,9 @@ async def source_db(db_manager, pg_anon_runner):
         CREATE INDEX IF NOT EXISTS events_occurred_at_idx
             ON fkpart.events (occurred_at);
 
-        INSERT INTO fkpart.events (id, occurred_at, payload) VALUES
-            (1, '2025-02-10 10:00+00', '{"k":1}'::jsonb),
-            (2, '2025-05-10 10:00+00', '{"k":2}'::jsonb)
+        INSERT INTO fkpart.events (id, occurred_at, payload, descr) VALUES
+            (1, '2025-02-10 10:00+00', '{"k":1}'::jsonb, 'secret-q1'),
+            (2, '2025-05-10 10:00+00', '{"k":2}'::jsonb, 'secret-q2')
         ON CONFLICT DO NOTHING;
 
         CREATE TABLE IF NOT EXISTS fkpart.attachment (

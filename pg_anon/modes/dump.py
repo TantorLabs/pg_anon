@@ -34,6 +34,7 @@ from pg_anon.common.db_utils import (
     get_extensions,
     get_indexes_data,
     get_legacy_inheritance_parents,
+    get_partition_ancestors_map,
     get_partitioned_ancestors,
     get_schemas,
     get_views_related_to_tables,
@@ -71,6 +72,7 @@ class DumpMode:
         self._views_for_excluding: list[str] = []
         self._all_db_schemas: list[str] = []
         self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
+        self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
 
         if self.context.options.db_user_password:
             os.environ["PGPASSWORD"] = self.context.options.db_user_password
@@ -451,6 +453,28 @@ class DumpMode:
             self.context.logger.exception("Can't compress file: %s", file_path)
             raise PgAnonError(ErrorCode.DUMP_FAILED, f"Can't compress file: {file_path}") from exc
 
+    def _resolve_table_rule(self, table_schema: str, table_name: str) -> dict | None:
+        dictionary_rules = self.context.prepared_dictionary_obj["dictionary"]
+
+        own_rule = get_dict_rule_for_table(
+            dictionary_rules=dictionary_rules,
+            schema=table_schema,
+            table=table_name,
+        )
+        if own_rule is not None:
+            return own_rule
+
+        for ancestor_schema, ancestor_table in self._partition_ancestors_map.get((table_schema, table_name), []):
+            ancestor_rule = get_dict_rule_for_table(
+                dictionary_rules=dictionary_rules,
+                schema=ancestor_schema,
+                table=ancestor_table,
+            )
+            if ancestor_rule is not None:
+                return ancestor_rule
+
+        return None
+
     async def _prepare_dump_queries(self) -> None:
         self._data_dump_queries = []
         self._data_dump_files = {}
@@ -468,11 +492,7 @@ class DumpMode:
         )
 
         for table_schema, table_name in self.context.tables:
-            table_rule = get_dict_rule_for_table(
-                dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
-                schema=table_schema,
-                table=table_name,
-            )
+            table_rule = self._resolve_table_rule(table_schema, table_name)
 
             query = await get_dump_query(
                 ctx=self.context,
@@ -654,6 +674,8 @@ class DumpMode:
     async def _prepare_tables_lists(self, connection: Connection) -> None:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         self.context.set_tables_lists(tables)
+
+        self._partition_ancestors_map = await get_partition_ancestors_map(connection, self.context.tables)
 
         if self.context.white_listed_tables:
             self._pg_dump_partitioned_ancestors = await get_partitioned_ancestors(
