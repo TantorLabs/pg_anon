@@ -113,6 +113,15 @@ class PgAnonApp:
             mode = self._get_mode()
             await mode.run()
             self.result.complete()
+        except PgAnonError as exc:
+            if exc.code == ErrorCode.NO_OBJECTS_FOR_SCAN:
+                # Nothing to anonymize is not an error: warn and exit successfully
+                # so that pipelines are not broken.
+                self.context.logger.warning("<============ %s: %s", self.context.options.mode.value, exc.message)
+                self.result.complete()
+            else:
+                self.context.logger.exception("<============ %s failed", self.context.options.mode.value)
+                self.result.fail(exc)
         except Exception as exc:
             self.context.logger.exception("<============ %s failed", self.context.options.mode.value)
             self.result.fail(exc)
