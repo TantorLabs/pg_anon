@@ -1,32 +1,29 @@
 import json
-from typing import List, Dict
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db_utils import get_scan_fields_list, get_scan_fields_count
+from pg_anon.common.db_utils import get_scan_fields_count, get_scan_fields_list
 from pg_anon.common.dto import FieldInfo
-from pg_anon.common.errors import PgAnonError, ErrorCode
-from pg_anon.common.utils import exception_helper, get_dict_rule_for_table
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 
 
 class ViewFieldsMode:
-    context: Context
-    _processing_fields_limit: int = 5000
-    _filter_dict_rule: Dict = None
-    fields: List[FieldInfo] = None
-    table: PrettyTable = None
-    json: str = None
-    fields_cut_by_limits: bool = False
-    empty_data_filler: str = '---'
-
-    def __init__(self, context: Context):
+    def __init__(self, context: Context) -> None:
         self.context = context
+        self._processing_fields_limit: int = 5000
+        self._filter_dict_rule: dict | None = None
+        self.fields: list[FieldInfo] | None = None
+        self.table: PrettyTable | None = None
+        self.json: str | None = None
+        self.fields_cut_by_limits: bool = False
+        self.empty_data_filler: str = "---"
         if context.options.fields_count is not None:
             self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
 
-    def _init_filter_dict_rule(self):
+    def _init_filter_dict_rule(self) -> None:
         self._filter_dict_rule = {}
         has_schema: bool = False
         has_table: bool = False
@@ -48,27 +45,28 @@ class ViewFieldsMode:
             has_table = True
 
         if has_schema and not has_table:
-            self._filter_dict_rule["table_mask"] = '*'
+            self._filter_dict_rule["table_mask"] = "*"
 
         if not has_schema and has_table:
-            self._filter_dict_rule["schema_mask"] = '*'
+            self._filter_dict_rule["schema_mask"] = "*"
 
     def _check_by_filters(self, field: FieldInfo) -> bool:
-        return bool(get_dict_rule_for_table(
-            dictionary_rules=[self._filter_dict_rule],
-            schema=field.nspname,
-            table=field.relname,
-        ))
+        if self._filter_dict_rule is None:
+            return False
+        return bool(
+            get_dict_rule_for_table(
+                dictionary_rules=[self._filter_dict_rule],
+                schema=field.nspname,
+                table=field.relname,
+            )
+        )
 
-    async def _get_fields_for_view(self) -> List[FieldInfo]:
-        """
-        Get scanning fields for view mode
-        :return: list of fields for view mode
-        """
+    async def _get_fields_for_view(self) -> list[FieldInfo]:
+        """Get scanning fields for view mode."""
         fields_list = await get_scan_fields_list(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
-            limit=self._processing_fields_limit
+            limit=self._processing_fields_limit,
         )
 
         result = []
@@ -79,23 +77,24 @@ class ViewFieldsMode:
 
         return result
 
-    async def _make_notice_fields_cut_by_limits(self):
+    async def _make_notice_fields_cut_by_limits(self) -> None:
         fields_count = await get_scan_fields_count(
-            connection_params=self.context.connection_params,
-            server_settings=self.context.server_settings
+            connection_params=self.context.connection_params, server_settings=self.context.server_settings
         )
 
         if fields_count > self._processing_fields_limit and not self.context.options.json:
-            print(f'You try to get too many fields ({fields_count} fields).'
-                  f' Will processed for output only first {self._processing_fields_limit} fields.'
-                  f' Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce fields amount.'
-                  f' Also you can use --fields-count to extend limit.')
+            print(
+                f"You try to get too many fields ({fields_count} fields)."
+                f" Will processed for output only first {self._processing_fields_limit} fields."
+                f" Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce fields amount."
+                f" Also you can use --fields-count to extend limit."
+            )
             self.fields_cut_by_limits = True
 
-    def _prepare_fields_for_view(self):
+    def _prepare_fields_for_view(self) -> None:
         fields_with_find_rules = []
 
-        for field in self.fields.copy():
+        for field in (self.fields or []).copy():
             include_rule = get_dict_rule_for_table(
                 dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
                 schema=field.nspname,
@@ -113,13 +112,13 @@ class ViewFieldsMode:
                     continue
 
             if include_rule:
-                if field.column_name in include_rule.get('fields', {}):
-                    field.rule = include_rule['fields'][field.column_name]
+                if field.column_name in include_rule.get("fields", {}):
+                    field.rule = include_rule["fields"][field.column_name]
                     field.dict_file_name = include_rule["dict_file_name"]
                     fields_with_find_rules.append(field)
                     continue
-                elif include_rule.get('raw_sql'):
-                    field.rule = include_rule['raw_sql']
+                if include_rule.get("raw_sql"):
+                    field.rule = include_rule["raw_sql"]
                     field.dict_file_name = include_rule["dict_file_name"]
                     fields_with_find_rules.append(field)
                     continue
@@ -131,38 +130,49 @@ class ViewFieldsMode:
 
         self.fields = fields_with_find_rules
 
-    def _prepare_table(self):
-        self.table = PrettyTable([
-            'schema',
-            'table',
-            'field',
-            'type',
-            'dict_file_name',
-            'rule',
-        ], align='l')
+    def _prepare_table(self) -> None:
+        self.table = PrettyTable(
+            [
+                "schema",
+                "table",
+                "field",
+                "type",
+                "dict_file_name",
+                "rule",
+            ],
+            align="l",
+        )
         self.table.set_style(SINGLE_BORDER)
 
-        for field in self.fields:
-            self.table.add_row([
-                field.nspname,
-                field.relname,
-                field.column_name,
-                field.type,
-                field.dict_file_name,
-                field.rule,
-            ])
+        for field in self.fields or []:
+            self.table.add_row(
+                [
+                    field.nspname,
+                    field.relname,
+                    field.column_name,
+                    field.type,
+                    field.dict_file_name,
+                    field.rule,
+                ]
+            )
 
-    def _prepare_json(self):
-        self.json = json.dumps([{
-            'schema': field.nspname,
-            'table': field.relname,
-            'field': field.column_name,
-            'type': field.type,
-            'dict_file_name': field.dict_file_name,
-            'rule': field.rule,
-        } for field in self.fields], ensure_ascii=False)
+    def _prepare_json(self) -> None:
+        self.json = json.dumps(
+            [
+                {
+                    "schema": field.nspname,
+                    "table": field.relname,
+                    "field": field.column_name,
+                    "type": field.type,
+                    "dict_file_name": field.dict_file_name,
+                    "rule": field.rule,
+                }
+                for field in self.fields or []
+            ],
+            ensure_ascii=False,
+        )
 
-    async def _output_fields(self):
+    async def _output_fields(self) -> None:
         await self._make_notice_fields_cut_by_limits()
 
         self.fields = await self._get_fields_for_view()
@@ -177,14 +187,12 @@ class ViewFieldsMode:
             print(self.table)
 
     async def run(self) -> None:
+        """Run the view_fields mode to display table field details."""
         self.context.logger.info("-------------> Started view_fields mode")
 
-        try:
-            if self._processing_fields_limit < 1:
-                raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
-            self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
-            await self._output_fields()
+        if self._processing_fields_limit < 1:
+            raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
+        self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
+        await self._output_fields()
 
-            self.context.logger.info("<------------- Finished view_fields mode")
-        except Exception as ex:
-            raise ex
+        self.context.logger.info("<------------- Finished view_fields mode")

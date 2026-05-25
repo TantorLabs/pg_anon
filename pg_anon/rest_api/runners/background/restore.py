@@ -1,0 +1,84 @@
+from pg_anon.common.enums import AnonMode
+from pg_anon.rest_api.enums import RestoreMode
+from pg_anon.rest_api.pydantic_models import RestoreRequest
+from pg_anon.rest_api.runners.background import BaseRunner
+from pg_anon.rest_api.utils import write_dictionary_contents
+
+
+class RestoreRunner(BaseRunner):
+    request: RestoreRequest  # type narrowing
+
+    def __init__(self, request: RestoreRequest) -> None:
+        self.mode: str = AnonMode.RESTORE.value
+        self.full_input_path: str | None = None
+        super().__init__(request)
+        self._set_mode()
+
+    def _set_mode(self) -> None:
+        if self.request.type == RestoreMode.FULL:
+            self.mode = AnonMode.RESTORE.value
+        elif self.request.type == RestoreMode.STRUCT:
+            self.mode = AnonMode.SYNC_STRUCT_RESTORE.value
+        elif self.request.type == RestoreMode.DATA:
+            self.mode = AnonMode.SYNC_DATA_RESTORE.value
+
+    def _prepare_dictionaries_cli_params(self) -> None:
+        if self.request.partial_tables_dict_contents:
+            input_partial_tables_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_dict_contents, self.base_tmp_dir).keys()
+            )
+            self.cli_params.append(f"--partial-tables-dict-file={','.join(input_partial_tables_dict_file_names)}")
+
+        if self.request.partial_tables_exclude_dict_contents:
+            input_partial_tables_exclude_dict_file_names = list(
+                write_dictionary_contents(self.request.partial_tables_exclude_dict_contents, self.base_tmp_dir).keys()
+            )
+            self.cli_params.append(
+                f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
+            )
+
+        if self.request.save_dicts:
+            self.cli_params.extend(
+                [
+                    "--save-dicts",
+                ]
+            )
+
+    def _prepare_input_dump_path_cli_params(self) -> None:
+        self.full_input_path = self.request.validated_input_path
+        self.cli_params.extend(
+            [
+                f"--input-dir={self.full_input_path}",
+            ]
+        )
+
+    def _prepare_parallelization_cli_params(self) -> None:
+        if self.request.proc_conn_count:
+            self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
+
+    def _prepare_pg_restore_cli_params(self) -> None:
+        if self.request.pg_restore_path:
+            self.cli_params.append(f"--pg-restore={self.request.pg_restore_path}")
+
+        if self.request.ignore_privileges:
+            self.cli_params.append("--ignore-privileges")
+
+        if self.request.pg_restore_options:
+            self.cli_params.append(f"--pg-restore-options={self.request.pg_restore_options}")
+
+    def _prepare_additional_cli_params(self) -> None:
+        if self.request.drop_custom_check_constr:
+            self.cli_params.append("--drop-custom-check-constr")
+        if self.request.clean_db:
+            self.cli_params.append("--clean-db")
+        if self.request.drop_db:
+            self.cli_params.append("--drop-db")
+
+    def _prepare_cli_params(self) -> None:
+        super()._prepare_cli_params()
+        self._prepare_dictionaries_cli_params()
+        self._prepare_input_dump_path_cli_params()
+        self._prepare_parallelization_cli_params()
+        self._prepare_pg_restore_cli_params()
+        self._prepare_additional_cli_params()
+        self._prepare_verbosity_cli_params()

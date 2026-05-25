@@ -20,13 +20,13 @@ Restores both the database structure and data.
 
 ### Run example
 ```commandline
-python pg_anon.py restore \
-                  --db-host=127.0.0.1 \
-                  --db-user=postgres \
-                  --db-user-password=postgres \
-                  --db-name=target_db \
-                  --input-dir=path/to/my_full_dump \
-                  --verbose=debug
+pg_anon restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=target_db \
+    --input-dir=path/to/my_full_dump \
+    --verbose=debug
 ```
 
 ---
@@ -42,13 +42,13 @@ Restores only the database structure.
 
 ### Run example
 ```commandline
-python pg_anon.py sync-struct-restore \
-                  --db-host=127.0.0.1 \
-                  --db-user=postgres \
-                  --db-user-password=postgres \
-                  --db-name=target_db \
-                  --input-dir=path/to/my_sync_struct_dump \
-                  --verbose=debug
+pg_anon sync-struct-restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=target_db \
+    --input-dir=path/to/my_sync_struct_dump \
+    --verbose=debug
 ```
 
 ---
@@ -64,13 +64,13 @@ Restores data only.
 
 ### Run example
 ```commandline
-python pg_anon.py sync-data-restore \
-                  --db-host=127.0.0.1 \
-                  --db-user=postgres \
-                  --db-user-password=postgres \
-                  --db-name=target_db \
-                  --input-dir=path/to/my_sync_data_dump \
-                  --verbose=debug
+pg_anon sync-data-restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=target_db \
+    --input-dir=path/to/my_sync_data_dump \
+    --verbose=debug
 ```
 
 ---
@@ -91,37 +91,37 @@ See [tables dictionary](../dicts/tables-dictionary.md).
 ### Run example
 #### Restore only need tables (whitelist)
 ```commandline
-python pg_anon.py restore \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --input-dir=partial_dump_white_list \
-                 --partial-tables-dict-file=include_tables.py
+pg_anon restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --input-dir=partial_dump_white_list \
+    --partial-tables-dict-file=include_tables.py
 ```
 
 #### Dump all tables without some specified tables (blacklist)
 ```commandline
-python pg_anon.py restore \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --input-dir=partial_dump_black_list \
-                 --partial-tables-exclude-dict-file=exclude_tables.py
+pg_anon restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --input-dir=partial_dump_black_list \
+    --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 
 #### Dump only specified tables with excluding some of them  (whitelist + blacklist)
 ```commandline
-python pg_anon.py restore \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --input-dir=partial_dump_white_list_and_black_list \
-                 --partial-tables-dict-file=include_tables.py
-                 --partial-tables-exclude-dict-file=exclude_tables.py
+pg_anon restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --input-dir=partial_dump_white_list_and_black_list \
+    --partial-tables-dict-file=include_tables.py
+    --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 ---

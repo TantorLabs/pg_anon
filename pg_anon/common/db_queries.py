@@ -1,15 +1,16 @@
 import re
-from typing import List
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import FieldInfo
 
 
-def get_limit_query(limit: int) -> str:
+def get_limit_query(limit: int | None) -> str:
+    """Build a SQL LIMIT clause from the given limit value."""
     return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
 
 
 def get_count_query(schema_name: str, table_name: str) -> str:
+    """Build a SQL query to count rows in the given table."""
     return f"""
         SELECT count(*)
         FROM \"{schema_name}\".\"{table_name}\"
@@ -17,14 +18,17 @@ def get_count_query(schema_name: str, table_name: str) -> str:
 
 
 def get_database_size_query(db_name: str) -> str:
+    """Build a SQL query to get the size of a database."""
     return f"SELECT pg_database_size('{db_name}')"
 
 
 def get_relation_size_query(schema: str, table: str) -> str:
+    """Build a SQL query to get the total size of a relation."""
     return f"""select pg_total_relation_size('"{schema}"."{table}"')"""
 
 
-def get_scan_fields_query(limit: int = None, count_only: bool = False):
+def get_scan_fields_query(limit: int | None = None, count_only: bool = False) -> str:
+    """Build a SQL query to retrieve scannable fields from the database."""
     if not count_only:
         fields = f"""
             SELECT DISTINCT
@@ -36,10 +40,10 @@ def get_scan_fields_query(limit: int = None, count_only: bool = False):
             {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
             {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
         """
-        order_by = 'ORDER BY 1, 2, a.attnum' if count_only else ''
+        order_by = "ORDER BY 1, 2, a.attnum" if count_only else ""
     else:
         fields = "SELECT COUNT(*)"
-        order_by = ''
+        order_by = ""
 
     query_limit = get_limit_query(limit)
 
@@ -77,8 +81,9 @@ def get_scan_fields_query(limit: int = None, count_only: bool = False):
     """
 
 
-def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, table_filter: str = None):
-    table_filter_clause = f"AND table_name LIKE '%{table_filter}%'" if table_filter else ''
+def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, table_filter: str | None = None) -> str:
+    """Build a SQL query to get tables with their column definitions."""
+    table_filter_clause = f"AND table_name LIKE '%{table_filter}%'" if table_filter else ""
     return f"""
     WITH paged_tables AS (
         SELECT
@@ -104,34 +109,28 @@ def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, 
     """
 
 
-def get_data_from_field_query(field_info: FieldInfo, limit: int = None, condition: str = None, not_null: bool = True) -> str:
-    """
-    Build query for receiving data from table
-    :param field_info: Field info
-    :param limit: batch size
-    :param condition: specific WHERE condition for receiving data
-    :param not_null: filter for receiving only not null values
-    :return: Returns raw SQL query
-    """
-
+def get_data_from_field_query(
+    field_info: FieldInfo, limit: int | None = None, condition: str | None = None, not_null: bool = True
+) -> str:
+    """Build a query for receiving data from a table."""
     conditions = []
-    query_condition = ''
+    query_condition = ""
 
     if condition:
-        condition = re.sub(r'^\s*where\b\s*', '', condition, flags=re.IGNORECASE)
+        condition = re.sub(r"^\s*where\b\s*", "", condition, flags=re.IGNORECASE)
         conditions.append(condition)
 
     if not_null:
-        conditions.append(f'\"{field_info.column_name}\" is NOT NULL')
+        conditions.append(f'"{field_info.column_name}" is NOT NULL')
 
     if conditions:
-        query_condition = 'WHERE '
-        query_condition += ' and '.join(conditions)
+        query_condition = "WHERE "
+        query_condition += " and ".join(conditions)
 
     query_limit = get_limit_query(limit)
 
-    query = f"""
-    SELECT distinct t1._field 
+    return f"""
+    SELECT distinct t1._field
     FROM (
         SELECT (substring(\"{field_info.column_name}\"::text, 1, 8196)) as _field
         FROM \"{field_info.nspname}\".\"{field_info.relname}\"
@@ -140,16 +139,15 @@ def get_data_from_field_query(field_info: FieldInfo, limit: int = None, conditio
     ) as t1
     """
 
-    return query
 
-
-def get_sequences_query(excluded_schemas: List[str] = None):
-    excluded_schemas_filter = ''
+def get_sequences_query(excluded_schemas: list[str] | None = None) -> str:
+    """Build a SQL query to retrieve sequences linked to table columns."""
+    excluded_schemas_filter = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND pn_t.nspname not in ({excluded_schemas_str})'
+        excluded_schemas_str = ", ".join("'" + v.replace("'", "''") + "'" for v in excluded_schemas)
+        excluded_schemas_filter = f"AND pn_t.nspname not in ({excluded_schemas_str})"
 
-    return f"""
+    return rf"""
         SELECT DISTINCT
             pn_t.nspname AS table_schema,
             t.relname AS table_name,
@@ -197,8 +195,9 @@ def get_sequences_query(excluded_schemas: List[str] = None):
             """
 
 
-def get_check_constraint_query():
-    return """
+def get_check_constraint_query() -> str:
+    """Build a SQL query to find check constraints referencing custom functions."""
+    return r"""
     SELECT DISTINCT
         nsp.nspname,
         cl.relname,
@@ -224,7 +223,8 @@ def get_check_constraint_query():
     """
 
 
-def get_sequences_max_value_init_query():
+def get_sequences_max_value_init_query() -> str:
+    """Build a PL/pgSQL block to reset sequence values to their table maximums."""
     return """
     DO $$
     DECLARE
@@ -259,7 +259,8 @@ def get_sequences_max_value_init_query():
     END$$;"""
 
 
-def get_db_params(db_name: str):
+def get_db_params(db_name: str) -> str:
+    """Build a SQL query to get database parameters."""
     return f"""
         SELECT d.datname,
                r.rolname AS owner,

@@ -25,12 +25,12 @@ This backup can be restored using the following modes:
 
 ### Run example
 ```commandline
-python pg_anon.py dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --prepared-sens-dict-file=sens_dict.py
+pg_anon dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --prepared-sens-dict-file=sens_dict.py
 ``` 
 
 ---
@@ -45,13 +45,13 @@ This mode is useful when used together with the [data dump (`sync-data-dump`) mo
 
 ### Run example
 ```commandline
-python pg_anon.py sync-struct-dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --output-dir=test_sync_struct_dump \
-                 --prepared-sens-dict-file=sens_dict.py
+pg_anon sync-struct-dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --output-dir=test_sync_struct_dump \
+    --prepared-sens-dict-file=sens_dict.py
 ```
 
 ---
@@ -66,13 +66,13 @@ This mode can be useful for scheduling database synchronization, for example usi
 
 ### Run example
 ```commandline
-python pg_anon.py sync-data-dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --output-dir=test_sync_data_dump \
-                 --prepared-sens-dict-file=sens_dict.py
+pg_anon sync-data-dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --output-dir=test_sync_data_dump \
+    --prepared-sens-dict-file=sens_dict.py
 ```
 
 ---
@@ -94,40 +94,40 @@ See [tables dictionary](../dicts/tables-dictionary.md).
 ### Run example
 #### Dump only need tables (whitelist)
 ```commandline
-python pg_anon.py dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --output-dir=partial_dump_white_list \
-                 --prepared-sens-dict-file=sens_dict.py
-                 --partial-tables-dict-file=include_tables.py
+pg_anon dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --output-dir=partial_dump_white_list \
+    --prepared-sens-dict-file=sens_dict.py
+    --partial-tables-dict-file=include_tables.py
 ```
 
 #### Dump all tables without some specified tables (blacklist)
 ```commandline
-python pg_anon.py dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --output-dir=partial_dump_black_list \
-                 --prepared-sens-dict-file=sens_dict.py
-                 --partial-tables-exclude-dict-file=exclude_tables.py
+pg_anon dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --output-dir=partial_dump_black_list \
+    --prepared-sens-dict-file=sens_dict.py
+    --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 
 #### Dump only specified tables with excluding some of them  (whitelist + blacklist)
 ```commandline
-python pg_anon.py dump \
-                 --db-host=127.0.0.1 \
-                 --db-user=postgres \
-                 --db-user-password=postgres \
-                 --db-name=source_db \
-                 --output-dir=partial_dump_white_list_and_black_list \
-                 --prepared-sens-dict-file=sens_dict.py
-                 --partial-tables-dict-file=include_tables.py
-                 --partial-tables-exclude-dict-file=exclude_tables.py
+pg_anon dump \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --output-dir=partial_dump_white_list_and_black_list \
+    --prepared-sens-dict-file=sens_dict.py
+    --partial-tables-dict-file=include_tables.py
+    --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 ---

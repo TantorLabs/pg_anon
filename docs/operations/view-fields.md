@@ -12,13 +12,13 @@ This mode displays how database fields match the anonymization rules.
 ## Run example
 
 ```commandline
-   python pg_anon.py view-fields \
-                     --db-host=127.0.0.1 \
-                     --db-user=postgres \
-                     --db-user-password=postgres \
-                     --db-name=source_db \
-                     --prepared-sens-dict-file=sens_dict.py
-   ```
+pg_anon view-fields \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --prepared-sens-dict-file=sens_dict.py
+```
 
 > ⚠️ **Note**
 > 

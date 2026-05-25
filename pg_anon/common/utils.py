@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ast
 import concurrent.futures
 import decimal
@@ -8,66 +10,66 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Union, Tuple, Set, Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pg_anon.common.dto import FieldInfo, RunOptions
+    from pg_anon.context import Context
 
 import yaml
 
-from pg_anon.common.constants import BASE_TYPE_ALIASES, TRACEBACK_LINES_COUNT, SAVED_DICTS_INFO_FILE_NAME, RUNS_BASE_DIR
-from pg_anon.common.dto import FieldInfo, RunOptions
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.constants import BASE_TYPE_ALIASES, RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME, TRACEBACK_LINES_COUNT
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.logger import get_logger
 
 logger = get_logger()
 
-PARENS_PATTERN = re.compile(r'\([^\)]*\)')
+PARENS_PATTERN = re.compile(r"\([^\)]*\)")
 TYPE_PATTERN = re.compile(
-        r"""
+    r"""
         ^\s*
         (?P<base>[a-z][a-z0-9_]*)
         (?P<parens>\s*\([^)]*\))?
-        (?P<suffix>.*)$          
+        (?P<suffix>.*)$
         """,
-        re.IGNORECASE | re.VERBOSE,
-    )
+    re.IGNORECASE | re.VERBOSE,
+)
 
-def get_pg_util_version(util_name):
+
+def get_pg_util_version(util_name: str) -> str:
+    """Return the version string of a PostgreSQL utility."""
     command = [util_name, "--version"]
-    res = subprocess.run(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
-    )
+    res = subprocess.run(command, capture_output=True, text=True, check=False)
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
 
 
-def check_pg_util(ctx, util_name, output_util_res):
+def check_pg_util(ctx: Context, util_name: str, output_util_res: str) -> bool:
+    """Check that a PostgreSQL utility exists and matches the expected version."""
     if not Path(util_name).is_file():
-        ctx.logger.error("ERROR: program %s is not exists!" % util_name)
+        ctx.logger.error("ERROR: program %s is not exists!", util_name)
         return False
 
     command = [util_name, "--version"]
-    res = subprocess.run(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
-    )
+    res = subprocess.run(command, capture_output=True, text=True, check=False)
     if str(res.stdout).find(output_util_res) == -1:
-        ctx.logger.error("ERROR: program %s is not %s!" % (util_name, output_util_res))
+        ctx.logger.error("ERROR: program %s is not %s!", util_name, output_util_res)
         return False
 
     return True
 
 
-def exception_helper(show_traceback=True):
+def exception_helper(show_traceback: bool = True) -> str:
+    """Format the current exception as a string."""
     exc_type, exc_value, exc_traceback = sys.exc_info()
-    return "\n".join(
-        [
-            v
-            for v in traceback.format_exception(
-                exc_type, exc_value, exc_traceback if show_traceback else None
-            )
-        ]
-    )
+    return "\n".join(list(traceback.format_exception(exc_type, exc_value, exc_traceback if show_traceback else None)))
 
 
-def exception_handler(func):
-    def f(*args, **kwargs):
+def exception_handler(func: Callable) -> Callable:
+    """Decorate a function to print and re-raise any exception."""
+
+    def f(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
         try:
             func(*args, **kwargs)
         except:
@@ -77,80 +79,64 @@ def exception_handler(func):
     return f
 
 
-def get_major_version(str_version):
+def get_major_version(str_version: str) -> str:
+    """Extract the major version number from a version string."""
     return re.findall(r"(\d+)", str_version)[0]
 
 
-def pretty_size(bytes_v):
-    units = [
-        (1 << 50, " PB"),
-        (1 << 40, " TB"),
-        (1 << 30, " GB"),
-        (1 << 20, " MB"),
-        (1 << 10, " KB"),
-        (1, (" byte", " bytes")),
-    ]
-    for factor, suffix in units:
-        if bytes_v >= factor:
-            break
-    amount = int(bytes_v / factor)
+def pretty_size(bytes_v: int) -> str:
+    """Format a byte count as a human-readable size string."""
+    if bytes_v < 1024:  # noqa: PLR2004
+        if bytes_v == 1:
+            return "1 byte"
+        return f"{bytes_v} bytes"
 
-    if isinstance(suffix, tuple):
-        singular, multiple = suffix
-        if amount == 1:
-            suffix = singular
-        else:
-            suffix = multiple
-    return str(amount) + suffix
+    units = ["KB", "MB", "GB", "TB", "PB"]
+    value: float = bytes_v
+    for unit in units:
+        value /= 1024
+        if value < 1024:  # noqa: PLR2004
+            return f"{int(value)} {unit}"
+
+    return f"{int(value)} {units[-1]}"
 
 
+def recordset_to_list_flat(rs: list) -> list:
+    """Convert a recordset to a list of flat value lists."""
+    return [list(dict(rec).values()) for rec in rs]
 
-def recordset_to_list_flat(rs):
-    res = []
+
+def setof_to_list(rs: list) -> list:
+    """Flatten a set-of recordset into a single list of values."""
+    res: list = []
     for rec in rs:
-        row = []
-        for _, v in dict(rec).items():
-            row.append(v)
-        res.append(row)
+        res.extend(dict(rec).values())
     return res
 
 
-def setof_to_list(rs) -> List:
-    res = []
-    for rec in rs:
-        for _, v in dict(rec).items():
-            res.append(v)
-    return res
+def to_json(obj, formatted: bool = False) -> str | bytes:  # noqa: ANN001
+    """Serialize an object to JSON string or UTF-8 bytes."""
 
-
-def to_json(obj, formatted=False):
-    def type_adapter(o):
+    def type_adapter(o) -> float | None:  # noqa: ANN001
         if isinstance(o, decimal.Decimal):
             return float(o)
+        return None
 
     if formatted:
-        return json.dumps(
-            obj, default=type_adapter, ensure_ascii=False, indent=4, sort_keys=True
-        )
-    else:
-        return json.dumps(obj, default=type_adapter, ensure_ascii=False).encode("utf8")
+        return json.dumps(obj, default=type_adapter, ensure_ascii=False, indent=4, sort_keys=True)
+    return json.dumps(obj, default=type_adapter, ensure_ascii=False).encode("utf8")
 
 
-def parse_comma_separated_list(value: str = None) -> Optional[List[str]]:
+def parse_comma_separated_list(value: str | None = None) -> list[str] | None:
+    """Parse a comma-separated string into a list of strings."""
     if not value:
         return None
 
-    return [item for item in value.split(',')]
+    return list(value.split(","))
 
 
-def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: str) -> Optional[Union[List[Dict], Dict]]:
-    """
-    Find matches rules for field in prepared dictionary
-    :param dictionary_rules: prepared dictionary rules
-    :param schema: schema of table which needs to be checked
-    :param table: table name which needs to be checked
-    :return: last matched rule
-    """
+def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: str) -> dict | None:
+    """Find matching rules for a table in the prepared dictionary."""
     result = None
 
     for rule in dictionary_rules:
@@ -168,17 +154,15 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
         if schema_matched and table_matched:
             return rule
 
-        if "schema_mask" in rule:
-            if rule["schema_mask"] == "*":
-                schema_mask_matched = True
-            elif re.search(safe_compile(rule["schema_mask"]), schema) is not None:
-                schema_mask_matched = True
+        if "schema_mask" in rule and (
+            rule["schema_mask"] == "*" or re.search(safe_compile(rule["schema_mask"]), schema) is not None
+        ):
+            schema_mask_matched = True
 
-        if "table_mask" in rule:
-            if rule["table_mask"] == "*":
-                table_mask_matched = True
-            elif re.search(safe_compile(rule["table_mask"]), table) is not None:
-                table_mask_matched = True
+        if "table_mask" in rule and (
+            rule["table_mask"] == "*" or re.search(safe_compile(rule["table_mask"]), table) is not None
+        ):
+            table_mask_matched = True
 
         if schema_mask_matched and table_matched:
             result = rule
@@ -190,8 +174,9 @@ def get_dict_rule_for_table(dictionary_rules: List[Dict], schema: str, table: st
     return result
 
 
-def validate_exists_mode(mode: str):
-    from pg_anon.common.enums import AnonMode
+def validate_exists_mode(mode: str) -> bool:
+    """Check whether the given mode string is a valid AnonMode."""
+    from pg_anon.common.enums import AnonMode  # noqa: PLC0415
 
     try:
         AnonMode(mode)
@@ -201,19 +186,18 @@ def validate_exists_mode(mode: str):
     return True
 
 
-def get_file_size(file_path: Union[str, Path]) -> int:
+def get_file_size(file_path: str | Path) -> int:
+    """Return the size of a file in bytes, or 0 if it does not exist."""
     path = Path(file_path)
     return path.stat().st_size if path.exists() else 0
 
 
-def get_folder_size(folder_path: Union[str, Path]) -> int:
+def get_folder_size(folder_path: str | Path) -> int:
+    """Calculate the total size of all files in a folder recursively."""
     total_size = 0
     folder_path = Path(folder_path)
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_file = []
-        for file_path in folder_path.rglob('*'):
-            if file_path.is_file():
-                future_to_file.append(executor.submit(get_file_size, file_path))
+        future_to_file = [executor.submit(get_file_size, fp) for fp in folder_path.rglob("*") if fp.is_file()]
 
         # Собираем результаты
         for future in concurrent.futures.as_completed(future_to_file):
@@ -222,26 +206,28 @@ def get_folder_size(folder_path: Union[str, Path]) -> int:
     return total_size
 
 
-def simple_slugify(value: str):
-    return re.sub(r'\W+', '-', value).strip('-').lower()
+def simple_slugify(value: str) -> str:
+    """Convert a string to a URL-friendly slug."""
+    return re.sub(r"\W+", "-", value).strip("-").lower()
 
 
-def read_yaml(file_path: Union[str, Path]) -> Dict:
+def read_yaml(file_path: str | Path) -> dict:
+    """Read and parse a YAML file, returning its contents as a dictionary."""
     path = Path(file_path)
-    if path.suffix not in ('.yml', '.yaml'):
+    if path.suffix not in (".yml", ".yaml"):
         raise PgAnonError(ErrorCode.INVALID_FILE_FORMAT, "File must be .yml or .yaml")
 
-    with open(path.absolute(), "r") as file:
-        data = yaml.safe_load(file)
-
-    return data
+    with path.open() as file:
+        return yaml.safe_load(file)
 
 
 def get_base_field_type(field_info: FieldInfo) -> str:
-    return PARENS_PATTERN.sub('', field_info.type)
+    """Extract the base type name from a field info, stripping parenthesized parts."""
+    return PARENS_PATTERN.sub("", field_info.type)
 
 
 def normalize_data_type(data_type: str) -> str:
+    """Normalize a PostgreSQL data type string to a canonical lowercase form."""
     clean_field_type = data_type.strip().lower()
     pattern_match = TYPE_PATTERN.match(clean_field_type)
     if not pattern_match:
@@ -268,7 +254,7 @@ def normalize_data_type(data_type: str) -> str:
 
     if tz_piece:
         if tz_in_suffix:
-            suffix = re.sub(r'\s*(?:with|without)\s+time\s+zone', '', suffix, flags=re.I).strip()
+            suffix = re.sub(r"\s*(?:with|without)\s+time\s+zone", "", suffix, flags=re.IGNORECASE).strip()
     elif normalized_base_type in ("time", "timestamp") and not tz_in_suffix:
         tz_piece = "without time zone"
 
@@ -290,7 +276,8 @@ def normalize_data_type(data_type: str) -> str:
     return result.lower()
 
 
-def split_constants_to_words_and_phrases(constants: List[str]) -> Tuple[set, set]:
+def split_constants_to_words_and_phrases(constants: list[str]) -> tuple[set, set]:
+    """Split a list of string constants into single-word and multi-word sets."""
     single_words = set()
     multi_words = set()
 
@@ -308,33 +295,34 @@ def split_constants_to_words_and_phrases(constants: List[str]) -> Tuple[set, set
 
 
 def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
+    """Format an exception traceback as a string, limited to the last N lines."""
     tb_exc = traceback.TracebackException.from_exception(exc)
     lines = list(tb_exc.format())
     return "".join(lines[-limit:])
 
 
 def filter_db_tables(
-        tables: List[Tuple[str, str]],
-        white_list_rules: Optional[List[Dict]] = None,
-        black_list_rules: Optional[List[Dict]] = None
-) -> Tuple[List[Tuple[str, str]], Set[Tuple[str, str]], Set[Tuple[str, str]]]:
-    filtered_tables = []
-    black_listed_tables = set()
-    white_listed_tables = set()
+    tables: list[tuple[str, str]],
+    white_list_rules: list[dict] | None = None,
+    black_list_rules: list[dict] | None = None,
+) -> tuple[list[tuple[str, str]], set[tuple[str, str]], set[tuple[str, str]]]:
+    """Filter database tables by whitelist and blacklist rules."""
+    filtered_tables: list[tuple[str, str]] = []
+    black_listed_tables: set[tuple[str, str]] = set()
+    white_listed_tables: set[tuple[str, str]] = set()
     if not (white_list_rules or black_list_rules):
         return tables, black_listed_tables, white_listed_tables
 
     for table_data in tables:
         # black list has the highest priority for pg_dump / pg_restore
-        if black_list_rules:
-            if table_excluded := get_dict_rule_for_table(black_list_rules, *table_data):
-                # if table in black list, this table must be filtered out
-                black_listed_tables.add(table_data)
-                continue
+        if black_list_rules and get_dict_rule_for_table(black_list_rules, *table_data):
+            # if table in black list, this table must be filtered out
+            black_listed_tables.add(table_data)
+            continue
 
         # white list has the second priority for pg_dump / pg_restore
         if white_list_rules:
-            if table_included := get_dict_rule_for_table(white_list_rules, *table_data):
+            if get_dict_rule_for_table(white_list_rules, *table_data):
                 # if white list is using and table in white list, this table must not be filtered
                 white_listed_tables.add(table_data)
                 filtered_tables.append(table_data)
@@ -346,46 +334,52 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def resolve_dependencies(extension_name, extensions_map: Dict[str, List[Dict[str, Any]]], seen=None):
+def resolve_dependencies(
+    extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None
+) -> set:
+    """Recursively resolve all dependencies for a PostgreSQL extension."""
     if seen is None:
         seen = set()
 
     if extension_name in seen:
-        return
+        return seen
 
     seen.add(extension_name)
 
     for extension_data in extensions_map.get(extension_name, []):
-        if not extension_data['requires']:
+        if not extension_data["requires"]:
             continue
 
-        for dependency in extension_data['requires']:
+        for dependency in extension_data["requires"]:
             resolve_dependencies(dependency, extensions_map, seen)
 
     return seen
 
 
-def safe_compile(pattern: str, flags=0):
+def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
+    """Compile a regex pattern, returning a never-matching pattern on error."""
     try:
         return re.compile(pattern, flags)
     except re.error:
-        logger.warn(f"Regex pattern is invalid: {pattern}. This pattern will be ignored")
+        logger.warning("Regex pattern is invalid: %s. This pattern will be ignored", pattern)
         return re.compile(r"(?!)")  # Never matching. Instead of None
 
 
-def save_json_file(file_path: Union[str, Path], data: Dict):
-    with open(file_path, "w", encoding='utf-8') as out_file:
+def save_json_file(file_path: str | Path, data: dict) -> None:
+    """Write a dictionary to a JSON file with pretty formatting."""
+    with Path(file_path).open("w", encoding="utf-8") as out_file:
         out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
 
-def read_dict_data(data: str, dict_name: str) -> Optional[Dict[str, Any]]:
+def read_dict_data(data: str, dict_name: str | Path) -> dict[str, Any] | None:
+    """Parse a string as a Python literal and validate it is a dictionary."""
     try:
         dict_data = ast.literal_eval(data)
-    except Exception as exc:
-        raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Can't read data from file: {dict_name}")
+    except Exception as ex:
+        raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Can't read data from file: {dict_name}") from ex
 
     if not dict_data:
-        return
+        return None
 
     if not isinstance(dict_data, dict):
         raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Received non-dictionary structure from file: {dict_name}")
@@ -393,52 +387,54 @@ def read_dict_data(data: str, dict_name: str) -> Optional[Dict[str, Any]]:
     return dict_data
 
 
-def read_dict_data_from_file(dictionary_file_path: Path) -> Optional[Dict[str, Any]]:
-    with open(dictionary_file_path, "r") as dictionary_file:
+def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | None:
+    """Read and parse dictionary data from a file."""
+    with dictionary_file_path.open() as dictionary_file:
         data = dictionary_file.read().strip()
 
     if not data:
-        return
+        return None
 
     return read_dict_data(data, dictionary_file_path)
 
 
-def save_dicts_info_file(options: RunOptions):
-    def serialize_dict(file_path: str) -> Optional[Dict[str, Any]]:
-        file_path = Path(file_path)
-        if not file_path.exists():
+def save_dicts_info_file(options: RunOptions) -> None:
+    """Serialize all dictionary file contents and save them as a JSON info file."""
+
+    def serialize_dict(file_path: str) -> dict[str, Any] | None:
+        path = Path(file_path)
+        if not path.exists():
             return None
 
-        with open(file_path, "r") as file:
+        with path.open() as file:
             content = file.read().strip()
 
-        return {
-            "name": file_path.name,
-            "content": content
-        }
+        return {"name": path.name, "content": content}
 
     data = {
-        "meta_dict_files": [
-            serialize_dict(file) for file in options.meta_dict_files
-        ] if options.meta_dict_files else None,
-        "output_sens_dict_file": serialize_dict(
-            options.output_sens_dict_file
-        ) if options.output_sens_dict_file else None,
-        "output_no_sens_dict_file": serialize_dict(
-            options.output_no_sens_dict_file
-        ) if options.output_no_sens_dict_file else None,
-        "prepared_sens_dict_files": [
-            serialize_dict(file) for file in options.prepared_sens_dict_files
-        ] if options.prepared_sens_dict_files else None,
-        "prepared_no_sens_dict_files": [
-            serialize_dict(file) for file in options.prepared_no_sens_dict_files
-        ] if options.prepared_no_sens_dict_files else None,
-        "partial_tables_dict_files": [
-            serialize_dict(file) for file in options.partial_tables_dict_files
-        ] if options.partial_tables_dict_files else None,
+        "meta_dict_files": [serialize_dict(file) for file in options.meta_dict_files]
+        if options.meta_dict_files
+        else None,
+        "output_sens_dict_file": serialize_dict(options.output_sens_dict_file)
+        if options.output_sens_dict_file
+        else None,
+        "output_no_sens_dict_file": serialize_dict(options.output_no_sens_dict_file)
+        if options.output_no_sens_dict_file
+        else None,
+        "prepared_sens_dict_files": [serialize_dict(file) for file in options.prepared_sens_dict_files]
+        if options.prepared_sens_dict_files
+        else None,
+        "prepared_no_sens_dict_files": [serialize_dict(file) for file in options.prepared_no_sens_dict_files]
+        if options.prepared_no_sens_dict_files
+        else None,
+        "partial_tables_dict_files": [serialize_dict(file) for file in options.partial_tables_dict_files]
+        if options.partial_tables_dict_files
+        else None,
         "partial_tables_exclude_dict_files": [
             serialize_dict(file) for file in options.partial_tables_exclude_dict_files
-        ] if options.partial_tables_exclude_dict_files else None,
+        ]
+        if options.partial_tables_exclude_dict_files
+        else None,
     }
 
     saved_dicts_info_file = Path(options.run_dir) / SAVED_DICTS_INFO_FILE_NAME
@@ -446,11 +442,6 @@ def save_dicts_info_file(options: RunOptions):
 
 
 def make_run_dir(internal_operation_id: str) -> str:
+    """Create dir for operation logs and data."""
     today = datetime.today()
-    return str(
-        RUNS_BASE_DIR /
-        str(today.year) /
-        str(today.month) /
-        str(today.day) /
-        internal_operation_id
-    )
+    return str(RUNS_BASE_DIR / str(today.year) / str(today.month) / str(today.day) / internal_operation_id)

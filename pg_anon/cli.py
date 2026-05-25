@@ -2,16 +2,23 @@ import argparse
 import asyncio
 import sys
 import uuid
-from typing import Optional, List
 
 from pg_anon import PgAnonApp
+from pg_anon.common.constants import (
+    DEFAULT_DB_CONNECTIONS_PER_PROCESS,
+    DEFAULT_PG_DUMP_PATH,
+    DEFAULT_PG_RESTORE_PATH,
+    DEFAULT_PROCESSES,
+    DEFAULT_SCAN_PARTIAL_ROWS,
+)
 from pg_anon.common.dto import PgAnonResult, RunOptions
-from pg_anon.common.enums import AnonMode, VerboseOptions, ScanMode, ResultCode
-from pg_anon.common.utils import parse_comma_separated_list, make_run_dir
+from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
+from pg_anon.common.utils import make_run_dir, parse_comma_separated_list
 from pg_anon.version import __version__
 
 
-def common_parser():
+def common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with common database connection options."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--db-host",
@@ -65,7 +72,7 @@ def common_parser():
         "--db-ssl-ca-file",
         type=str,
         default="",
-        help="""Path to the CA certificate used to verify the server’s certificate""",
+        help="""Path to the CA certificate used to verify the server's certificate""",
     )
     parser.add_argument(
         "--config",
@@ -81,7 +88,7 @@ def common_parser():
     parser.add_argument(
         "--verbose",
         dest="verbose",
-        choices=list(v.value for v in VerboseOptions),
+        choices=[v.value for v in VerboseOptions],
         default=VerboseOptions.INFO.value,
         help="""Sets the log verbosity level: "info", "debug", "error". (default: %(default)s)""",
     )
@@ -105,25 +112,27 @@ def common_parser():
     return parser
 
 
-def multiprocessing_common_parser():
+def multiprocessing_common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with multiprocessing options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--db-connections-per-process",
         type=int,
-        default=16,
+        default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
         help="""Number of concurrent database connections for I/O operations. (default: %(default)s)""",
     )
     p.add_argument(
         "--processes",
         type=int,
-        default=4,
+        default=DEFAULT_PROCESSES,
         help="""Number of concurrent compression workers for dump mode. (default: %(default)s)""",
     )
 
     return p
 
 
-def scan_parser():
+def scan_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with scan-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -131,7 +140,7 @@ def scan_parser():
         dest="meta_dict_files",
         type=parse_comma_separated_list,
         required=True,
-        help="Input file or file list contains meta-dictionary, which was prepared manually. In rules collision case, priority has rules in last file from the list."
+        help="Input file or file list contains meta-dictionary, which was prepared manually. In rules collision case, priority has rules in last file from the list.",
     )
     p.add_argument(
         "--prepared-sens-dict-file",
@@ -161,14 +170,14 @@ def scan_parser():
 
     p.add_argument(
         "--scan-mode",
-        choices=list(v.value for v in ScanMode),
+        choices=[v.value for v in ScanMode],
         default=ScanMode.PARTIAL.value,
         help="""Defines whether to scan all data or only part of it ["full", "partial"] (default: %(default)s)""",
     )
     p.add_argument(
         "--scan-partial-rows",
         type=int,
-        default=10000,
+        default=DEFAULT_SCAN_PARTIAL_ROWS,
         help="""In "--scan-mode=partial" defines amount of rows to scan (default: %(default)s). Actual rows count can be smaller after getting unique values.""",
     )
 
@@ -181,7 +190,8 @@ def scan_parser():
     return p
 
 
-def dump_parser():
+def dump_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with dump-specific options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
         "--prepared-sens-dict-file",
@@ -225,7 +235,7 @@ def dump_parser():
     p.add_argument(
         "--pg-dump",
         type=str,
-        default="/usr/bin/pg_dump",
+        default=DEFAULT_PG_DUMP_PATH,
         help="""Path to the pg_dump Postgres tool (default: %(default)s).""",
     )
     p.add_argument(
@@ -255,7 +265,8 @@ def dump_parser():
     return p
 
 
-def restore_parser():
+def restore_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with restore-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -279,7 +290,7 @@ def restore_parser():
     p.add_argument(
         "--db-connections-per-process",
         type=int,
-        default=4,
+        default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
         help="""Number of database connections. (default: %(default)s)""",
     )
     p.add_argument(
@@ -300,7 +311,7 @@ def restore_parser():
     p.add_argument(
         "--pg-restore",
         type=str,
-        default="/usr/bin/pg_restore",
+        default=DEFAULT_PG_RESTORE_PATH,
         help="""Path to the pg_restore Postgres tool. """,
     )
     group = p.add_mutually_exclusive_group()
@@ -344,7 +355,8 @@ def restore_parser():
     return p
 
 
-def view_fields_parser():
+def view_fields_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with view-fields-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -398,7 +410,8 @@ def view_fields_parser():
     return p
 
 
-def view_data_parser():
+def view_data_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with view-data-specific options."""
     p = argparse.ArgumentParser(add_help=False)
 
     p.add_argument(
@@ -441,7 +454,8 @@ def view_data_parser():
     return p
 
 
-def get_arg_parser():
+def get_arg_parser() -> argparse.ArgumentParser:
+    """Build the top-level argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="pg_anon",
         description="PostgreSQL database anonymization tool",
@@ -503,6 +517,7 @@ def get_arg_parser():
 
 
 def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
+    """Convert legacy --mode flag syntax to subcommand-style arguments."""
     if "--mode" not in argv and not any(a.startswith("--mode=") for a in argv):
         return argv
 
@@ -524,18 +539,19 @@ def normalize_legacy_mode_args(argv: list[str]) -> list[str]:
             new_argv.append(arg)
 
     if mode:
-        return [mode] + new_argv
+        return [mode, *new_argv]
 
     return argv
 
 
-def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
+def build_run_options(cli_run_params: list[str] | None = None) -> RunOptions:
+    """Parse CLI arguments and construct a RunOptions instance."""
     if cli_run_params is None:
         cli_run_params = sys.argv[1:]
 
     # Handle --version before subcommand parsing
     if "--version" in cli_run_params:
-        print("Version %s" % __version__)
+        print(f"Version {__version__}")
         sys.exit(0)
 
     cli_run_params = normalize_legacy_mode_args(cli_run_params)
@@ -548,41 +564,39 @@ def build_run_options(cli_run_params: Optional[List[str]] = None) -> RunOptions:
         args_dict["debug"] = True
         args_dict["verbose"] = VerboseOptions.DEBUG.value
 
-    if args_dict.get('scan_mode'):
-        args_dict['scan_mode'] = ScanMode(args_dict['scan_mode'])
+    if args_dict.get("scan_mode"):
+        args_dict["scan_mode"] = ScanMode(args_dict["scan_mode"])
 
-    if args_dict.get('verbose'):
-        args_dict['verbose'] = VerboseOptions(args_dict['verbose'])
+    if args_dict.get("verbose"):
+        args_dict["verbose"] = VerboseOptions(args_dict["verbose"])
 
-    internal_operation_id = args_dict.pop('internal_operation_id', None) or str(uuid.uuid4())
+    internal_operation_id = args_dict.pop("internal_operation_id", None) or str(uuid.uuid4())
     run_dir = make_run_dir(internal_operation_id)
 
-    args_dict.update({
-        'pg_anon_version': __version__,
-        'internal_operation_id': internal_operation_id,
-        'run_dir': run_dir,
-        'mode': AnonMode(args_dict['mode']),
-    })
+    args_dict.update(
+        {
+            "pg_anon_version": __version__,
+            "internal_operation_id": internal_operation_id,
+            "run_dir": run_dir,
+            "mode": AnonMode(args_dict["mode"]),
+        }
+    )
     return RunOptions(**args_dict)
 
 
-async def run_pg_anon(cli_run_params: Optional[List[str]] = None) -> PgAnonResult:
-    """
-    Run pg_anon
-    :param cli_run_params: list of params in command line format
-    :return: result of pg_anon
-    """
+async def run_pg_anon(cli_run_params: list[str] | None = None) -> PgAnonResult:
+    """Run pg_anon."""
     options = build_run_options(cli_run_params)
 
     if options.version:
-        print("Version %s" % options.pg_anon_version)
+        print(f"Version {options.pg_anon_version}")
         sys.exit(0)
 
-    result = await PgAnonApp(options).run()
-    return result
+    return await PgAnonApp(options).run()
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
+    """Entry point for the pg_anon CLI."""
     result = asyncio.run(run_pg_anon(argv))
     if result.result_code == ResultCode.FAIL:
         sys.exit(1)

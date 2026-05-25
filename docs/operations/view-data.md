@@ -12,16 +12,16 @@ This mode displays anonymized table data without creating a dump.
 ## Run example
 
 ```commandline
-   python pg_anon.py view-data \
-                     --db-host=127.0.0.1 \
-                     --db-user=postgres \
-                     --db-user-password=postgres \
-                     --db-name=source_db \
-                     --prepared-sens-dict-file=sens_dict.py \
-                     --schema-name=public \
-                     --table-name=users \
-                     --limit=10 \
-                     --offset=0
+pg_anon view-data \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=source_db \
+    --prepared-sens-dict-file=sens_dict.py \
+    --schema-name=public \
+    --table-name=users \
+    --limit=10 \
+    --offset=0
 ```
 
 ---

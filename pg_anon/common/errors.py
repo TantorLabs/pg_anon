@@ -38,6 +38,7 @@ class ErrorCode(StrEnum):
     # Restore
     INPUT_DIR_NOT_FOUND = "INPUT_DIR_NOT_FOUND"
     DB_NOT_EMPTY = "DB_NOT_EMPTY"
+    TARGET_HAS_EXTRA_TABLES = "TARGET_HAS_EXTRA_TABLES"
     INSUFFICIENT_DISK_SPACE = "INSUFFICIENT_DISK_SPACE"
     VERSION_INCOMPATIBLE = "VERSION_INCOMPATIBLE"
     RESTORE_FAILED = "RESTORE_FAILED"
@@ -57,10 +58,11 @@ class ErrorCode(StrEnum):
 
 
 class PgAnonError(Exception):
-    def __init__(self, code: ErrorCode, message: str):
+    def __init__(self, code: ErrorCode, message: str) -> None:
         self.code = code
         self.message = message
         super().__init__(message)
 
-    def __reduce__(self):
-        return (self.__class__, (self.code, self.message))
+    def __reduce__(self) -> tuple[type, tuple[ErrorCode, str]]:
+        """Return pickling instructions for serialization across processes."""
+        return self.__class__, (self.code, self.message)

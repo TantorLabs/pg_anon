@@ -1,16 +1,20 @@
 import hashlib
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any
 
 import asyncpg
 from asyncpg import Connection, Pool
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS, DEFAULT_EXCLUDED_SCHEMAS
-from pg_anon.common.db_queries import get_scan_fields_query, get_count_query, get_database_size_query, \
-    get_tables_with_fields_query
-from pg_anon.common.dto import FieldInfo, ConnectionParams
-from pg_anon.common.errors import PgAnonError, ErrorCode
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, DEFAULT_EXCLUDED_SCHEMAS, SERVER_SETTINGS
+from pg_anon.common.db_queries import (
+    get_count_query,
+    get_database_size_query,
+    get_scan_fields_query,
+    get_tables_with_fields_query,
+)
+from pg_anon.common.dto import ConnectionParams, FieldInfo
+from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 from pg_anon.logger import get_logger
@@ -18,14 +22,23 @@ from pg_anon.logger import get_logger
 logger = get_logger()
 
 
-async def create_connection(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> Connection:
+def _sql_quote_list(values: list[str]) -> str:
+    """Quote a list of identifiers as SQL string literals with proper escaping."""
+    return ", ".join("'" + v.replace("'", "''") + "'" for v in values)
+
+
+async def create_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> Connection:
+    """Create a new asyncpg database connection."""
     return await asyncpg.connect(
         **connection_params.as_dict(),
         server_settings=server_settings,
     )
 
 
-async def create_pool(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10) -> Pool:
+async def create_pool(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, min_size: int = 10, max_size: int = 10
+) -> Pool:
+    """Create a new asyncpg connection pool."""
     return await asyncpg.create_pool(
         **connection_params.as_dict(),
         server_settings=server_settings,
@@ -34,23 +47,21 @@ async def create_pool(connection_params: ConnectionParams, server_settings: Dict
     )
 
 
-async def check_db_connection(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> bool:
+async def check_db_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> bool:
+    """Check whether a database connection can be established."""
     try:
         db_conn = await create_connection(connection_params, server_settings=server_settings)
         await db_conn.close()
-    except Exception as ex:
+    except Exception:
         return False
 
     return True
 
 
-async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> bool:
-    """
-    Checks exists db schema what consists predefined anonymization utils
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :return: Exists schema or not
-    """
+async def check_anon_utils_db_schema_exists(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS
+) -> bool:
+    """Check whether the anonymization utils schema exists in the database."""
     query = f"""
     select exists (select schema_name FROM information_schema.schemata where "schema_name" = '{ANON_UTILS_DB_SCHEMA_NAME}');
     """
@@ -61,14 +72,10 @@ async def check_anon_utils_db_schema_exists(connection_params: ConnectionParams,
     return exists
 
 
-async def get_scan_fields_list(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, limit: int = None) -> List:
-    """
-    Get fields list for scan sensitive data
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :param limit: Limit the number of results to return.
-    :return: resulted fields list for processing
-    """
+async def get_scan_fields_list(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None
+) -> list:
+    """Get the list of fields available for scanning sensitive data."""
     query = get_scan_fields_query(limit=limit)
 
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -77,7 +84,15 @@ async def get_scan_fields_list(connection_params: ConnectionParams, server_setti
     return fields_list
 
 
-async def get_tables_with_fields(schema: str, connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS, limit: int = None, offset: int = None, table_filter: str = None) -> List:
+async def get_tables_with_fields(
+    schema: str,
+    connection_params: ConnectionParams,
+    server_settings: dict = SERVER_SETTINGS,
+    limit: int = 10,
+    offset: int = 0,
+    table_filter: str | None = None,
+) -> list:
+    """Get tables with their column definitions for a given schema."""
     query = get_tables_with_fields_query(schema, limit, offset, table_filter=table_filter)
 
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -89,13 +104,8 @@ async def get_tables_with_fields(schema: str, connection_params: ConnectionParam
     return data
 
 
-async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get count of fields for scan sensitive data
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :return: count of resulted fields list for processing
-    """
+async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> int:
+    """Get the count of fields available for scanning sensitive data."""
     query = get_scan_fields_query(count_only=True)
 
     db_conn = await create_connection(connection_params, server_settings=server_settings)
@@ -104,36 +114,30 @@ async def get_scan_fields_count(connection_params: ConnectionParams, server_sett
     return count
 
 
-async def get_fields_list(connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: Dict = SERVER_SETTINGS) -> List:
-    """
-    Get fields list for dump
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param table_schema: Table schema name
-    :param table_name: Table name
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :return: fields list for dump
-    """
+async def get_fields_list(
+    connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+) -> list:
+    """Get the list of fields for a table dump."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
-        """
+        f"""
             SELECT column_name, udt_name, is_nullable, is_generated FROM information_schema.columns
-            WHERE table_schema = '%s' AND table_name='%s'
+            WHERE table_schema = '{table_schema.replace("'", "''")}' AND table_name='{table_name.replace("'", "''")}'
             ORDER BY ordinal_position ASC
         """
-        % (table_schema.replace("'", "''"), table_name.replace("'", "''"))
     )
     await db_conn.close()
     return fields_list
 
 
-async def get_all_fields_list(connection_params: ConnectionParams, exclude_schemas: List[str], server_settings: Dict = SERVER_SETTINGS) -> Dict[Tuple[str, str], List]:
-    """
-    Get fields for all tables in one query.
-    """
+async def get_all_fields_list(
+    connection_params: ConnectionParams, exclude_schemas: list[str], server_settings: dict = SERVER_SETTINGS
+) -> dict[tuple[str, str], list]:
+    """Get fields for all tables in one query."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     try:
         excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
-        placeholders = ', '.join(f"'{s}'" for s in excluded)
+        placeholders = _sql_quote_list(excluded)
 
         rows = await db_conn.fetch(f"""
             SELECT table_schema, table_name, column_name, udt_name, is_nullable, is_generated
@@ -144,9 +148,9 @@ async def get_all_fields_list(connection_params: ConnectionParams, exclude_schem
     finally:
         await db_conn.close()
 
-    result: Dict[Tuple[str, str], List] = {}
+    result: dict[tuple[str, str], list] = {}
     for row in rows:
-        key = (row['table_schema'], row['table_name'])
+        key = (row["table_schema"], row["table_name"])
         if key not in result:
             result[key] = []
         result[key].append(row)
@@ -154,15 +158,56 @@ async def get_all_fields_list(connection_params: ConnectionParams, exclude_schem
     return result
 
 
-async def get_rows_count(connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get rows count in table
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param schema_name: Schema name
-    :param table_name: Table name
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :return: rows count in table
-    """
+async def get_event_triggers_in_schemas(
+    connection: Connection,
+    schemas: list[str] | None,
+) -> list[str]:
+    """Return names of EVENT TRIGGERs whose backing function lives in one of `schemas`."""
+    if not schemas:
+        return []
+    rows = await connection.fetch(
+        """
+        SELECT et.evtname
+        FROM pg_event_trigger et
+        JOIN pg_proc p ON p.oid = et.evtfoid
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = ANY($1::text[])
+        """,
+        list(schemas),
+    )
+    return [row["evtname"] for row in rows]
+
+
+async def get_legacy_inheritance_parents(
+    connection_params: ConnectionParams,
+    exclude_schemas: list[str] | None = None,
+    server_settings: dict = SERVER_SETTINGS,
+) -> set[tuple[str, str]]:
+    """Return (schema, table) pairs that are legacy-INHERITS parents (not declarative partitions)."""
+    excluded = list(DEFAULT_EXCLUDED_SCHEMAS) + (exclude_schemas or [])
+    placeholders = _sql_quote_list(excluded)
+    db_conn = await create_connection(connection_params, server_settings=server_settings)
+    try:
+        rows = await db_conn.fetch(f"""
+            SELECT DISTINCT
+                np.nspname AS parent_schema,
+                p.relname AS parent_table
+            FROM pg_inherits inh
+            JOIN pg_class p ON p.oid = inh.inhparent
+            JOIN pg_namespace np ON np.oid = p.relnamespace
+            WHERE p.relkind = 'r'
+              AND np.nspname NOT IN ({placeholders})
+        """)
+    finally:
+        await db_conn.close()
+
+    return {(row["parent_schema"], row["parent_table"]) for row in rows}
+
+
+async def get_rows_count(
+    connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+) -> int:
+    """Get the row count for a table."""
     query = get_count_query(schema_name=schema_name, table_name=table_name)
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     count = await db_conn.fetchval(query)
@@ -170,14 +215,10 @@ async def get_rows_count(connection_params: ConnectionParams, schema_name: str, 
     return count
 
 
-async def get_db_size(connection_params: ConnectionParams, db_name: str, server_settings: Dict = SERVER_SETTINGS) -> int:
-    """
-    Get db size count in table
-    :param connection_params: Required connection parameters such as host, login, password and etc.
-    :param db_name: Database name
-    :param server_settings: Optional server settings for new connection. Can consists of timeout settings, application name and etc.
-    :return: database size in bytes
-    """
+async def get_db_size(
+    connection_params: ConnectionParams, db_name: str, server_settings: dict = SERVER_SETTINGS
+) -> int:
+    """Get the database size in bytes."""
     query = get_database_size_query(db_name=db_name)
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     result = await db_conn.fetchval(query)
@@ -185,50 +226,125 @@ async def get_db_size(connection_params: ConnectionParams, db_name: str, server_
     return result
 
 
-async def exec_data_scan_func_query(connection: Connection, scan_func: str, value, field_info: FieldInfo) -> bool:
-    """
-    Execute scan in row by custom DB function
-    :param connection: Active connection to db
-    :param scan_func: DB function name which can call with "(value, schema, table, column_name)" and returns boolean value
-    :param value: Data value from field
-    :param field_info: Field info
-    :return: If it sensitive by scan func then return **True**, otherwise **False**
-    """
-
+async def exec_data_scan_func_query(connection: Connection, scan_func: str, value: Any, field_info: FieldInfo) -> bool:  # noqa: ANN401
+    """Execute a row-level scan using a custom database function."""
     query = f"""SELECT {scan_func}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    res = await statement.fetchval(
-        value, field_info.nspname, field_info.relname, field_info.column_name
-    )
-
-    return res
+    return await statement.fetchval(value, field_info.nspname, field_info.relname, field_info.column_name)
 
 
-async def exec_data_scan_func_per_field_query(connection: Connection, scan_func_per_field: str, field_info: FieldInfo) -> bool:
-    """
-    Execute scan in field by custom DB function
-    :param connection: Active connection to db
-    :param scan_func_per_field: DB function name which can call with "(schema, table, column_name, column_type)" and returns boolean value
-    :param field_info: Field info
-    :return: If it sensitive by scan func per field then return **True**, otherwise **False**
-    """
-
+async def exec_data_scan_func_per_field_query(
+    connection: Connection, scan_func_per_field: str, field_info: FieldInfo
+) -> bool:
+    """Execute a field-level scan using a custom database function."""
     query = f"""SELECT {scan_func_per_field}($1, $2, $3, $4)"""
     statement = await connection.prepare(query)
-    res = await statement.fetchval(
-        field_info.nspname, field_info.relname, field_info.column_name, field_info.type
+    return await statement.fetchval(field_info.nspname, field_info.relname, field_info.column_name, field_info.type)
+
+
+async def get_partitioned_ancestors(
+    connection: Connection,
+    tables: list[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return declarative-partitioning ancestors of the given tables."""
+    if not tables:
+        return set()
+
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
+    args = [item for pair in tables for item in pair]
+
+    rows = await connection.fetch(
+        f"""
+        WITH RECURSIVE
+        input_oids AS (
+            SELECT c.oid
+              FROM (VALUES {values_placeholders}) AS v(s, t)
+              JOIN pg_namespace n ON n.nspname = v.s
+              JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
+        ),
+        walk(child_oid, parent_oid) AS (
+            SELECT inh.inhrelid, inh.inhparent
+              FROM pg_inherits inh
+             WHERE inh.inhrelid IN (SELECT oid FROM input_oids)
+            UNION
+            SELECT inh.inhrelid, inh.inhparent
+              FROM pg_inherits inh
+              JOIN walk w ON w.parent_oid = inh.inhrelid
+        )
+        SELECT DISTINCT n.nspname, c.relname
+          FROM walk w
+          JOIN pg_class c ON c.oid = w.parent_oid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind = 'p'
+        """,
+        *args,
+    )
+    return {(r["nspname"], r["relname"]) for r in rows}
+
+
+async def get_partition_ancestors_map(
+    connection: Connection,
+    tables: list[tuple[str, str]],
+) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """Map each input table to its declarative-partitioning ancestors, closest first.
+
+    Only declarative partitioning parents (relkind='p') are reported; legacy INHERITS
+    parents are intentionally skipped, matching get_partitioned_ancestors.
+    """
+    if not tables:
+        return {}
+
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
+    args = [item for pair in tables for item in pair]
+
+    rows = await connection.fetch(
+        f"""
+        WITH RECURSIVE
+        input_oids AS (
+            SELECT c.oid
+              FROM (VALUES {values_placeholders}) AS v(s, t)
+              JOIN pg_namespace n ON n.nspname = v.s
+              JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
+        ),
+        walk(start_oid, parent_oid, lvl) AS (
+            SELECT inh.inhrelid, inh.inhparent, 1
+              FROM pg_inherits inh
+             WHERE inh.inhrelid IN (SELECT oid FROM input_oids)
+            UNION ALL
+            SELECT w.start_oid, inh.inhparent, w.lvl + 1
+              FROM pg_inherits inh
+              JOIN walk w ON w.parent_oid = inh.inhrelid
+        )
+        SELECT sn.nspname AS start_schema,
+               sc.relname AS start_table,
+               pn.nspname AS ancestor_schema,
+               pc.relname AS ancestor_table
+          FROM walk w
+          JOIN pg_class sc ON sc.oid = w.start_oid
+          JOIN pg_namespace sn ON sn.oid = sc.relnamespace
+          JOIN pg_class pc ON pc.oid = w.parent_oid
+          JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+         WHERE pc.relkind = 'p'
+         ORDER BY w.start_oid, w.lvl
+        """,
+        *args,
     )
 
-    return res
+    result: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for r in rows:
+        key = (r["start_schema"], r["start_table"])
+        result.setdefault(key, []).append((r["ancestor_schema"], r["ancestor_table"]))
+    return result
 
 
 async def get_db_tables(
-        connection: Connection,
-        excluded_schemas: Optional[List[str]] = None,
-) -> List[Tuple[str, str]]:
+    connection: Connection,
+    excluded_schemas: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """Get the list of non-partitioned base tables in the database."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
+    excluded_schemas_str = _sql_quote_list([*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS])
 
     query = f"""
             SELECT t.table_schema, t.table_name
@@ -242,12 +358,12 @@ async def get_db_tables(
                 AND pt.partrelid IS NULL;
         """
 
-    tables = await connection.fetch(query)
-    return list(map(tuple, tables))
+    return [(row[0], row[1]) for row in await connection.fetch(query)]
 
 
-async def get_schemas(connection: Connection, schema_filter: str = None) -> List[str]:
-    schema_filter_clause = f"AND nspname like '%{schema_filter}%'" if schema_filter else ''
+async def get_schemas(connection: Connection, schema_filter: str | None = None) -> list[str]:
+    """Get the list of user-defined schemas in the database."""
+    schema_filter_clause = f"AND nspname like '%{schema_filter}%'" if schema_filter else ""
     query = f"""
     SELECT nspname AS schema_name
     FROM pg_namespace
@@ -259,8 +375,9 @@ async def get_schemas(connection: Connection, schema_filter: str = None) -> List
     return [row[0] for row in result]
 
 
-async def get_extensions(connection: Connection) -> List[str]:
-    query = f"""
+async def get_extensions(connection: Connection) -> list:
+    """Get the list of installed extensions in the database."""
+    query = """
     SELECT
         n.nspname as "schema"
         , e.extname as "name"
@@ -274,38 +391,43 @@ async def get_extensions(connection: Connection) -> List[str]:
     return await connection.fetch(query)
 
 
-async def get_available_extensions_map(connection: Connection) -> Dict[str, List[Dict[str, Any]]]:
-    query = """   
+async def get_available_extensions_map(connection: Connection) -> dict[str, list[dict[str, Any]]]:
+    """Get a map of available extensions with their version details."""
+    query = """
     SELECT ev.name, ev.version, ev.installed, ev.requires, e.default_version
     FROM pg_available_extension_versions as ev
     LEFT JOIN pg_available_extensions as e on e."name" = ev."name"
-    ORDER BY name, installed DESC, version DESC; 
+    ORDER BY name, installed DESC, version DESC;
     """
     rows = await connection.fetch(query)
 
     extensions_map = defaultdict(list)
 
     for row in rows:
-        extensions_map[row['name']].append({
-            'version': row['version'],
-            'installed': row['installed'],
-            'requires': row['requires'],
-            'default_version': row['default_version'],
-        })
+        extensions_map[row["name"]].append(
+            {
+                "version": row["version"],
+                "installed": row["installed"],
+                "requires": row["requires"],
+                "default_version": row["default_version"],
+            }
+        )
 
     return dict(extensions_map)
 
 
-async def get_available_schemas(connection: Connection):
+async def get_available_schemas(connection: Connection) -> list[str]:
+    """Get all schema names from the database."""
     query = "SELECT nspname FROM pg_namespace"
     result = await connection.fetch(query)
     return [row[0] for row in result]
 
 
-async def get_custom_functions_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_functions_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined functions not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in [*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS]])
+    excluded_schemas_str = _sql_quote_list([*excluded_schemas, *DEFAULT_EXCLUDED_SCHEMAS])
 
     query = f"""
     SELECT pg_get_functiondef(p.oid) AS ddl
@@ -325,10 +447,11 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: Lis
     return [row[0] for row in result]
 
 
-async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined domains not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
 
     query = f"""
     SELECT
@@ -355,10 +478,11 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: List[
     return [row[0] for row in result]
 
 
-async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined composite and enum types."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['pg_catalog', 'information_schema', *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
 
     query = f"""
     WITH user_types AS (
@@ -371,10 +495,10 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[st
             t.typbasetype
         FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
+        LEFT JOIN pg_class c ON c.oid = t.typrelid
             WHERE n.nspname NOT IN ({excluded_schemas_str})
-            AND t.typtype IN ('c', 'e') -- composite, enum
-            -- excluding row-types
-            AND (t.typtype != 'c' OR t.typrelid = 0)
+            AND t.typtype IN ('c', 'e')
+            AND (t.typtype != 'c' OR c.relkind = 'c')
             AND NOT EXISTS (
                 SELECT 1
                 FROM pg_depend d
@@ -413,10 +537,55 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: List[st
     return [row[0] for row in result]
 
 
-async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
+async def get_custom_ranges_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined range types not owned by extensions."""
     if not excluded_schemas:
         excluded_schemas = []
-    excluded_schemas_str = ", ".join([f"'{v}'" for v in ['information_schema', *excluded_schemas]])
+    excluded_schemas_str = _sql_quote_list(["pg_catalog", "information_schema", *excluded_schemas])
+
+    query = f"""
+    SELECT
+        'DO $$' || E'\n' ||
+        'BEGIN' || E'\n' ||
+        '    IF NOT EXISTS (SELECT 1 FROM pg_type pt JOIN pg_namespace pn ON pn.oid = pt.typnamespace'
+        || ' WHERE pn.nspname = ' || quote_literal(n.nspname)
+        || ' AND pt.typname = ' || quote_literal(t.typname) || ') THEN' || E'\n' ||
+        '        CREATE TYPE ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
+        ' AS RANGE (subtype = ' || pg_catalog.format_type(r.rngsubtype, NULL) ||
+        COALESCE(
+            CASE WHEN col.collname IS NOT NULL AND col.collname <> 'default'
+                 THEN ', collation = ' || quote_ident(coln.nspname) || '.' || quote_ident(col.collname)
+                 ELSE NULL END,
+            ''
+        ) || ');' || E'\n' ||
+        '    END IF;' || E'\n' ||
+        'END;' || E'\n' ||
+        '$$;' AS ddl
+    FROM pg_range r
+    JOIN pg_type t ON t.oid = r.rngtypid
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    LEFT JOIN pg_collation col ON col.oid = r.rngcollation
+    LEFT JOIN pg_namespace coln ON coln.oid = col.collnamespace
+    WHERE n.nspname NOT IN ({excluded_schemas_str})
+        AND NOT EXISTS (
+            SELECT 1
+            FROM pg_depend d
+            WHERE d.classid = 'pg_type'::regclass
+              AND d.objid = t.oid
+              AND d.deptype = 'e'
+        )
+    ORDER BY n.nspname, t.typname;
+    """
+
+    result = await connection.fetch(query)
+    return [row[0] for row in result]
+
+
+async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined casts not owned by extensions."""
+    if not excluded_schemas:
+        excluded_schemas = []
+    excluded_schemas_str = _sql_quote_list(["information_schema", *excluded_schemas])
 
     query = f"""
     SELECT
@@ -457,6 +626,12 @@ async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[st
               AND d.objid = c.oid
               AND d.deptype = 'e'
         )
+        AND NOT EXISTS (
+            SELECT 1 FROM pg_depend d
+            WHERE d.classid = 'pg_cast'::regclass
+              AND d.objid = c.oid
+              AND d.deptype IN ('i', 'a')
+        )
         -- source type not owned by extension
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -487,12 +662,13 @@ async def get_custom_casts_ddl(connection: Connection, excluded_schemas: List[st
     return [row[0] for row in result]
 
 
-async def get_custom_operators_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
-    excluded_schemas_filter = ''
-    excluded_schemas_str = ''
+async def get_custom_operators_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined operators not owned by extensions."""
+    excluded_schemas_filter = ""
+    excluded_schemas_str = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND nf.nspname not in ({excluded_schemas_str})'
+        excluded_schemas_str = _sql_quote_list(excluded_schemas)
+        excluded_schemas_filter = f"AND nf.nspname not in ({excluded_schemas_str})"
 
     query = f"""
     SELECT
@@ -509,7 +685,7 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: Lis
     JOIN pg_namespace n ON n.oid = o.oprnamespace
     JOIN pg_proc f ON f.oid = o.oprcode
     JOIN pg_namespace nf ON nf.oid = f.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{", " + excluded_schemas_str if excluded_schemas_str else ""})
         {excluded_schemas_filter}
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -521,12 +697,13 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: Lis
     return [row[0] for row in result]
 
 
-async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: List[str] = None) -> List[str]:
-    excluded_schemas_filter = ''
-    excluded_schemas_str = ''
+async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
+    """Get DDL statements for user-defined aggregates not owned by extensions."""
+    excluded_schemas_filter = ""
+    excluded_schemas_str = ""
     if excluded_schemas:
-        excluded_schemas_str = ", ".join([f"'{v}'" for v in excluded_schemas])
-        excluded_schemas_filter = f'AND ns.nspname not in ({excluded_schemas_str})'
+        excluded_schemas_str = _sql_quote_list(excluded_schemas)
+        excluded_schemas_filter = f"AND ns.nspname not in ({excluded_schemas_str})"
 
     query = f"""
     SELECT
@@ -541,7 +718,7 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: Li
     JOIN pg_proc sf ON sf.oid = a.aggtransfn
     JOIN pg_namespace n ON n.oid = p.pronamespace
     JOIN pg_namespace ns ON ns.oid = sf.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{f", " + excluded_schemas_str if excluded_schemas_str else ""})
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema'{", " + excluded_schemas_str if excluded_schemas_str else ""})
         {excluded_schemas_filter}
         AND NOT EXISTS (
             SELECT 1 FROM pg_depend d
@@ -553,38 +730,59 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: Li
     return [row[0] for row in result]
 
 
-async def get_indexes_data(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list:
+    """Get index metadata for the given tables."""
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
-    WITH tables_to_check AS (
+    WITH RECURSIVE tables_to_check(schema_name, table_name) AS (
         VALUES {values_placeholders}
+    ),
+    expanded_tables(schema_name, table_name) AS (
+        SELECT
+            (schema_name::text COLLATE "C") AS schema_name,
+            (table_name::text COLLATE "C") AS table_name
+        FROM tables_to_check
+        UNION
+        SELECT an.nspname::text, a.relname::text
+        FROM expanded_tables et
+        JOIN pg_namespace n ON n.nspname = et.schema_name
+        JOIN pg_class c ON c.relname = et.table_name AND c.relnamespace = n.oid
+        JOIN pg_inherits inh ON inh.inhrelid = c.oid
+        JOIN pg_class a ON a.oid = inh.inhparent
+        JOIN pg_namespace an ON an.oid = a.relnamespace
     )
     SELECT
         n.nspname as "schema"
         ,t.relname as "table"
         ,i.relname AS "index_name"
-        ,tt.column1 IS null as "is_excluded"
+        ,tt.schema_name IS null as "is_excluded"
+        ,parent_n.nspname AS "parent_index_schema"
+        ,parent_i.relname AS "parent_index_name"
     FROM pg_index ix
     JOIN pg_class i ON i.oid = ix.indexrelid
     JOIN pg_class t ON t.oid = ix.indrelid
     JOIN pg_namespace n ON n.oid = t.relnamespace
-    LEFT JOIN tables_to_check tt ON tt.column1 = n.nspname AND tt.column2 = t.relname
+    LEFT JOIN expanded_tables tt ON tt.schema_name = n.nspname AND tt.table_name = t.relname
+    LEFT JOIN pg_inherits idx_inh ON idx_inh.inhrelid = i.oid
+    LEFT JOIN pg_class parent_i ON parent_i.oid = idx_inh.inhparent AND parent_i.relkind = 'I'
+    LEFT JOIN pg_namespace parent_n ON parent_n.oid = parent_i.relnamespace
     WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
     """
 
     return await connection.fetch(query, *args)
 
 
-async def get_views_related_to_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
+async def get_views_related_to_tables(connection: Connection, tables: list[tuple[str, str]]) -> list:
+    """Get views and materialized views that reference the given tables."""
+    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
     args = [item for table_data in tables for item in table_data]
     query = f"""
     WITH tables_to_check AS (
         VALUES {values_placeholders}
     ),
     all_views AS (
-        SELECT 
+        SELECT
             schemaname AS view_schema,
             viewname AS view_name,
             definition AS view_definition,
@@ -592,7 +790,7 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
         FROM pg_views
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
         UNION ALL
-        SELECT 
+        SELECT
             schemaname AS view_schema,
             matviewname AS view_name,
             definition AS view_definition,
@@ -601,7 +799,7 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
     ),
     all_tables AS (
-        SELECT 
+        SELECT
             n.nspname AS table_schema,
             c.relname AS table_name
         FROM pg_class c
@@ -627,37 +825,110 @@ async def get_views_related_to_tables(connection: Connection, tables: List[Tuple
     return await connection.fetch(query, *args)
 
 
-async def get_constraints_to_excluded_tables(connection: Connection, tables: List[Tuple[str, str]]) -> List[str]:
-    values_placeholders = ", ".join(f"($%s, $%s)" % (i * 2 + 1, i * 2 + 2) for i in range(len(tables)))
-    args = [item for table_data in tables for item in table_data]
-    query = f"""
-    WITH tables_to_check AS (
-        VALUES {values_placeholders}
-    )
-    select
-        n_from.nspname AS "table_schema_from"
-        ,c_from.relname AS "table_name_from"
-        ,conname AS "constraint_name"
-        ,n_to.nspname AS "table_schema_to"
-        ,c_to.relname AS "table_name_to"
-        ,t_to.column1 IS NULL AS "is_excluded"
-    FROM pg_constraint con
-    JOIN pg_class c_to ON c_to.oid = con.confrelid
-    JOIN pg_namespace n_to ON n_to.oid = c_to.relnamespace
-    LEFT JOIN tables_to_check t_to   ON t_to.column1 = n_to.nspname   AND t_to.column2 = c_to.relname
-    JOIN pg_class c_from ON c_from.oid = con.conrelid
-    JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
-    LEFT JOIN tables_to_check t_from ON t_from.column1 = n_from.nspname AND t_from.column2 = c_from.relname
-    WHERE con.contype IN ('p','f')
-      AND n_to.nspname NOT IN ('pg_catalog', 'information_schema') 
-    """
+async def get_constraints_to_excluded_tables(connection: Connection, tables: list[tuple[str, str]]) -> list[dict]:
+    """Get foreign key and primary key constraints with partition-aware metadata."""
+    table_set = {(s, t) for s, t in tables}
 
-    return await connection.fetch(query, *args)
+    rows = await connection.fetch(
+        """
+        SELECT
+            n_from.nspname AS table_schema_from,
+            c_from.relname AS table_name_from,
+            con.conname    AS constraint_name,
+            n_to.nspname   AS table_schema_to,
+            c_to.relname   AS table_name_to,
+            c_to.relkind::text   AS referenced_relkind,
+            c_from.relkind::text AS referrer_relkind,
+            con.contype::text    AS contype,
+            c_to.oid   AS confrelid,
+            c_from.oid AS conrelid
+        FROM pg_constraint con
+        JOIN pg_class c_to ON c_to.oid = con.confrelid
+        JOIN pg_namespace n_to ON n_to.oid = c_to.relnamespace
+        JOIN pg_class c_from ON c_from.oid = con.conrelid
+        JOIN pg_namespace n_from ON n_from.oid = c_from.relnamespace
+        WHERE con.contype IN ('p', 'f')
+          AND n_to.nspname NOT IN ('pg_catalog', 'information_schema')
+        """
+    )
+
+    if not rows:
+        return []
+
+    partitioned_oids: set[int] = set()
+    for r in rows:
+        if r["referenced_relkind"] == "p":
+            partitioned_oids.add(r["confrelid"])
+        if r["referrer_relkind"] == "p":
+            partitioned_oids.add(r["conrelid"])
+
+    leaves_by_oid: dict[int, list[tuple[str, str]]] = {}
+    if partitioned_oids:
+        leaf_rows = await connection.fetch(
+            """
+            WITH RECURSIVE descendants(root_oid, desc_oid, desc_relkind) AS (
+                SELECT c.oid, c.oid, c.relkind
+                  FROM pg_class c
+                 WHERE c.oid = ANY($1::oid[])
+                UNION ALL
+                SELECT d.root_oid, ch.oid, ch.relkind
+                  FROM descendants d
+                  JOIN pg_inherits inh ON inh.inhparent = d.desc_oid
+                  JOIN pg_class ch ON ch.oid = inh.inhrelid
+                 WHERE d.desc_relkind = 'p'
+            )
+            SELECT
+                d.root_oid,
+                n.nspname AS leaf_schema,
+                c.relname AS leaf_name
+            FROM descendants d
+            JOIN pg_class c ON c.oid = d.desc_oid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE d.desc_relkind <> 'p'
+            """,
+            list(partitioned_oids),
+        )
+        for r in leaf_rows:
+            leaves_by_oid.setdefault(r["root_oid"], []).append((r["leaf_schema"], r["leaf_name"]))
+
+    result: list[dict] = []
+    for r in rows:
+        is_pk = r["contype"] == "p"
+        ref_table = (r["table_schema_to"], r["table_name_to"])
+        from_table = (r["table_schema_from"], r["table_name_from"])
+
+        ref_leaves = leaves_by_oid.get(r["confrelid"], []) if r["referenced_relkind"] == "p" else [ref_table]
+        from_leaves = leaves_by_oid.get(r["conrelid"], []) if r["referrer_relkind"] == "p" else [from_table]
+
+        if is_pk:
+            is_excluded = ref_table not in table_set
+        else:
+            is_excluded = any(leaf not in table_set for leaf in (ref_leaves + from_leaves))
+
+        result.append(
+            {
+                "table_schema_from": r["table_schema_from"],
+                "table_name_from": r["table_name_from"],
+                "constraint_name": r["constraint_name"],
+                "table_schema_to": r["table_schema_to"],
+                "table_name_to": r["table_name_to"],
+                "is_excluded": is_excluded,
+                "referenced_relkind": r["referenced_relkind"],
+                "referrer_relkind": r["referrer_relkind"],
+                "referenced_partition_leaves": [[s, t] for s, t in ref_leaves]
+                if r["referenced_relkind"] == "p"
+                else None,
+                "referrer_partition_leaves": [[s, t] for s, t in from_leaves] if r["referrer_relkind"] == "p" else None,
+            }
+        )
+
+    return result
 
 
 async def check_db_is_empty(connection: Connection) -> bool:
+    """Check whether the database has no user-defined base tables."""
     return await connection.fetchval(
-            f"""
+        f"""
             SELECT NOT EXISTS(
                 SELECT table_schema, table_name
                 FROM information_schema.tables
@@ -667,26 +938,26 @@ async def check_db_is_empty(connection: Connection) -> bool:
                         '{ANON_UTILS_DB_SCHEMA_NAME}'
                     ) AND table_type = 'BASE TABLE'
             )"""
-        )
+    )
 
 
-async def run_query_in_pool(pool: Pool, query: str):
-    from pg_anon.common.utils import exception_helper
-
-    logger.info(f"================> Started query {query}")
+async def run_query_in_pool(pool: Pool, query: str) -> None:
+    """Execute a SQL query using a connection from the pool."""
+    logger.info("================> Started query %s", query)
 
     try:
         async with pool.acquire() as connection:
             await connection.execute(query)
-            logger.info(f"Execute query: {query}")
-    except Exception as ex:
-        logger.error("Exception in run_query_in_pool:\n" + exception_helper())
-        raise PgAnonError(ErrorCode.DB_QUERY_FAILED, f"Can't execute query: {query}")
+            logger.info("Execute query: %s", query)
+    except Exception as exc:
+        logger.exception("Exception in run_query_in_pool")
+        raise PgAnonError(ErrorCode.DB_QUERY_FAILED, f"Can't execute query: {query}") from exc
 
-    logger.info(f"<================ Finished query {query}")
+    logger.info("<================ Finished query %s", query)
 
 
-async def get_pg_version(connection_params: ConnectionParams, server_settings: Dict = SERVER_SETTINGS):
+async def get_pg_version(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> str:
+    """Get the PostgreSQL server version as a string."""
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     pg_version = await db_conn.fetchval("select version()")
     await db_conn.close()
@@ -694,6 +965,7 @@ async def get_pg_version(connection_params: ConnectionParams, server_settings: D
 
 
 async def get_available_connections(connection: Connection) -> int:
+    """Get the number of available database connections."""
     query = """
     WITH max_conn AS (
         SELECT setting::int AS max_connections
@@ -726,35 +998,42 @@ async def check_required_connections(
     connection: Connection,
     required_connections: int,
 ) -> None:
+    """Verify that enough database connections are available."""
     available_connections = await get_available_connections(connection)
 
     if required_connections > available_connections:
         raise PgAnonError(
             ErrorCode.INSUFFICIENT_CONNECTIONS,
-            f"Not enough database connections. "
-            f"Required: {required_connections}, available: ~{available_connections}"
+            f"Not enough database connections. Required: {required_connections}, available: ~{available_connections}",
         )
 
 
-async def get_dump_query(
-        ctx: Context,
-        table_schema: str,
-        table_name: str,
-        table_rule: Optional[Dict] = None,
-        nulls_last: bool = False,
-        files: Optional[Dict] = None,
-        fields_cache: Optional[Dict] = None,
-):
+async def get_dump_query(  # noqa: C901, PLR0912
+    ctx: Context,
+    table_schema: str,
+    table_name: str,
+    table_rule: dict | None = None,
+    nulls_last: bool = False,
+    files: dict | None = None,
+    fields_cache: dict | None = None,
+    legacy_inherits_parents: set[tuple[str, str]] | None = None,
+) -> str | None:
+    """Build the SELECT query used to dump a table with optional anonymization rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
+    from_clause_target = (
+        f"ONLY {table_name_full}"
+        if legacy_inherits_parents and (table_schema, table_name) in legacy_inherits_parents
+        else table_name_full
+    )
 
     # black list has the highest priority for pg_dump / pg_restore
     if ctx.black_listed_tables and (table_schema, table_name) in ctx.black_listed_tables:
-        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: %s", table_name_full)
         return None
 
     # white list has the second priority for pg_dump / pg_restore
     if ctx.white_listed_tables and (table_schema, table_name) not in ctx.white_listed_tables:
-        ctx.logger.info("Skipping dump data of table: " + str(table_name_full))
+        ctx.logger.info("Skipping dump data of table: %s", table_name_full)
         return None
 
     # dictionary_exclude has third priority
@@ -766,10 +1045,10 @@ async def get_dump_query(
         )
 
         if exclude_rule is not None and table_rule is None:
-            ctx.logger.info("Skipping: " + str(table_name_full))
+            ctx.logger.info("Skipping: %s", table_name_full)
             return None
 
-    hashed_name = hashlib.md5(
+    hashed_name = hashlib.md5(  # noqa: S324
         (table_schema + "_" + table_name).encode()
     ).hexdigest()
 
@@ -778,63 +1057,67 @@ async def get_dump_query(
 
     if table_rule and "raw_sql" in table_rule:
         # the table is transferred using "raw_sql"
-        if (ctx.options.dbg_stage_1_validate_dict
-                or ctx.options.dbg_stage_2_validate_data
-                or ctx.options.dbg_stage_3_validate_full):
+        if (
+            ctx.options.dbg_stage_1_validate_dict
+            or ctx.options.dbg_stage_2_validate_data
+            or ctx.options.dbg_stage_3_validate_full
+        ):
             query = table_rule["raw_sql"] + " " + ctx.validate_limit
             ctx.logger.info(str(query))
             return query
-        else:
-            query = table_rule["raw_sql"]
-            return query
+        return table_rule["raw_sql"]
+    # the table is transferred with the specific fields for anonymization or transferred "as is"
+    if fields_cache is not None:
+        fields_list = fields_cache.get((table_schema, table_name), [])
     else:
-        # the table is transferred with the specific fields for anonymization or transferred "as is"
-        if fields_cache is not None:
-            fields_list = fields_cache.get((table_schema, table_name), [])
-        else:
-            fields_list = await get_fields_list(
-                connection_params=ctx.connection_params,
-                server_settings=ctx.server_settings,
-                table_schema=table_schema,
-                table_name=table_name
-            )
+        fields_list = await get_fields_list(
+            connection_params=ctx.connection_params,
+            server_settings=ctx.server_settings,
+            table_schema=table_schema,
+            table_name=table_name,
+        )
 
-        fields = []
+    fields = []
 
-        for cnt, column_info in enumerate(fields_list):
-            column_name = column_info["column_name"]
-            udt_name = column_info["udt_name"]
-            field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
+    for column_info in fields_list:
+        column_name = column_info["column_name"]
+        udt_name = column_info["udt_name"]
+        field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
 
-            if column_info["is_generated"] == 'ALWAYS':
-                continue
+        if column_info["is_generated"] == "ALWAYS":
+            continue
 
-            if field_anon_rule:
-                if field_anon_rule.find("SQL:") == 0:
-                    fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
-                else:
-                    fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
+        if field_anon_rule:
+            if field_anon_rule.find("SQL:") == 0:
+                fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
             else:
-                # field "as is"
-                fields.append(f'"{column_name}" as "{column_name}"')
+                fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
+        else:
+            # field "as is"
+            fields.append(f'"{column_name}" as "{column_name}"')
 
-        fields_expr = ',\n'.join(fields)
-        query = f"SELECT {fields_expr}\nFROM {table_name_full}"
-        if sql_condition := table_rule and table_rule.get('sql_condition'):
-            condition = re.sub(r'^\s*where\b\s*', '', sql_condition, flags=re.IGNORECASE)
-            query += f"\nWHERE {condition}"
+    fields_expr = ",\n".join(fields)
+    query = f"SELECT {fields_expr}\nFROM {from_clause_target}"
+    if sql_condition := table_rule and table_rule.get("sql_condition"):
+        condition = re.sub(r"^\s*where\b\s*", "", sql_condition, flags=re.IGNORECASE)
+        query += f"\nWHERE {condition}"
 
-        if (ctx.options.dbg_stage_1_validate_dict
-                or ctx.options.dbg_stage_2_validate_data
-                or ctx.options.dbg_stage_3_validate_full):
-            query += f" {ctx.validate_limit}"
+    if (
+        ctx.options.dbg_stage_1_validate_dict
+        or ctx.options.dbg_stage_2_validate_data
+        or ctx.options.dbg_stage_3_validate_full
+    ):
+        query += f" {ctx.validate_limit}"
 
-        if nulls_last:
-            ordering = ", ".join([
-                f'"{field["column_name"]}"' + ' NULLS LAST' for field in fields_list
+    if nulls_last:
+        ordering = ", ".join(
+            [
+                f'"{field["column_name"]}"' + " NULLS LAST"
+                for field in fields_list
                 if field["is_nullable"].lower() == "yes"
-            ])
-            if ordering:
-                query += f" ORDER BY {ordering}"
+            ]
+        )
+        if ordering:
+            query += f" ORDER BY {ordering}"
 
-        return query
+    return query
