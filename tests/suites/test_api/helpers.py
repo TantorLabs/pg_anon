@@ -55,9 +55,7 @@ class WebhookRecorder:
                 while not predicate(self.payloads):  # noqa: ASYNC110
                     await asyncio.sleep(poll)
         except TimeoutError:
-            raise TimeoutError(
-                f"Webhook condition not met within {max_wait}s. Got: {self.payloads!r}"
-            ) from None
+            raise TimeoutError(f"Webhook condition not met within {max_wait}s. Got: {self.payloads!r}") from None
 
     async def wait_for_count(self, count: int, *, max_wait: float = 60.0) -> None:
         await self.wait_for(lambda p: len(p) >= count, max_wait=max_wait)

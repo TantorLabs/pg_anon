@@ -1,4 +1,5 @@
 """Session-level fixtures shared across all tests_new suites."""
+
 from __future__ import annotations
 
 import pytest

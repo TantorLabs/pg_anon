@@ -9,7 +9,11 @@ async def _wait_terminal(recorder, *, max_wait: float = 240) -> dict:
 
 
 async def _dump_for_restore(
-    api_client, api_source_db, db_params, *, dump_type: str = "dump",
+    api_client,
+    api_source_db,
+    db_params,
+    *,
+    dump_type: str = "dump",
 ) -> str:
     output_path = f"/restore_src_{uuid_short()}"
     await run_dump_via_api(
@@ -24,7 +28,11 @@ async def _dump_for_restore(
 
 
 async def test_restore_full_e2e(
-    api_client, api_source_db, api_target_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    api_target_db,
+    db_params,
+    webhook_recorder,
 ):
     input_path = await _dump_for_restore(api_client, api_source_db, db_params)
     body = build_restore_request(
@@ -49,10 +57,17 @@ async def test_restore_full_e2e(
 
 
 async def test_restore_struct_uses_sync_struct_mode(
-    api_client, api_source_db, api_target_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    api_target_db,
+    db_params,
+    webhook_recorder,
 ):
     input_path = await _dump_for_restore(
-        api_client, api_source_db, db_params, dump_type="sync-struct-dump",
+        api_client,
+        api_source_db,
+        db_params,
+        dump_type="sync-struct-dump",
     )
     body = build_restore_request(
         db_params=db_params,
@@ -69,13 +84,23 @@ async def test_restore_struct_uses_sync_struct_mode(
 
 
 async def test_restore_data_after_struct(
-    api_client, api_source_db, api_target_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    api_target_db,
+    db_params,
+    webhook_recorder,
 ):
     struct_path = await _dump_for_restore(
-        api_client, api_source_db, db_params, dump_type="sync-struct-dump",
+        api_client,
+        api_source_db,
+        db_params,
+        dump_type="sync-struct-dump",
     )
     data_path = await _dump_for_restore(
-        api_client, api_source_db, db_params, dump_type="sync-data-dump",
+        api_client,
+        api_source_db,
+        db_params,
+        dump_type="sync-data-dump",
     )
 
     struct_body = build_restore_request(
@@ -106,7 +131,9 @@ async def test_restore_data_after_struct(
 
 
 async def test_restore_clean_db_and_drop_db_conflict_returns_422(
-    api_client, api_target_db, db_params,
+    api_client,
+    api_target_db,
+    db_params,
 ):
     body = build_restore_request(
         db_params=db_params,
@@ -121,7 +148,9 @@ async def test_restore_clean_db_and_drop_db_conflict_returns_422(
 
 
 async def test_restore_invalid_input_path_returns_400(
-    api_client, api_target_db, db_params,
+    api_client,
+    api_target_db,
+    db_params,
 ):
     body = build_restore_request(
         db_params=db_params,
@@ -135,7 +164,11 @@ async def test_restore_invalid_input_path_returns_400(
 
 
 async def test_restore_drop_custom_check_constr_passes_through(
-    api_client, api_source_db, api_target_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    api_target_db,
+    db_params,
+    webhook_recorder,
 ):
     input_path = await _dump_for_restore(api_client, api_source_db, db_params)
     body = build_restore_request(
@@ -155,7 +188,10 @@ async def test_restore_drop_custom_check_constr_passes_through(
 
 
 async def test_restore_missing_input_dir_returns_error_webhook(
-    api_client, api_target_db, db_params, webhook_recorder,
+    api_client,
+    api_target_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_restore_request(
         db_params=db_params,

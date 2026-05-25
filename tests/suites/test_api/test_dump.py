@@ -11,7 +11,11 @@ async def _wait_success(recorder, *, max_wait: float = 240) -> dict:
 
 
 async def test_dump_full_creates_artifact_and_reports_size(
-    api_client, api_source_db, db_params, webhook_recorder, dump_storage_base_dir,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+    dump_storage_base_dir,
 ):
     output_path = f"/dump_full_{uuid_short()}"
     body = build_dump_request(
@@ -35,7 +39,10 @@ async def test_dump_full_creates_artifact_and_reports_size(
 
 
 async def test_dump_struct_uses_sync_struct_mode(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,
@@ -52,7 +59,10 @@ async def test_dump_struct_uses_sync_struct_mode(
 
 
 async def test_dump_data_uses_sync_data_mode(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,
@@ -69,7 +79,10 @@ async def test_dump_data_uses_sync_data_mode(
 
 
 async def test_dump_partial_whitelist_passes_dict_to_runner(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,
@@ -86,7 +99,10 @@ async def test_dump_partial_whitelist_passes_dict_to_runner(
 
 
 async def test_dump_partial_blacklist_passes_exclude_dict(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,
@@ -103,7 +119,10 @@ async def test_dump_partial_blacklist_passes_exclude_dict(
 
 
 async def test_dump_ignore_privileges_pass_through(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,
@@ -124,7 +143,10 @@ async def test_dump_ignore_privileges_pass_through(
 
 
 async def test_dump_output_path_outside_storage_returns_400(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_dump_request(
         db_params=db_params,

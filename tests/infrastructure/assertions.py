@@ -1,4 +1,5 @@
 """Shared assertion helpers for pg_anon test suites."""
+
 from __future__ import annotations
 
 import ast
@@ -19,6 +20,7 @@ def load_expected(test_file: str, name: str) -> dict:
 # --------------------------------------------------------------------------
 # Row-level checks
 # --------------------------------------------------------------------------
+
 
 async def check_rows(
     db_manager: DBManager,
@@ -73,16 +75,20 @@ async def check_rows_count(
 # Schema-level comparisons
 # --------------------------------------------------------------------------
 
+
 async def list_tables(db_manager: DBManager, db_name: str) -> list[tuple[str, str]]:
     """Return sorted list of (schema, table) for every user table/partition."""
-    rows = await db_manager.fetch(db_name, """
+    rows = await db_manager.fetch(
+        db_name,
+        """
         SELECT n.nspname, c.relname
         FROM pg_class c
         JOIN pg_namespace n ON c.relnamespace = n.oid
         WHERE c.relkind IN ('r', 'p')
           AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
         ORDER BY 1, 2
-    """)
+    """,
+    )
     return [(r["nspname"], r["relname"]) for r in rows]
 
 
@@ -238,6 +244,7 @@ async def diff_catalog(db_manager: DBManager, source: str, target: str) -> dict[
     Only reports the source→target direction: items unique to target indicate a restore
     bug too, but pg_anon's job is to make target contain at least what source had.
     """
+
     def _row_key(row) -> tuple:
         # Some catalog columns are arrays (e.g. pg_policies.roles -> name[]),
         # which asyncpg returns as Python lists. Coerce them to tuples so the
@@ -266,10 +273,13 @@ async def checksum_tables(
     """
     out: dict[tuple[str, str], str] = {}
     for schema, table in tables:
-        rows = await db_manager.fetch(db_name, f"""
+        rows = await db_manager.fetch(
+            db_name,
+            f"""
             SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'EMPTY') AS cs
             FROM "{schema}"."{table}" t
-        """)
+        """,
+        )
         out[(schema, table)] = rows[0]["cs"]
     return out
 
@@ -277,6 +287,7 @@ async def checksum_tables(
 # --------------------------------------------------------------------------
 # Dictionary file comparisons
 # --------------------------------------------------------------------------
+
 
 def assert_sens_dicts(actual_path: str | Path, expected_path: str | Path) -> None:
     """Compare sensitive dictionaries field by field."""

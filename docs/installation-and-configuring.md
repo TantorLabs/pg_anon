@@ -135,11 +135,11 @@ For example, `pg_anon` can be run with this config on Postgres 16. In this case,
 
 pg_anon stores runtime data (operation logs, dumps) relative to the current working directory:
 
-| Directory | Contents |
-|-----------|----------|
-| `pg_anon_runs/<year>/<month>/<day>/<operation_id>/` | Operation logs and metadata |
-| `pg_anon_output/` | Dump files (used by REST API) |
-| `config.yml` | Optional configuration file for pg_dump/pg_restore paths |
+| Directory                                           | Contents                                                 |
+|-----------------------------------------------------|----------------------------------------------------------|
+| `pg_anon_runs/<year>/<month>/<day>/<operation_id>/` | Operation logs and metadata                              |
+| `pg_anon_output/`                                   | Dump files (used by REST API)                            |
+| `config.yml`                                        | Optional configuration file for pg_dump/pg_restore paths |
 
 By default, these paths are resolved from the current working directory.
 

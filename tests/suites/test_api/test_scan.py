@@ -7,7 +7,10 @@ from .helpers import build_scan_request
 
 
 async def test_scan_full_sends_two_webhooks_and_returns_dict(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_scan_request(
         db_params=db_params,
@@ -38,7 +41,10 @@ async def test_scan_full_sends_two_webhooks_and_returns_dict(
 
 
 async def test_scan_partial_passes_depth_to_runner(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_scan_request(
         db_params=db_params,
@@ -62,7 +68,10 @@ async def test_scan_partial_passes_depth_to_runner(
 
 
 async def test_scan_need_no_sens_dict_returns_both_contents(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_scan_request(
         db_params=db_params,
@@ -81,7 +90,10 @@ async def test_scan_need_no_sens_dict_returns_both_contents(
 
 
 async def test_scan_broken_meta_dict_sends_error_webhook(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_scan_request(
         db_params=db_params,
@@ -98,7 +110,10 @@ async def test_scan_broken_meta_dict_sends_error_webhook(
 
 
 async def test_scan_extra_headers_reach_webhook(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     body = build_scan_request(
         db_params=db_params,
@@ -115,7 +130,10 @@ async def test_scan_extra_headers_reach_webhook(
 
 
 async def test_scan_metadata_preserves_nested_objects(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     metadata = {"obj": {"k": [1, 2, 3]}, "n": None, "bool": True}
     body = build_scan_request(

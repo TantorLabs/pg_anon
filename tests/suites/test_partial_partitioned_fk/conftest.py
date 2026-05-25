@@ -27,7 +27,9 @@ async def source_db(db_manager, pg_anon_runner):
     res = await pg_anon_runner.run("init", SOURCE_DB)
     assert res.result_code == ResultCode.DONE
 
-    await db_manager.execute(SOURCE_DB, """
+    await db_manager.execute(
+        SOURCE_DB,
+        """
         CREATE SCHEMA IF NOT EXISTS fkpart;
 
         CREATE TABLE IF NOT EXISTS fkpart.events (
@@ -112,7 +114,8 @@ async def source_db(db_manager, pg_anon_runner):
         INSERT INTO fkpart.animal (name) VALUES ('amoeba')
         ON CONFLICT DO NOTHING;
         INSERT INTO fkpart.mammal (name, legs) VALUES ('dog', 4), ('whale', 0);
-    """)
+    """,
+    )
 
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)

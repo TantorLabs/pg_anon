@@ -53,33 +53,28 @@ def _load_json(path: str | Path) -> dict:
 
 def _has_rule(sens: dict, schema: str, table: str, field: str) -> bool:
     for rule in sens["dictionary"]:
-        if (
-            rule.get("schema") == schema
-            and rule.get("table") == table
-            and field in rule.get("fields", {})
-        ):
+        if rule.get("schema") == schema and rule.get("table") == table and field in rule.get("fields", {}):
             return True
     return False
 
 
 def _tables_with_rules(sens: dict) -> set[tuple[str, str]]:
-    return {
-        (r["schema"], r["table"])
-        for r in sens["dictionary"]
-        if "schema" in r and "table" in r
-    }
+    return {(r["schema"], r["table"]) for r in sens["dictionary"] if "schema" in r and "table" in r}
 
 
 async def test_create_dict_detects_expected_pii_fields(source_db, db_params):
     sens_out = output_dict("detects_pii.json")
     no_sens_out = output_dict("detects_pii_no_sens.json")
 
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_out,
-        no_sens_out=no_sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_out,
+            no_sens_out=no_sens_out,
+        )
+    ).run()
 
     assert res.result_code == ResultCode.DONE
     assert Path(sens_out).exists()
@@ -103,11 +98,14 @@ async def test_create_dict_detects_expected_pii_fields(source_db, db_params):
 
 async def test_create_dict_respects_skip_rules(source_db, db_params):
     sens_out = output_dict("skip_rules.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_out,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     sens = _load_json(sens_out)
@@ -120,11 +118,14 @@ async def test_create_dict_respects_skip_rules(source_db, db_params):
 
 async def test_create_dict_detects_by_data_regex(source_db, db_params):
     sens_out = output_dict("data_regex.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_out,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     sens = _load_json(sens_out)
@@ -135,11 +136,14 @@ async def test_create_dict_detects_by_data_regex(source_db, db_params):
 
 async def test_create_dict_default_func_covers_all_sens_types(source_db, db_params):
     sens_out = output_dict("default_func.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_default_func.py")],
-        sens_out=sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_default_func.py")],
+            sens_out=sens_out,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     sens = _load_json(sens_out)
@@ -152,28 +156,34 @@ async def test_create_dict_default_func_covers_all_sens_types(source_db, db_para
 async def test_create_dict_rescan_with_prepared_no_sens_skips_known_safe(source_db, db_params):
     sens_first = output_dict("rescan_first.json")
     no_sens_first = output_dict("rescan_no_sens_first.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_first, no_sens_out=no_sens_first,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_first,
+            no_sens_out=no_sens_first,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     sens_second = output_dict("rescan_second.json")
     no_sens_second = output_dict("rescan_no_sens_second.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_second, no_sens_out=no_sens_second,
-        prepared_no_sens=no_sens_first,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_second,
+            no_sens_out=no_sens_second,
+            prepared_no_sens=no_sens_first,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     first = _load_json(sens_first)
     second = _load_json(sens_second)
-    assert {
-        (r["schema"], r["table"]) for r in first["dictionary"]
-    } == {
+    assert {(r["schema"], r["table"]) for r in first["dictionary"]} == {
         (r["schema"], r["table"]) for r in second["dictionary"]
     }
 
@@ -184,9 +194,11 @@ async def test_create_dict_save_dicts_writes_run_directory(source_db, db_params)
     meta = input_dict("meta_basic.py")
 
     options = _options(
-        db_params, source_db,
+        db_params,
+        source_db,
         meta_dicts=[meta],
-        sens_out=sens_out, no_sens_out=no_sens_out,
+        sens_out=sens_out,
+        no_sens_out=no_sens_out,
         save_dicts=True,
     )
     res = await PgAnonApp(options).run()
@@ -201,69 +213,82 @@ async def test_create_dict_save_dicts_writes_run_directory(source_db, db_params)
 
 async def test_create_dict_fails_on_non_existent_scan_func(source_db, db_params):
     sens_out = output_dict("invalid_func.json")
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_invalid_func.py")],
-        sens_out=sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_invalid_func.py")],
+            sens_out=sens_out,
+        )
+    ).run()
     assert res.result_code == ResultCode.FAIL
 
 
 async def test_create_dict_then_dump_then_restore_pipeline(
-    pipeline_source_db, target_db, db_manager, db_params, pg_anon_runner,
+    pipeline_source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     sens_out = output_dict("pipe_sens.json")
     no_sens_out = output_dict("pipe_no_sens.json")
 
-    res = await PgAnonApp(_options(
-        db_params, pipeline_source_db,
-        meta_dicts=[input_dict("meta_pipeline.py")],
-        sens_out=sens_out, no_sens_out=no_sens_out,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            pipeline_source_db,
+            meta_dicts=[input_dict("meta_pipeline.py")],
+            sens_out=sens_out,
+            no_sens_out=no_sens_out,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
     assert Path(sens_out).exists()
 
     out = output_path("pipeline_dump")
-    res = await pg_anon_runner.run("dump", pipeline_source_db, [
-        f"--prepared-sens-dict-file={sens_out}",
-        f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        "--clear-output-dir",
-    ])
+    res = await pg_anon_runner.run(
+        "dump",
+        pipeline_source_db,
+        [
+            f"--prepared-sens-dict-file={sens_out}",
+            f"--output-dir={out}",
+            f"--processes={db_params.test_processes}",
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            "--clear-output-dir",
+        ],
+    )
     assert res.result_code == ResultCode.DONE, "dump must accept create-dict output"
 
-    res = await pg_anon_runner.run("restore", target_db, [
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        f"--input-dir={out}",
-        "--drop-custom-check-constr",
-    ])
+    res = await pg_anon_runner.run(
+        "restore",
+        target_db,
+        [
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            f"--input-dir={out}",
+            "--drop-custom-check-constr",
+        ],
+    )
     assert res.result_code == ResultCode.DONE, "restore must accept produced dump"
 
-    src_sal = await db_manager.fetch(pipeline_source_db,
-        "SELECT id, salary FROM hr.employee ORDER BY id")
-    tgt_sal = await db_manager.fetch(target_db,
-        "SELECT id, salary FROM hr.employee ORDER BY id")
+    src_sal = await db_manager.fetch(pipeline_source_db, "SELECT id, salary FROM hr.employee ORDER BY id")
+    tgt_sal = await db_manager.fetch(target_db, "SELECT id, salary FROM hr.employee ORDER BY id")
     src_pairs = [(r["id"], r["salary"]) for r in src_sal]
     tgt_pairs = [(r["id"], r["salary"]) for r in tgt_sal]
     assert len(src_pairs) == len(tgt_pairs) > 0, "row count must match"
     differing = sum(1 for a, b in zip(src_pairs, tgt_pairs, strict=True) if a[1] != b[1])
-    assert differing > 0, (
-        "salary has an anon rule (noise) — at least one row's value must differ"
-    )
+    assert differing > 0, "salary has an anon rule (noise) — at least one row's value must differ"
 
-    src_dept = await db_manager.fetch(pipeline_source_db,
-        "SELECT id, name FROM hr.department ORDER BY id")
-    tgt_dept = await db_manager.fetch(target_db,
-        "SELECT id, name FROM hr.department ORDER BY id")
+    src_dept = await db_manager.fetch(pipeline_source_db, "SELECT id, name FROM hr.department ORDER BY id")
+    tgt_dept = await db_manager.fetch(target_db, "SELECT id, name FROM hr.department ORDER BY id")
     assert [dict(r) for r in src_dept] == [dict(r) for r in tgt_dept], (
         "hr.department.name has no anon rule and must round-trip unchanged"
     )
 
-    src_email = await db_manager.fetch(pipeline_source_db,
-        "SELECT id, email::text AS email FROM hr.employee ORDER BY id")
-    tgt_email = await db_manager.fetch(target_db,
-        "SELECT id, email::text AS email FROM hr.employee ORDER BY id")
+    src_email = await db_manager.fetch(
+        pipeline_source_db, "SELECT id, email::text AS email FROM hr.employee ORDER BY id"
+    )
+    tgt_email = await db_manager.fetch(target_db, "SELECT id, email::text AS email FROM hr.employee ORDER BY id")
     assert [dict(r) for r in src_email] == [dict(r) for r in tgt_email], (
         "hr.employee.email has no anon rule and must round-trip"
     )
@@ -273,23 +298,31 @@ async def test_create_dict_rescan_with_both_prepared_dicts_is_stable(source_db, 
     sens_first = output_dict("rescan_both_first_sens.json")
     no_sens_first = output_dict("rescan_both_first_no_sens.json")
 
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_first, no_sens_out=no_sens_first,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_first,
+            no_sens_out=no_sens_first,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     sens_second = output_dict("rescan_both_second_sens.json")
     no_sens_second = output_dict("rescan_both_second_no_sens.json")
 
-    res = await PgAnonApp(_options(
-        db_params, source_db,
-        meta_dicts=[input_dict("meta_basic.py")],
-        sens_out=sens_second, no_sens_out=no_sens_second,
-        prepared_sens=sens_first,
-        prepared_no_sens=no_sens_first,
-    )).run()
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_basic.py")],
+            sens_out=sens_second,
+            no_sens_out=no_sens_second,
+            prepared_sens=sens_first,
+            prepared_no_sens=no_sens_first,
+        )
+    ).run()
     assert res.result_code == ResultCode.DONE
 
     first = _load_json(sens_first)
@@ -304,10 +337,7 @@ async def test_create_dict_rescan_with_both_prepared_dicts_is_stable(source_db, 
     )
 
     def _flatten(d):
-        return {
-            (r["schema"], r["table"], f)
-            for r in d["dictionary"]
-            for f in r.get("fields", {})
-        }
+        return {(r["schema"], r["table"], f) for r in d["dictionary"] for f in r.get("fields", {})}
+
     diff = _flatten(first) ^ _flatten(second)
     assert not diff, f"re-scan reclassified fields: {sorted(diff)}"

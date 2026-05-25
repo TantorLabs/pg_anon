@@ -10,6 +10,12 @@ pip install -e ".[dev]"         # CLI + dev tools (ruff, mypy, pytest)
 pip install -e ".[api,dev]"     # CLI + REST API + dev tools
 ```
 
+Or via the Makefile shortcut (installs `[api,dev]` in editable mode):
+
+```bash
+make install-dev
+```
+
 To add a new dependency, edit the `dependencies` list
 in `pyproject.toml` and re-run install command above.
 
@@ -22,12 +28,32 @@ pip install build
 python -m build
 ```
 
+Or via the Makefile shortcut:
+
+```bash
+make build
+```
+
 Install the built package:
 
 ```bash
 pip install dist/pg_anon-*.whl           # CLI only
 pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
 ```
+
+## Make targets
+
+The root `Makefile` provides shortcuts for common development tasks. Run `make help` to see the same list from the command line.
+
+| Target             | What it does                             |
+|--------------------|------------------------------------------|
+| `make install`     | Install pg_anon with REST API extras.    |
+| `make install-dev` | Install in editable mode with dev tools. |
+| `make build`       | Build wheel and sdist into `./dist`.     |
+| `make check`       | Run linters over `pg_anon/`.             |
+| `make fix`         | Auto-fix lint issues and reformat code.  |
+| `make test`        | Run the pytest suite.                    |
+| `make clean`       | Remove build artifacts and tool caches.  |
 
 ---
 
@@ -50,7 +76,6 @@ The main logic of pg_anon is contained within the following Python modules:
  - `dto.py` - Small classes for data transfer.
  - `enums.py` - Enumerations for pg_anon.
  - `errors.py` - Error enumerations and classes for pg_anon.
- - `multiprocessing_utils.py` - Utility functions for multiprocessing.
  - `utils.py` - Common utility functions.
 - `pg_anon/modes/`
   - `initialization.py` - Class with logic for mode `init`.
@@ -82,11 +107,12 @@ The logic of REST API service for pg_anon is contained within the following Pyth
 - `pg_anon/rest_api/constants.py` - Constants for pg_anon REST API service.
 - `pg_anon/rest_api/dependencies.py`- FastAPI dependencies
 - `pg_anon/rest_api/enums.py` -  Enumerations for pg_anon REST API service.
+- `pg_anon/rest_api/logging_context.py` -  Logging settings.
 - `pg_anon/rest_api/pydantic_models.py` - Small classes for data transfer.
 - `pg_anon/rest_api/utils.py` - Common utility functions.
 
 
-`tree -L 4`:
+Project file tree:
 
 ```commandline
 pg_anon/
@@ -140,7 +166,6 @@ pg_anon/
 │   │   ├── dto.py
 │   │   ├── enums.py
 │   │   ├── errors.py
-│   │   ├── multiprocessing_utils.py
 │   │   └── utils.py
 │   ├── context.py
 │   ├── init.sql
@@ -161,6 +186,7 @@ pg_anon/
 │   │   ├── constants.py
 │   │   ├── dependencies.py
 │   │   ├── enums.py
+│   │   ├── logging_context.py
 │   │   ├── openapi.json
 │   │   ├── pydantic_models.py
 │   │   ├── runners
@@ -181,6 +207,7 @@ pg_anon/
 │   └── version.py
 └── tests
     ├── __init__.py
+    ├── config.yml
     ├── conftest.py
     ├── infrastructure
     │   ├── __init__.py
@@ -188,13 +215,19 @@ pg_anon/
     │   ├── data.py
     │   ├── db.py
     │   ├── params.py
-    │   └── pg_anon.py
+    │   ├── pg_anon.py
+    │   └── sizes.py
     └── suites
         ├── __init__.py
-        ├── test_dict_gen
+        ├── test_api
+        ├── test_cli_options
+        ├── test_create_dict
         ├── test_dump_restore
+        ├── test_full_clone
         ├── test_mask
         ├── test_partial
+        ├── test_partial_extension
+        ├── test_partial_partitioned_fk
         ├── test_pg_utils_options
         ├── test_restore_clean
         ├── test_stress
@@ -255,7 +288,7 @@ Upon successful execution, all tests should pass.
 To run a specific test file:
 
 ```bash
-pytest tests/suites/test_validate.py -v
+pytest tests/suites/test_validate/test_validate.py -v
 ```
 
 ### Test Database Configuration
@@ -269,5 +302,5 @@ set TEST_DB_HOST=127.0.0.1
 set TEST_DB_PORT=5432
 set TEST_SOURCE_DB=test_source_db
 set TEST_TARGET_DB=test_target_db
-set TEST_CONFIG=/path/to/pg_anon/tests/config.yaml
+set TEST_CONFIG=/path/to/pg_anon/tests/config.yml
 ```

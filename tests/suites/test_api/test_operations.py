@@ -23,7 +23,10 @@ async def _dump_with_save(api_client, api_source_db, db_params, webhook_recorder
 
 
 async def test_operations_list_includes_saved_run(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
     op_id = success["internal_operation_id"]
@@ -44,7 +47,10 @@ async def test_operations_list_date_filter_validation(api_client):
 
 
 async def test_operation_details_returns_run_options_and_dictionaries(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
     op_id = success["internal_operation_id"]
@@ -64,7 +70,10 @@ async def test_operation_details_404_for_unknown_id(api_client):
 
 
 async def test_operation_logs_returns_tail(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
     op_id = success["internal_operation_id"]
@@ -77,7 +86,10 @@ async def test_operation_logs_returns_tail(
 
 
 async def test_operation_logs_invalid_tail_lines_422(
-    api_client, api_source_db, db_params, webhook_recorder,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
 ):
     success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
     op_id = success["internal_operation_id"]
@@ -86,7 +98,12 @@ async def test_operation_logs_invalid_tail_lines_422(
 
 
 async def test_operation_delete_removes_run_and_dump_dir(
-    api_client, api_source_db, db_params, webhook_recorder, runs_base_dir, dump_storage_base_dir,
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+    runs_base_dir,
+    dump_storage_base_dir,
 ):
     success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
     op_id = success["internal_operation_id"]

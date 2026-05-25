@@ -26,24 +26,38 @@ def _options(db_params, source_db, dict_file: str, extra: list[str]) -> list[str
 
 
 async def test_view_data_print_hr_employee(source_db, db_params):
-    options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
-        "--schema-name=hr",
-        "--table-name=employee",
-        "--limit=10",
-        "--offset=0",
-    ]))
+    options = build_run_options(
+        _options(
+            db_params,
+            source_db,
+            input_dict("view_data.py"),
+            [
+                "--schema-name=hr",
+                "--table-name=employee",
+                "--limit=10",
+                "--offset=0",
+            ],
+        )
+    )
     res = await PgAnonApp(options).run()
     assert res.result_code == ResultCode.DONE
 
 
 async def test_view_data_json_has_uniform_row_length(source_db, db_params):
-    options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), [
-        "--json",
-        "--schema-name=billing",
-        "--table-name=payment_card",
-        "--limit=10",
-        "--offset=0",
-    ]))
+    options = build_run_options(
+        _options(
+            db_params,
+            source_db,
+            input_dict("view_data.py"),
+            [
+                "--json",
+                "--schema-name=billing",
+                "--table-name=payment_card",
+                "--limit=10",
+                "--offset=0",
+            ],
+        )
+    )
     executor = ViewDataMode(PgAnonApp(options).context)
     await executor.run()
 
@@ -59,20 +73,25 @@ async def test_view_data_offset_past_end_still_succeeds(source_db, db_params):
         "--offset=999999",
     ]
     for extra in ([], ["--json"]):
-        options = build_run_options(
-            _options(db_params, source_db, input_dict("view_data.py"), base + extra)
-        )
+        options = build_run_options(_options(db_params, source_db, input_dict("view_data.py"), base + extra))
         res = await PgAnonApp(options).run()
         assert res.result_code == ResultCode.DONE
 
 
 async def test_view_data_dict_without_matching_rule_still_shows_rows(source_db, db_params):
-    options = build_run_options(_options(db_params, source_db, input_dict("unrelated.py"), [
-        "--schema-name=hr",
-        "--table-name=employee",
-        "--limit=10",
-        "--offset=0",
-    ]))
+    options = build_run_options(
+        _options(
+            db_params,
+            source_db,
+            input_dict("unrelated.py"),
+            [
+                "--schema-name=hr",
+                "--table-name=employee",
+                "--limit=10",
+                "--offset=0",
+            ],
+        )
+    )
     executor = ViewDataMode(PgAnonApp(options).context)
     await executor.run()
     assert len(executor.table.rows) > 0

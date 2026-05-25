@@ -1,6 +1,6 @@
 # 🛠️ Debug stages for anonymization process
 
-> [🏠 Home](../README.md#-documentation-index) | [💾 Dump](operations/dump.md) | [📂 Restore](docs/operations/restore.md) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
+> [🏠 Home](../README.md#-documentation-index) | [💾 Dump](operations/dump.md) | [📂 Restore](operations/restore.md) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
 
 ## Overview
 

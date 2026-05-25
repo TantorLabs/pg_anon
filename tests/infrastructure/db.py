@@ -29,11 +29,14 @@ class DBManager:
         object (SUBSCRIPTION DDL is per-db).
         """
         try:
-            subs = await self.fetch("postgres", f"""
+            subs = await self.fetch(
+                "postgres",
+                f"""
                 SELECT s.subname FROM pg_subscription s
                 JOIN pg_database d ON d.oid = s.subdbid
                 WHERE d.datname = '{db_name}'
-            """)
+            """,
+            )
         except Exception:
             return
         for row in subs:
@@ -54,14 +57,19 @@ class DBManager:
     async def create_db(self, db_name: str) -> None:
         """Drop (if exists) and create a fresh database."""
         await self._drop_subscriptions_for_db(db_name)
-        await self.execute("postgres", f"""
+        await self.execute(
+            "postgres",
+            f"""
             SELECT pg_terminate_backend(pid)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
                 AND datname = '{db_name}'
-        """)
+        """,
+        )
         await self.execute("postgres", f"DROP DATABASE IF EXISTS {db_name}")
-        await self.execute("postgres", f"""
+        await self.execute(
+            "postgres",
+            f"""
             CREATE DATABASE {db_name}
                 WITH
                 OWNER = {self.params.test_db_user}
@@ -69,19 +77,23 @@ class DBManager:
                 LC_COLLATE = 'en_US.UTF-8'
                 LC_CTYPE = 'en_US.UTF-8'
                 template = template0
-        """)
+        """,
+        )
 
     async def drop_db(self, db_name: str) -> None:
         """Drop database if exists. Skipped when KEEP_TEST_DBS is set."""
         if self.params.keep_test_dbs:
             return
         await self._drop_subscriptions_for_db(db_name)
-        await self.execute("postgres", f"""
+        await self.execute(
+            "postgres",
+            f"""
             SELECT pg_terminate_backend(pid)
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
                 AND datname = '{db_name}'
-        """)
+        """,
+        )
         await self.execute("postgres", f"DROP DATABASE IF EXISTS {db_name}")
 
     async def execute(self, db_name: str, query: str) -> None:

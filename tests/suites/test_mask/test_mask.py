@@ -8,28 +8,44 @@ from pg_anon.common.enums import ResultCode
 
 async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, *, name):
     out = output_path(name)
-    res = await pg_anon_runner.run("dump", source_db, [
-        f"--prepared-sens-dict-file={input_dict('mask.py')}",
-        f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        "--clear-output-dir",
-    ])
+    res = await pg_anon_runner.run(
+        "dump",
+        source_db,
+        [
+            f"--prepared-sens-dict-file={input_dict('mask.py')}",
+            f"--output-dir={out}",
+            f"--processes={db_params.test_processes}",
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            "--clear-output-dir",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
-    res = await pg_anon_runner.run("restore", target_db, [
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        f"--input-dir={out}",
-        "--drop-custom-check-constr",
-    ])
+    res = await pg_anon_runner.run(
+        "restore",
+        target_db,
+        [
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            f"--input-dir={out}",
+            "--drop-custom-check-constr",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
 
 async def test_mask_replaces_constants_in_hr_and_billing(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     await _dump_and_restore(
-        pg_anon_runner, db_params, source_db, target_db, name="replace_constants",
+        pg_anon_runner,
+        db_params,
+        source_db,
+        target_db,
+        name="replace_constants",
     )
 
     employees = await db_manager.fetch(
@@ -56,10 +72,18 @@ async def test_mask_replaces_constants_in_hr_and_billing(
 
 
 async def test_mask_raw_sql_overrides_entire_row(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     await _dump_and_restore(
-        pg_anon_runner, db_params, source_db, target_db, name="raw_sql",
+        pg_anon_runner,
+        db_params,
+        source_db,
+        target_db,
+        name="raw_sql",
     )
 
     rows = await db_manager.fetch(target_db, "SELECT body FROM ecommerce.review LIMIT 20")
@@ -68,10 +92,18 @@ async def test_mask_raw_sql_overrides_entire_row(
 
 
 async def test_mask_does_not_touch_unrelated_tables(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     await _dump_and_restore(
-        pg_anon_runner, db_params, source_db, target_db, name="untouched",
+        pg_anon_runner,
+        db_params,
+        source_db,
+        target_db,
+        name="untouched",
     )
 
     untouched = [
@@ -88,10 +120,18 @@ async def test_mask_does_not_touch_unrelated_tables(
 
 
 async def test_mask_leaves_non_masked_columns_of_masked_table_intact(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     await _dump_and_restore(
-        pg_anon_runner, db_params, source_db, target_db, name="partial_columns",
+        pg_anon_runner,
+        db_params,
+        source_db,
+        target_db,
+        name="partial_columns",
     )
 
     src_row = await db_manager.fetch(
@@ -99,83 +139,110 @@ async def test_mask_leaves_non_masked_columns_of_masked_table_intact(
         "SELECT first_name, last_name, ssn, birth_date, hire_date FROM hr.employee WHERE id = 1",
     )
     assert await check_rows(
-        db_manager, target_db, "hr", "employee",
+        db_manager,
+        target_db,
+        "hr",
+        "employee",
         ["first_name", "last_name", "ssn", "birth_date", "hire_date"],
         [list(dict(src_row[0]).values())],
     )
 
 
 async def test_mask_with_partial_tables_whitelist(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     out = output_path("mask_with_whitelist")
-    res = await pg_anon_runner.run("dump", source_db, [
-        f"--prepared-sens-dict-file={input_dict('mask_minimal.py')}",
-        f"--partial-tables-dict-file={input_dict('whitelist_hr_only.py')}",
-        f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        "--clear-output-dir",
-    ])
+    res = await pg_anon_runner.run(
+        "dump",
+        source_db,
+        [
+            f"--prepared-sens-dict-file={input_dict('mask_minimal.py')}",
+            f"--partial-tables-dict-file={input_dict('whitelist_hr_only.py')}",
+            f"--output-dir={out}",
+            f"--processes={db_params.test_processes}",
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            "--clear-output-dir",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
-    res = await pg_anon_runner.run("restore", target_db, [
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        f"--input-dir={out}",
-        "--drop-custom-check-constr",
-    ])
+    res = await pg_anon_runner.run(
+        "restore",
+        target_db,
+        [
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            f"--input-dir={out}",
+            "--drop-custom-check-constr",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
     hr_emp = await db_manager.fetch(
-        target_db, "SELECT salary FROM hr.employee LIMIT 5",
+        target_db,
+        "SELECT salary FROM hr.employee LIMIT 5",
     )
     assert hr_emp, "hr.employee must be restored on target"
-    assert all(r["salary"] == 0 for r in hr_emp), (
-        "hr.employee.salary must be masked to 0 on target"
-    )
+    assert all(r["salary"] == 0 for r in hr_emp), "hr.employee.salary must be masked to 0 on target"
 
-    billing_cust = await db_manager.fetch(target_db, """
+    billing_cust = await db_manager.fetch(
+        target_db,
+        """
         SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'billing' AND c.relname = 'customer'
-    """)
-    assert not billing_cust, (
-        "billing.customer is outside the whitelist — must not appear on target"
+    """,
     )
+    assert not billing_cust, "billing.customer is outside the whitelist — must not appear on target"
 
 
 async def test_mask_with_partial_tables_exclude(
-    source_db, target_db, db_manager, db_params, pg_anon_runner,
+    source_db,
+    target_db,
+    db_manager,
+    db_params,
+    pg_anon_runner,
 ):
     out = output_path("mask_with_exclude")
-    res = await pg_anon_runner.run("dump", source_db, [
-        f"--prepared-sens-dict-file={input_dict('mask_minimal.py')}",
-        f"--partial-tables-exclude-dict-file={input_dict('exclude_billing.py')}",
-        f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        "--clear-output-dir",
-    ])
+    res = await pg_anon_runner.run(
+        "dump",
+        source_db,
+        [
+            f"--prepared-sens-dict-file={input_dict('mask_minimal.py')}",
+            f"--partial-tables-exclude-dict-file={input_dict('exclude_billing.py')}",
+            f"--output-dir={out}",
+            f"--processes={db_params.test_processes}",
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            "--clear-output-dir",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
-    res = await pg_anon_runner.run("restore", target_db, [
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
-        f"--input-dir={out}",
-        "--drop-custom-check-constr",
-    ])
+    res = await pg_anon_runner.run(
+        "restore",
+        target_db,
+        [
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            f"--input-dir={out}",
+            "--drop-custom-check-constr",
+        ],
+    )
     assert res.result_code == ResultCode.DONE
 
     hr_emp = await db_manager.fetch(
-        target_db, "SELECT salary FROM hr.employee LIMIT 5",
+        target_db,
+        "SELECT salary FROM hr.employee LIMIT 5",
     )
     assert hr_emp, "hr.employee must be restored on target"
-    assert all(r["salary"] == 0 for r in hr_emp), (
-        "hr.employee.salary must be masked to 0 on target"
-    )
+    assert all(r["salary"] == 0 for r in hr_emp), "hr.employee.salary must be masked to 0 on target"
 
-    billing_cust = await db_manager.fetch(target_db, """
+    billing_cust = await db_manager.fetch(
+        target_db,
+        """
         SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'billing' AND c.relname = 'customer' AND c.relkind = 'r'
-    """)
-    assert not billing_cust, (
-        "billing.customer is in the exclude list — must not appear on target"
+    """,
     )
+    assert not billing_cust, "billing.customer is in the exclude list — must not appear on target"

@@ -14,6 +14,7 @@ Schemas are chosen to mirror common real-world subsystems:
 Each builder is idempotent (uses IF NOT EXISTS / ON CONFLICT) and takes an
 explicit row-count arg so callers can pick TINY/SMALL/MEDIUM/LARGE.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -34,17 +35,22 @@ class Fixtures:
 
     async def ensure_extensions(self, db_name: str) -> None:
         """Enable extensions that fixtures rely on. Safe to call repeatedly."""
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE EXTENSION IF NOT EXISTS pgcrypto;
             CREATE EXTENSION IF NOT EXISTS citext;
             CREATE EXTENSION IF NOT EXISTS pg_trgm;
             CREATE EXTENSION IF NOT EXISTS hstore;
             CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-        """)
+        """,
+        )
 
     async def ensure_anon_ext(self, db_name: str) -> None:
         """Helper plpgsql functions used by anonymization rules and scanner checks."""
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS anon_ext;
 
             CREATE OR REPLACE FUNCTION anon_ext.is_company_email(
@@ -114,14 +120,17 @@ class Fixtures:
                 );
             END;
             $fn$ LANGUAGE plpgsql;
-        """)
+        """,
+        )
 
     # ==================================================================
     # hr — employees, departments, salaries
     # ==================================================================
 
     async def build_hr(self, db_name: str, employees: int = SMALL) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS hr;
 
             CREATE TABLE IF NOT EXISTS hr.department (
@@ -178,9 +187,12 @@ class Fixtures:
                 ('Finance', 8000000),
                 ('Отдел аналитики', 12000000)
             ON CONFLICT (name) DO NOTHING;
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, f"""
+        await self.db.execute(
+            db_name,
+            f"""
             WITH seed AS (
                 SELECT generate_series(1, {employees}) AS v
             ), dept AS (
@@ -234,14 +246,17 @@ class Fixtures:
                 'Квартальная оценка ' || e.id
             FROM hr.employee e
             WHERE e.manager_id IS NOT NULL;
-        """)
+        """,
+        )
 
     # ==================================================================
     # billing — customers, invoices, payment cards, transactions
     # ==================================================================
 
     async def build_billing(self, db_name: str, customers: int = SMALL) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS billing;
 
             DO $$ BEGIN
@@ -321,9 +336,12 @@ class Fixtures:
                 external_ref uuid NOT NULL DEFAULT uuid_generate_v4(),
                 raw_response jsonb
             );
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, f"""
+        await self.db.execute(
+            db_name,
+            f"""
             INSERT INTO billing.customer (name, email, tax_id, billing_address, metadata)
             SELECT
                 'ООО «Клиент ' || v || '»',
@@ -379,14 +397,17 @@ class Fixtures:
                 )
             FROM billing.invoice i
             WHERE i.status IN ('paid', 'issued');
-        """)
+        """,
+        )
 
     # ==================================================================
     # ecommerce — products, categories (self-ref), orders, reviews
     # ==================================================================
 
     async def build_ecommerce(self, db_name: str, products: int = SMALL) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS ecommerce;
 
             DO $$ BEGIN
@@ -457,9 +478,12 @@ class Fixtures:
             SELECT c.id, c.name || ' / Sub', c.slug || '-sub'
             FROM ecommerce.category c WHERE c.parent_id IS NULL
             ON CONFLICT (slug) DO NOTHING;
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, f"""
+        await self.db.execute(
+            db_name,
+            f"""
             INSERT INTO ecommerce.product (sku, name, description, price, category_id, tags, attributes)
             SELECT
                 -- SKU intentionally LOOKS like a card number: decoy for scanner false-positives
@@ -506,14 +530,17 @@ class Fixtures:
                 'Отзыв на товар ' || p.id || '. Всё хорошо, спасибо!'
             FROM ecommerce.product p
             WHERE p.id % 3 = 0;
-        """)
+        """,
+        )
 
     # ==================================================================
     # audit — log entries, login attempts (inet, uuid, jsonb)
     # ==================================================================
 
     async def build_audit(self, db_name: str, entries: int = SMALL) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS audit;
 
             CREATE TABLE IF NOT EXISTS audit.log_entry (
@@ -541,9 +568,12 @@ class Fixtures:
                 success boolean NOT NULL,
                 attempted_at timestamptz NOT NULL DEFAULT now()
             );
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, f"""
+        await self.db.execute(
+            db_name,
+            f"""
             INSERT INTO audit.log_entry (actor, action, target, client_ip, client_mac, payload, duration_ms)
             SELECT
                 uuid_generate_v4(),
@@ -570,14 +600,17 @@ class Fixtures:
                 'Mozilla/5.0 session ' || v,
                 (v % 4) <> 0
             FROM generate_series(1, {entries}) v;
-        """)
+        """,
+        )
 
     # ==================================================================
     # content — articles (tsvector, jsonb, text[], materialized view)
     # ==================================================================
 
     async def build_content(self, db_name: str, articles: int = SMALL) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS content;
 
             CREATE TABLE IF NOT EXISTS content.article (
@@ -623,9 +656,12 @@ class Fixtures:
             SELECT id, slug, title, published_at
             FROM content.article
             WHERE published_at IS NOT NULL;
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, f"""
+        await self.db.execute(
+            db_name,
+            f"""
             INSERT INTO content.article (slug, title, body, tags, metadata, published_at)
             SELECT
                 'article-' || v,
@@ -650,9 +686,12 @@ class Fixtures:
                 'Комментарий к статье ' || a.id
             FROM content.article a
             WHERE a.id % 2 = 0;
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             DROP MATERIALIZED VIEW IF EXISTS content.article_stats;
             CREATE MATERIALIZED VIEW content.article_stats AS
             SELECT
@@ -666,14 +705,17 @@ class Fixtures:
 
             CREATE UNIQUE INDEX IF NOT EXISTS article_stats_pk
                 ON content.article_stats (id);
-        """)
+        """,
+        )
 
     # ==================================================================
     # analytics — partitioned tables: RANGE, LIST, HASH
     # ==================================================================
 
     async def build_analytics(self, db_name: str) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS analytics;
             CREATE SCHEMA IF NOT EXISTS analytics_archive;
 
@@ -735,9 +777,12 @@ class Fixtures:
                 PARTITION OF analytics.event_by_tenant FOR VALUES WITH (modulus 4, remainder 2);
             CREATE TABLE IF NOT EXISTS analytics.event_by_tenant_h3
                 PARTITION OF analytics.event_by_tenant FOR VALUES WITH (modulus 4, remainder 3);
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             INSERT INTO analytics.event (event_date, tenant_id, region, payload)
             SELECT
                 DATE '2024-06-01' + ((v * 7) % 400),
@@ -756,14 +801,17 @@ class Fixtures:
             INSERT INTO analytics.event_by_tenant (tenant_id, data)
             SELECT v % 16, jsonb_build_object('payload', 'data-' || v)
             FROM generate_series(1, 200) v;
-        """)
+        """,
+        )
 
     # ==================================================================
     # quirks — quoted identifiers, reserved words, Cyrillic, NULLs
     # ==================================================================
 
     async def build_quirks(self, db_name: str) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS quirks;
 
             CREATE TABLE IF NOT EXISTS quirks."MixedCaseTable" (
@@ -791,9 +839,12 @@ class Fixtures:
                 val text,
                 amount numeric(30, 4)
             );
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS "_SCHM.$complex#имя;@&* a'";
             CREATE TABLE IF NOT EXISTS "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" (
                 id serial PRIMARY KEY,
@@ -814,9 +865,12 @@ class Fixtures:
             DROP TABLE IF EXISTS "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'2";
             CREATE TABLE "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'2"
                 AS SELECT * FROM "_SCHM.$complex#имя;@&* a'"."_TBL.$complex#имя;@&* a'" WITH DATA;
-        """)
+        """,
+        )
 
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             INSERT INTO quirks."MixedCaseTable" ("UserId", "Email Address") VALUES
                 (1, 'alice@example.com'),
                 (2, NULL),
@@ -836,14 +890,17 @@ class Fixtures:
                 (NULL, NULL),
                 ('', 0),
                 ('value with ''quote''', -99999.9999);
-        """)
+        """,
+        )
 
     # ==================================================================
     # data_types — one row per PG type for round-trip checks
     # ==================================================================
 
     async def build_data_types(self, db_name: str) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS data_types;
 
             DO $$ BEGIN
@@ -976,14 +1033,17 @@ class Fixtures:
                 (15, 'text CR LF tab',       NULL, NULL, NULL, NULL, NULL, NULL, E'line1\\r\\nline2\\ttab', NULL),
                 (16, 'text quote backslash', NULL, NULL, NULL, NULL, NULL, NULL, E'O''Brien \\\\o/ 100%', NULL),
                 (17, 'bytea with NUL',       NULL, NULL, NULL, NULL, NULL, NULL, NULL, decode('0001020304ff00fe', 'hex'));
-        """)
+        """,
+        )
 
     # ==================================================================
     # table_variants — rare declarations that pg_dump must preserve
     # ==================================================================
 
     async def build_table_variants(self, db_name: str) -> None:
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS variants;
 
             -- Custom SEQUENCE with non-default parameters + OWNED BY
@@ -1048,10 +1108,13 @@ class Fixtures:
                 DO INSTEAD
                 INSERT INTO variants.animal (name, kingdom)
                 VALUES (NEW.name, coalesce(NEW.kingdom, 'Animalia'));
-        """)
+        """,
+        )
 
         # Event trigger must be created at DB level, ignore if role lacks perms.
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             DO $$ BEGIN
                 CREATE OR REPLACE FUNCTION variants.log_ddl() RETURNS event_trigger
                 LANGUAGE plpgsql AS $fn$
@@ -1070,7 +1133,8 @@ class Fixtures:
                 WHEN insufficient_privilege THEN NULL;
                 WHEN duplicate_object THEN NULL;
             END $$;
-        """)
+        """,
+        )
 
     # ==================================================================
     # fdw — foreign data wrapper loopback (optional; skipped if perms missing)
@@ -1082,7 +1146,9 @@ class Fixtures:
         not installed or the role can't CREATE SERVER, the builder silently
         degrades so the rest of the zoo is unaffected.
         """
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             DO $$ BEGIN
                 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
             EXCEPTION WHEN insufficient_privilege THEN NULL; END $$;
@@ -1104,7 +1170,8 @@ class Fixtures:
                 WHEN undefined_object THEN NULL;  -- postgres_fdw not available
                 WHEN feature_not_supported THEN NULL;
             END $$;
-        """)
+        """,
+        )
 
     # ==================================================================
     # circular_fk — mutually referencing tables with DEFERRABLE FKs
@@ -1116,7 +1183,9 @@ class Fixtures:
         Exercises pg_anon's parallel COPY + session_replication_role='replica'
         path: neither table can be loaded first if FKs are eagerly checked.
         """
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS circular_fk;
 
             CREATE TABLE IF NOT EXISTS circular_fk.a (
@@ -1151,7 +1220,8 @@ class Fixtures:
             INSERT INTO circular_fk.b (id, peer_id) VALUES (101, 1), (102, 2), (103, 3)
                 ON CONFLICT (id) DO NOTHING;
             COMMIT;
-        """)
+        """,
+        )
 
     # ==================================================================
     # Security — RLS
@@ -1159,7 +1229,9 @@ class Fixtures:
 
     async def build_security(self, db_name: str) -> None:
         """Row-level security policies on a table. pg_dump must preserve policies."""
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS security;
 
             CREATE TABLE IF NOT EXISTS security.tenant_data (
@@ -1177,7 +1249,8 @@ class Fixtures:
 
             INSERT INTO security.tenant_data (tenant_id, content)
             SELECT v % 5, 'tenant payload ' || v FROM generate_series(1, 50) v;
-        """)
+        """,
+        )
 
     # ==================================================================
     # privileges — GRANT / REVOKE / OWNER / DEFAULT PRIVILEGES / multi-role
@@ -1188,7 +1261,9 @@ class Fixtures:
         and a DEFAULT PRIVILEGES rule. Wrapped in DO blocks — role creation
         requires CREATEROLE and fails gracefully on restricted test setups.
         """
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             DO $$ BEGIN
                 CREATE ROLE anon_tester_reader NOINHERIT;
             EXCEPTION
@@ -1255,11 +1330,14 @@ class Fixtures:
                 WHEN undefined_object THEN NULL;
                 WHEN insufficient_privilege THEN NULL;
             END $$;
-        """)
+        """,
+        )
 
     async def build_index_quirks(self, db_name: str) -> None:
         """Index types: hash, spgist, gist, covering INCLUDE, COLLATE, special names."""
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS index_quirks;
 
             CREATE TABLE IF NOT EXISTS index_quirks.events (
@@ -1296,11 +1374,14 @@ class Fixtures:
 
             CREATE INDEX IF NOT EXISTS "_idx.$weird#имя"
                 ON index_quirks.events (region, user_id);
-        """)
+        """,
+        )
 
     async def build_constraints_quirks(self, db_name: str) -> None:
         """Sub-partitioning, FK on partitioned parent, EXCLUDE USING gist, NOT VALID FK."""
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS constraints_quirks;
 
             CREATE TABLE IF NOT EXISTS constraints_quirks.subpart_root (
@@ -1385,7 +1466,8 @@ class Fixtures:
                     REFERENCES constraints_quirks.legacy_parent (id)
                     NOT VALID;
             EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-        """)
+        """,
+        )
 
     # ==================================================================
     # publications — logical replication PUBLICATION
@@ -1398,7 +1480,9 @@ class Fixtures:
         PG instance to be meaningful, and even a degraded `connect = false`
         subscription registers in pg_subscription and blocks DROP DATABASE.
         """
-        await self.db.execute(db_name, """
+        await self.db.execute(
+            db_name,
+            """
             CREATE SCHEMA IF NOT EXISTS pubs;
 
             CREATE TABLE IF NOT EXISTS pubs.feed (
@@ -1427,7 +1511,8 @@ class Fixtures:
                 WHEN duplicate_object THEN NULL;
                 WHEN insufficient_privilege THEN NULL;
             END $$;
-        """)
+        """,
+        )
 
     # ==================================================================
     # Composition helpers

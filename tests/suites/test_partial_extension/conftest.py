@@ -27,7 +27,9 @@ async def source_db(db_manager, pg_anon_runner):
     res = await pg_anon_runner.run("init", SOURCE_DB)
     assert res.result_code == ResultCode.DONE
 
-    await db_manager.execute(SOURCE_DB, """
+    await db_manager.execute(
+        SOURCE_DB,
+        """
         CREATE SCHEMA IF NOT EXISTS trgm_home;
         CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA trgm_home;
 
@@ -46,7 +48,8 @@ async def source_db(db_manager, pg_anon_runner):
         CREATE SCHEMA IF NOT EXISTS other;
         CREATE TABLE IF NOT EXISTS other.unrelated (id serial PRIMARY KEY, val text);
         INSERT INTO other.unrelated (val) VALUES ('x') ON CONFLICT DO NOTHING;
-    """)
+    """,
+    )
 
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)

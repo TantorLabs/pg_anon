@@ -1,16 +1,21 @@
-.PHONY : check format clean init
-.SILENT: clean init
+.PHONY: help install install-dev build check fix fix/style fix/fmt test clean
+.SILENT: clean
 
-clean:
-	rm -rf *.egg-info; \
-	rm -rf dist; \
-	rm -rf **/__pycache__; \
+help:
+	@echo "Available targets:"
+	@echo "  install     Install pg_anon with REST API extras"
+	@echo "  install-dev Install in editable mode with dev tools (ruff, mypy, pytest)"
+	@echo "  build       Build wheel and sdist into ./dist"
+	@echo "  check       Run linters (ruff + mypy) over pg_anon/"
+	@echo "  fix         Auto-fix lint issues and format the codebase"
+	@echo "  test        Run the pytest suite"
+	@echo "  clean       Remove build artifacts and tool caches"
 
-init:
-	pip install .[api]
+install:
+	pip install ".[api]"
 
-dev:
-	pip install .[api,dev]
+install-dev:
+	pip install -e ".[api,dev]"
 
 build:
 	python -m build
@@ -19,15 +24,20 @@ check:
 	python -m ruff check pg_anon
 	python -m mypy pg_anon
 
-.PHONY: fix
 fix: fix/style fix/fmt
 
-.PHONY: fix/style
 fix/style:
 	@echo "~~> Fixing linter errors"
-	@python -m ruff check --fix
+	python -m ruff check --fix
 
-.PHONY: fix/fmt
 fix/fmt:
-	@echo "~~> Fixing formatter errors"
-	@python -m ruff format
+	@echo "~~> Formatting code"
+	python -m ruff format
+
+test:
+	python -m pytest
+
+clean:
+	rm -rf *.egg-info dist build
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	rm -rf .mypy_cache .ruff_cache .pytest_cache
