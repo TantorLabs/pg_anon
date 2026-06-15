@@ -425,4 +425,3 @@ async def restore_types() -> list[RestoreType]:
 async def scan_types() -> list[ScanType]:
     """Return the list of available scan types."""
     return [ScanType(title=t.value) for t in ScanMode]
-

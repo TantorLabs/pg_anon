@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from .conftest import input_dict, output_dict, output_path
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
+
+# Excluded from the default test run; run explicitly with `pytest -m stress`.
+pytestmark = pytest.mark.stress
 
 _elapsed: dict[str, float] = {}
 
