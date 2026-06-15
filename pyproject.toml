@@ -1,6 +1,6 @@
 [project]
 name = "pg_anon"
-version = "1.10"
+version = "1.10.1"
 description = "PostgreSQL anonymization tool."
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}
@@ -51,6 +51,12 @@ asyncio_mode = "auto"
 testpaths = ["tests/suites"]
 pythonpath = ["."]
 norecursedirs = ["input_dict", "expected", "output", "output_dict"]
+# The stress suite is excluded from the default run (it is slow and timing-based).
+# Run it explicitly with: pytest -m stress
+addopts = "-m 'not stress'"
+markers = [
+    "stress: slow, resource-heavy stress tests; excluded by default, run with `-m stress`",
+]
 
 [tool.ruff]
 line-length = 120

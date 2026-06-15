@@ -201,23 +201,41 @@ class Context:
             "dictionary_exclude": [],
             "validate_tables": [],
         }
+        self.prepared_dictionary_contents = {}
+        tmp_prepared_dict = {}
 
         for dict_file in self.options.prepared_sens_dict_files:
             dictionary_file_name = Path.cwd() / dict_file
             dict_data = read_dict_data_from_file(dictionary_file_name)
-            self.prepared_dictionary_contents = {str(dictionary_file_name): str(dict_data)}
+            self.prepared_dictionary_contents.update({str(dictionary_file_name): str(dict_data)})
 
             if not dict_data:
                 continue
 
             if dictionary_rules := dict_data.get("dictionary", []):
-                if save_dict_file_name_for_each_rule:
-                    for dictionary_rule in dictionary_rules:
+                for dictionary_rule in dictionary_rules:
+                    rule_key = (
+                        dictionary_rule.get("schema"),
+                        dictionary_rule.get("schema_mask"),
+                        dictionary_rule.get("table"),
+                        dictionary_rule.get("table_mask"),
+                    )
+
+                    if save_dict_file_name_for_each_rule:
                         dictionary_rule["dict_file_name"] = dict_file
-                self.prepared_dictionary_obj["dictionary"].extend(dictionary_rules)
+
+                    if rule_key not in tmp_prepared_dict:
+                        tmp_prepared_dict[rule_key] = dictionary_rule
+                    else:
+                        tmp_prepared_dict[rule_key]["fields"].update(dictionary_rule["fields"])
+                        tmp_prepared_dict[rule_key]["sql_condition"] = dictionary_rule.get(
+                            "sql_condition", tmp_prepared_dict[rule_key].get("sql_condition")
+                        )
 
             self.prepared_dictionary_obj["dictionary_exclude"].extend(dict_data.get("dictionary_exclude", []))
             self.prepared_dictionary_obj["validate_tables"].extend(dict_data.get("validate_tables", []))
+
+        self.prepared_dictionary_obj["dictionary"].extend(tmp_prepared_dict.values())
 
     def read_partial_tables_dicts(self) -> None:
         """Read partial table inclusion and exclusion dictionary files."""
