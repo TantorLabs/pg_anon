@@ -229,6 +229,12 @@ def get_base_field_type(field_info: FieldInfo) -> str:
 def normalize_data_type(data_type: str) -> str:
     """Normalize a PostgreSQL data type string to a canonical lowercase form."""
     clean_field_type = data_type.strip().lower()
+
+    # Schema-qualified user-defined types (composite, domain, enum), e.g.
+    # "bank.passport", are already canonical as produced by format_type
+    if "." in clean_field_type:
+        return clean_field_type
+
     pattern_match = TYPE_PATTERN.match(clean_field_type)
     if not pattern_match:
         return clean_field_type  # fallback
