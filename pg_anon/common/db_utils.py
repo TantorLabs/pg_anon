@@ -121,7 +121,7 @@ async def get_fields_list(
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     fields_list = await db_conn.fetch(
         f"""
-            SELECT column_name, udt_name, is_nullable, is_generated FROM information_schema.columns
+            SELECT column_name, udt_name, udt_schema, is_nullable, is_generated FROM information_schema.columns
             WHERE table_schema = '{table_schema.replace("'", "''")}' AND table_name='{table_name.replace("'", "''")}'
             ORDER BY ordinal_position ASC
         """
@@ -140,7 +140,7 @@ async def get_all_fields_list(
         placeholders = _sql_quote_list(excluded)
 
         rows = await db_conn.fetch(f"""
-            SELECT table_schema, table_name, column_name, udt_name, is_nullable, is_generated
+            SELECT table_schema, table_name, column_name, udt_name, udt_schema, is_nullable, is_generated
             FROM information_schema.columns
             WHERE table_schema NOT IN ({placeholders})
             ORDER BY table_schema, table_name, ordinal_position ASC
@@ -1082,6 +1082,8 @@ async def get_dump_query(  # noqa: C901, PLR0912
     for column_info in fields_list:
         column_name = column_info["column_name"]
         udt_name = column_info["udt_name"]
+        # Schema-qualify the cast target type so user-defined types (e.g. bank.passport) resolve regardless of search_path.
+        udt_schema = column_info["udt_schema"]
         field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
 
         if column_info["is_generated"] == "ALWAYS":
@@ -1091,7 +1093,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
             if field_anon_rule.find("SQL:") == 0:
                 fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
             else:
-                fields.append(f'{field_anon_rule}::{udt_name} as "{column_name}"')
+                fields.append(f'{field_anon_rule}::"{udt_schema}"."{udt_name}" as "{column_name}"')
         else:
             # field "as is"
             fields.append(f'"{column_name}" as "{column_name}"')
@@ -1110,9 +1112,10 @@ async def get_dump_query(  # noqa: C901, PLR0912
         query += f" {ctx.validate_limit}"
 
     if nulls_last:
+        # Order by raw table columns, not output aliases: sorting by masked columns makes PostgreSQL collapse identical masking expressions to one value.
         ordering = ", ".join(
             [
-                f'"{field["column_name"]}"' + " NULLS LAST"
+                f'"{table_schema}"."{table_name}"."{field["column_name"]}" NULLS LAST'
                 for field in fields_list
                 if field["is_nullable"].lower() == "yes"
             ]
