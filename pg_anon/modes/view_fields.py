@@ -8,6 +8,36 @@ from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 
+ORM_TABLE_NAME_KEY = "ИмяТаблицы"
+ORM_FIELDS_KEY = "Поля"
+
+# Aliases for 1C service columns whose DB names differ from the ORM dict keys
+# beyond the "leading underscore + case" normalization (e.g. "_idrref" -> "ID").
+_ORM_FIELD_NAME_ALIASES = {
+    "idrref": "id",
+}
+
+
+def _normalize_orm_name(name: str) -> str:
+    """Normalize a DB/ORM identifier for lookup: strip leading underscores, lowercase."""
+    return name.lstrip("_").lower()
+
+
+def _build_orm_index(orm_data: dict) -> dict[str, tuple[str, dict[str, str]]]:
+    """Build a lookup index from the ORM structure file data.
+
+    Maps a normalized SQL table name to a tuple of the display table name and
+    a mapping of normalized SQL field names to display field names.
+    """
+    index: dict[str, tuple[str, dict[str, str]]] = {}
+    for table_key, table_data in orm_data.items():
+        fields = {
+            _normalize_orm_name(field_key): field_display_name
+            for field_key, field_display_name in table_data.get(ORM_FIELDS_KEY, {}).items()
+        }
+        index[_normalize_orm_name(table_key)] = (table_data.get(ORM_TABLE_NAME_KEY, ""), fields)
+    return index
+
 
 class ViewFieldsMode:
     _large_output_hint_threshold: int = 1000
