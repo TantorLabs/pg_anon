@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
@@ -37,6 +38,40 @@ def _build_orm_index(orm_data: dict) -> dict[str, tuple[str, dict[str, str]]]:
         }
         index[_normalize_orm_name(table_key)] = (table_data.get(ORM_TABLE_NAME_KEY, ""), fields)
     return index
+
+
+def _load_orm_index(orm_dict_file: str) -> dict[str, tuple[str, dict[str, str]]]:
+    """Read the ORM structure JSON file and build the lookup index."""
+    orm_dict_path = Path(orm_dict_file)
+    if not orm_dict_path.is_file():
+        raise PgAnonError(ErrorCode.INVALID_PATH, f"ORM dict file is not found: {orm_dict_file}")
+
+    try:
+        with orm_dict_path.open(encoding="utf-8-sig") as orm_dict_io:
+            orm_data = json.load(orm_dict_io)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Failed to parse ORM dict file {orm_dict_file}: {exc}") from exc
+
+    return _build_orm_index(orm_data)
+
+
+def _apply_orm_names(fields: list[FieldInfo], orm_index: dict[str, tuple[str, dict[str, str]]]) -> None:
+    """Replace SQL table/field names with ORM display names in-place.
+
+    Names absent from the index (or mapped to an empty string) are kept as is.
+    """
+    for field in fields:
+        orm_table = orm_index.get(_normalize_orm_name(field.relname))
+        if orm_table is None:
+            continue
+        table_display_name, orm_fields = orm_table
+        if table_display_name:
+            field.relname = table_display_name
+        field_key = _normalize_orm_name(field.column_name)
+        field_key = _ORM_FIELD_NAME_ALIASES.get(field_key, field_key)
+        field_display_name = orm_fields.get(field_key)
+        if field_display_name:
+            field.column_name = field_display_name
 
 
 class ViewFieldsMode:

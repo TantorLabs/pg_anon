@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from .conftest import input_dict
 from pg_anon.cli import build_run_options
-from pg_anon.modes.view_fields import _build_orm_index, _normalize_orm_name
+from pg_anon.common.dto import FieldInfo
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.modes.view_fields import (
+    _apply_orm_names,
+    _build_orm_index,
+    _load_orm_index,
+    _normalize_orm_name,
+)
 
 ORM_DATA = {
     "Reference77815": {
@@ -66,3 +77,64 @@ def test_build_orm_index():
     table_name, fields = index["datahistoryversionsext"]
     assert table_name == "DataHistoryVersionsExt"
     assert fields["versionnumber"] == ""
+
+
+def _field(relname: str, column_name: str) -> FieldInfo:
+    return FieldInfo(
+        nspname="public",
+        relname=relname,
+        column_name=column_name,
+        type="text",
+        oid=1,
+        attnum=1,
+        obj_id="1",
+        tbl_id="1",
+    )
+
+
+def test_apply_orm_names_translates_table_and_field():
+    fields = [_field("_reference77815", "_fld77818")]
+    _apply_orm_names(fields, _build_orm_index(ORM_DATA))
+    assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
+    assert fields[0].column_name == "COMИмяБазы"
+
+
+def test_apply_orm_names_resolves_idrref_alias():
+    fields = [_field("_reference77815", "_idrref")]
+    _apply_orm_names(fields, _build_orm_index(ORM_DATA))
+    assert fields[0].column_name == "Ссылка"
+
+
+def test_apply_orm_names_keeps_sql_names_when_not_found_or_empty():
+    fields = [
+        _field("_reference77815", "_fld77819"),  # display name is an empty string
+        _field("_reference77815", "_fld99999"),  # field is absent from the ORM dict
+        _field("unknown_table", "some_field"),  # table is absent from the ORM dict
+    ]
+    _apply_orm_names(fields, _build_orm_index(ORM_DATA))
+    assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
+    assert fields[0].column_name == "_fld77819"
+    assert fields[1].column_name == "_fld99999"
+    assert fields[2].relname == "unknown_table"
+    assert fields[2].column_name == "some_field"
+
+
+def test_load_orm_index_reads_file_with_utf8_bom(tmp_path):
+    orm_file = tmp_path / "structure.json"
+    orm_file.write_text(json.dumps(ORM_DATA, ensure_ascii=False), encoding="utf-8-sig")
+    index = _load_orm_index(str(orm_file))
+    assert "reference77815" in index
+
+
+def test_load_orm_index_missing_file_raises_invalid_path(tmp_path):
+    with pytest.raises(PgAnonError) as err:
+        _load_orm_index(str(tmp_path / "missing.json"))
+    assert err.value.code == ErrorCode.INVALID_PATH
+
+
+def test_load_orm_index_invalid_json_raises_invalid_dict_file(tmp_path):
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_text("{not json", encoding="utf-8")
+    with pytest.raises(PgAnonError) as err:
+        _load_orm_index(str(bad_file))
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
