@@ -86,6 +86,7 @@ class RunOptions:
     schema_mask: str | None = None
     table_name: str | None = None
     table_mask: str | None = None
+    orm_dict_file: str | None = None
 
     # view-data options
     limit: int | None = None
