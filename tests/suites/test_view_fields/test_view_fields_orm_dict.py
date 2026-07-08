@@ -5,10 +5,12 @@ import json
 import pytest
 
 from .conftest import input_dict
+from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.modes.view_fields import (
+    ViewFieldsMode,
     _apply_orm_names,
     _build_orm_index,
     _load_orm_index,
@@ -138,3 +140,32 @@ def test_load_orm_index_invalid_json_raises_invalid_dict_file(tmp_path):
     with pytest.raises(PgAnonError) as err:
         _load_orm_index(str(bad_file))
     assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+async def test_view_fields_orm_dict_translates_names(source_db, db_params):
+    args = [
+        "view-fields",
+        f"--db-host={db_params.test_db_host}",
+        f"--db-name={source_db}",
+        f"--db-user={db_params.test_db_user}",
+        f"--db-port={db_params.test_db_port}",
+        f"--db-user-password={db_params.test_db_user_password}",
+        f"--config={db_params.test_config}",
+        f"--prepared-sens-dict-file={input_dict('view_fields.py')}",
+        f"--orm-dict-file={input_dict('orm_structure.json')}",
+        "--schema-name=hr",
+        "--debug",
+    ]
+    executor = ViewFieldsMode(PgAnonApp(build_run_options(args)).context)
+    await executor.run()
+
+    assert executor.fields
+    employee_columns = {f.column_name for f in executor.fields if f.relname == "Справочник.Сотрудники"}
+    assert employee_columns, "hr.employee rows must be shown under the 1C table name"
+    assert "Имя" in employee_columns, "first_name must be translated via the ORM dict"
+    assert "first_name" not in employee_columns
+    assert "last_name" in employee_columns, "empty ORM display name must keep the SQL name"
+
+    other_tables = {f.relname for f in executor.fields if f.relname != "Справочник.Сотрудники"}
+    assert "employee" not in other_tables
+    assert other_tables, "tables absent from the ORM dict must keep their SQL names"

@@ -84,6 +84,7 @@ class ViewFieldsMode:
         self.json: str | None = None
         self.fields_cut_by_limits: bool = False
         self.empty_data_filler: str = "---"
+        self._orm_index: dict[str, tuple[str, dict[str, str]]] | None = None
         if context.options.fields_count is not None:
             self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
@@ -243,6 +244,8 @@ class ViewFieldsMode:
         self.fields = await self._get_fields_for_view()
         if self.fields:
             self._prepare_fields_for_view()
+            if self._orm_index:
+                _apply_orm_names(self.fields, self._orm_index)
 
         if self.context.options.json:
             self._prepare_json()
@@ -258,6 +261,8 @@ class ViewFieldsMode:
         if self._processing_fields_limit < 1:
             raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
         self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
+        if self.context.options.orm_dict_file:
+            self._orm_index = _load_orm_index(self.context.options.orm_dict_file)
         await self._output_fields()
 
         self.context.logger.info("<------------- Finished view_fields mode")
