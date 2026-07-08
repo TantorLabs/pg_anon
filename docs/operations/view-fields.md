@@ -63,3 +63,25 @@ pg_anon view-fields \
 | `--table-name`                 | No       | Filter by table name.                                                                                                                                                                                                                             |
 | `--table-mask`                 | No       | Filter by table name using a regular expression.                                                                                                                                                                                                  |
 | `--json`                       | No       | Outputs results in JSON format instead of a table.                                                                                                                                                                                                |
+| `--orm-dict-file`              | No       | Path to a JSON file with the ORM storage structure (e.g. generated from 1C:Enterprise metadata). When specified, table and field names in the output are replaced with their ORM names. Names missing from the file are shown as is.              |
+
+---
+
+## ORM names translation (1C)
+
+For databases created by an ORM (such as 1C:Enterprise), SQL names like `_reference77815` are hard to read. Pass `--orm-dict-file` with a JSON file describing the storage structure to see ORM names in the output instead:
+
+```json
+{
+    "Reference77815": {
+        "ИмяТаблицы": "Справочник.НастройкаОбмена",
+        "Назначение": "Основная",
+        "Поля": {
+            "ID": "Ссылка",
+            "Fld77818": "COMИмяБазы"
+        }
+    }
+}
+```
+
+Matching is case-insensitive and ignores leading underscores (`_reference77815` matches `Reference77815`). Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
