@@ -406,6 +406,12 @@ def view_fields_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="""Outputs results in JSON format instead of a table.""",
     )
+    p.add_argument(
+        "--orm-dict-file",
+        type=str,
+        default=None,
+        help="""Path to a JSON file with the ORM storage structure (e.g. generated from 1C:Enterprise metadata). When specified, table and field names in the output are replaced with their ORM names. Names missing from the file are shown as is.""",
+    )
 
     return p
 
