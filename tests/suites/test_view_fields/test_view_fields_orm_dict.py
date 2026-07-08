@@ -10,11 +10,11 @@ from pg_anon.cli import build_run_options
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.modes.view_fields import (
-    ViewFieldsMode,
     _apply_orm_names,
     _build_orm_index,
     _load_orm_index,
     _normalize_orm_name,
+    ViewFieldsMode,
 )
 
 ORM_DATA = {
