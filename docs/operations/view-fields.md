@@ -85,3 +85,5 @@ For databases created by an ORM (such as 1C:Enterprise), SQL names like `_refere
 ```
 
 Matching is case-insensitive (`_reference77815x1` matches `_Reference77815X1`). Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
+
+For 1C:Enterprise databases, such a file can be generated with the [DatabaseStructure.epf](../../tools/1c/README.md) data processor shipped in `tools/1c/`.
