@@ -18,20 +18,20 @@ from pg_anon.modes.view_fields import (
 )
 
 ORM_DATA = {
-    "Reference77815": {
-        "ИмяТаблицы": "Справочник.plm_НастройкаОбмена",
-        "Назначение": "Основная",
-        "Поля": {
-            "ID": "Ссылка",
-            "Code": "Код",
-            "Fld77818": "COMИмяБазы",
-            "Fld77819": "",
+    "_Reference77815X1": {
+        "TableName": "Справочник.plm_НастройкаОбмена",
+        "TablePurpose": "Основная",
+        "Fields": {
+            "_IDRRef": "Ссылка",
+            "_Code": "Код",
+            "_Fld77818": "COMИмяБазы",
+            "_Fld77819": "",
         },
     },
-    "DataHistoryVersionsExt": {
-        "ИмяТаблицы": "DataHistoryVersionsExt",
-        "Назначение": "ВерсииИсторииДанных",
-        "Поля": {"VersionNumber": ""},
+    "_DataHistoryVersionsExtX1": {
+        "TableName": "_DataHistoryVersionsExtX1",
+        "TablePurpose": "ВерсииИсторииДанных",
+        "Fields": {"_VersionNumber": ""},
     },
 }
 
@@ -61,24 +61,23 @@ def test_cli_orm_dict_file_defaults_to_none():
 
 
 def test_normalize_orm_name():
-    assert _normalize_orm_name("_reference77815") == "reference77815"
-    assert _normalize_orm_name("Reference77815") == "reference77815"
-    assert _normalize_orm_name("_Fld77818") == "fld77818"
+    assert _normalize_orm_name("_Reference77815X1") == "_reference77815x1"
+    assert _normalize_orm_name("_IDRRef") == "_idrref"
     assert _normalize_orm_name("plain") == "plain"
 
 
 def test_build_orm_index():
     index = _build_orm_index(ORM_DATA)
 
-    table_name, fields = index["reference77815"]
+    table_name, fields = index["_reference77815x1"]
     assert table_name == "Справочник.plm_НастройкаОбмена"
-    assert fields["id"] == "Ссылка"
-    assert fields["fld77818"] == "COMИмяБазы"
-    assert fields["fld77819"] == ""
+    assert fields["_idrref"] == "Ссылка"
+    assert fields["_fld77818"] == "COMИмяБазы"
+    assert fields["_fld77819"] == ""
 
-    table_name, fields = index["datahistoryversionsext"]
-    assert table_name == "DataHistoryVersionsExt"
-    assert fields["versionnumber"] == ""
+    table_name, fields = index["_datahistoryversionsextx1"]
+    assert table_name == "_DataHistoryVersionsExtX1"
+    assert fields["_versionnumber"] == ""
 
 
 def _field(relname: str, column_name: str) -> FieldInfo:
@@ -95,23 +94,25 @@ def _field(relname: str, column_name: str) -> FieldInfo:
 
 
 def test_apply_orm_names_translates_table_and_field():
-    fields = [_field("_reference77815", "_fld77818")]
+    fields = [_field("_reference77815x1", "_fld77818")]
     _apply_orm_names(fields, _build_orm_index(ORM_DATA))
     assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
     assert fields[0].column_name == "COMИмяБазы"
 
 
-def test_apply_orm_names_resolves_idrref_alias():
-    fields = [_field("_reference77815", "_idrref")]
+def test_apply_orm_names_matches_case_insensitively():
+    fields = [_field("_REFERENCE77815X1", "_IdrRef")]
     _apply_orm_names(fields, _build_orm_index(ORM_DATA))
+    assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
     assert fields[0].column_name == "Ссылка"
 
 
 def test_apply_orm_names_keeps_sql_names_when_not_found_or_empty():
     fields = [
-        _field("_reference77815", "_fld77819"),  # display name is an empty string
-        _field("_reference77815", "_fld99999"),  # field is absent from the ORM dict
+        _field("_reference77815x1", "_fld77819"),  # display name is an empty string
+        _field("_reference77815x1", "_fld99999"),  # field is absent from the ORM dict
         _field("unknown_table", "some_field"),  # table is absent from the ORM dict
+        _field("reference77815x1", "_fld77818"),  # leading underscore is significant now
     ]
     _apply_orm_names(fields, _build_orm_index(ORM_DATA))
     assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
@@ -119,13 +120,15 @@ def test_apply_orm_names_keeps_sql_names_when_not_found_or_empty():
     assert fields[1].column_name == "_fld99999"
     assert fields[2].relname == "unknown_table"
     assert fields[2].column_name == "some_field"
+    assert fields[3].relname == "reference77815x1"
+    assert fields[3].column_name == "_fld77818"
 
 
 def test_load_orm_index_reads_file_with_utf8_bom(tmp_path):
     orm_file = tmp_path / "structure.json"
     orm_file.write_text(json.dumps(ORM_DATA, ensure_ascii=False), encoding="utf-8-sig")
     index = _load_orm_index(str(orm_file))
-    assert "reference77815" in index
+    assert "_reference77815x1" in index
 
 
 def test_load_orm_index_missing_file_raises_invalid_path(tmp_path):

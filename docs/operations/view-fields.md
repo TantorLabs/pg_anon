@@ -79,15 +79,15 @@ For databases created by an ORM (such as 1C:Enterprise), SQL names like `_refere
 
 ```json
 {
-    "Reference77815": {
-        "ИмяТаблицы": "Справочник.НастройкаОбмена",
-        "Назначение": "Основная",
-        "Поля": {
-            "ID": "Ссылка",
-            "Fld77818": "COMИмяБазы"
+    "_Reference77815X1": {
+        "TableName": "Справочник.НастройкаОбмена",
+        "TablePurpose": "Основная",
+        "Fields": {
+            "_IDRRef": "Ссылка",
+            "_Fld77818": "COMИмяБазы"
         }
     }
 }
 ```
 
-Matching is case-insensitive and ignores leading underscores (`_reference77815` matches `Reference77815`). Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
+Matching is case-insensitive (`_reference77815x1` matches `_Reference77815X1`). Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
