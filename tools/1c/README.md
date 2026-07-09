@@ -2,7 +2,7 @@
 
 ## DatabaseStructure.epf
 
-An external data processor (внешняя обработка) for 1C:Enterprise 8.3 that
+An external data processor for 1C:Enterprise 8.3 that
 exports the database storage structure to a JSON file compatible with the
 `--orm-dict-file` option of the [view-fields mode](../../docs/operations/view-fields.md).
 
@@ -25,7 +25,7 @@ metadata names, for example:
 ### Usage
 
 1. Open the data processor in the 1C:Enterprise mode of the target infobase:
-   *Файл → Открыть → DatabaseStructure.epf*.
+   *File → Open → DatabaseStructure.epf*.
 2. Run the export and save the resulting JSON file.
 3. Pass the file to pg_anon:
 
