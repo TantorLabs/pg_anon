@@ -9,19 +9,13 @@ from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 
-ORM_TABLE_NAME_KEY = "ИмяТаблицы"
-ORM_FIELDS_KEY = "Поля"
-
-# Aliases for 1C service columns whose DB names differ from the ORM dict keys
-# beyond the "leading underscore + case" normalization (e.g. "_idrref" -> "ID").
-_ORM_FIELD_NAME_ALIASES = {
-    "idrref": "id",
-}
+ORM_TABLE_NAME_KEY = "TableName"
+ORM_FIELDS_KEY = "Fields"
 
 
 def _normalize_orm_name(name: str) -> str:
-    """Normalize a DB/ORM identifier for lookup: strip leading underscores, lowercase."""
-    return name.lstrip("_").lower()
+    """Normalize a DB/ORM identifier for case-insensitive lookup."""
+    return name.lower()
 
 
 def _build_orm_index(orm_data: dict) -> dict[str, tuple[str, dict[str, str]]]:
@@ -67,9 +61,7 @@ def _apply_orm_names(fields: list[FieldInfo], orm_index: dict[str, tuple[str, di
         table_display_name, orm_fields = orm_table
         if table_display_name:
             field.relname = table_display_name
-        field_key = _normalize_orm_name(field.column_name)
-        field_key = _ORM_FIELD_NAME_ALIASES.get(field_key, field_key)
-        field_display_name = orm_fields.get(field_key)
+        field_display_name = orm_fields.get(_normalize_orm_name(field.column_name))
         if field_display_name:
             field.column_name = field_display_name
 
