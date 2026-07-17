@@ -226,7 +226,7 @@ def get_base_field_type(field_info: FieldInfo) -> str:
     return PARENS_PATTERN.sub("", field_info.type)
 
 
-def normalize_data_type(data_type: str) -> str:
+def normalize_data_type(data_type: str) -> str:  # noqa: C901
     """Normalize a PostgreSQL data type string to a canonical lowercase form."""
     clean_field_type = data_type.strip().lower()
 
