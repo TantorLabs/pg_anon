@@ -24,11 +24,15 @@ class PgAnonApp:
 
         self.context = Context(options)
         self.result = PgAnonResult()
-        self._skip_check_postgres_utils = self.context.options.mode in (
-            AnonMode.INIT,
-            AnonMode.CREATE_DICT,
-            AnonMode.VIEW_FIELDS,
-            AnonMode.VIEW_DATA,
+        self._needs_pg_dump = self.context.options.mode in (
+            AnonMode.DUMP,
+            AnonMode.SYNC_DATA_DUMP,
+            AnonMode.SYNC_STRUCT_DUMP,
+        )
+        self._needs_pg_restore = self.context.options.mode in (
+            AnonMode.RESTORE,
+            AnonMode.SYNC_DATA_RESTORE,
+            AnonMode.SYNC_STRUCT_RESTORE,
         )
 
     def _bootstrap(self) -> None:
@@ -45,24 +49,30 @@ class PgAnonApp:
         pg_version = await get_pg_version(self.context.connection_params, server_settings=self.context.server_settings)
         self.context.set_postgres_version(pg_version)
         self.context.logger.info("Target DB version: %s", pg_version)
-        self.context.logger.info("pg_dump path: %s", self.context.pg_dump)
-        self.context.logger.info("pg_restore path: %s", self.context.pg_restore)
+        if self._needs_pg_dump:
+            self.context.logger.info("pg_dump path: %s", self.context.pg_dump)
+
+        if self._needs_pg_restore:
+            self.context.logger.info("pg_restore path: %s", self.context.pg_restore)
 
     def _check_postgres_utils(self) -> None:
-        if self._skip_check_postgres_utils:
+        if not self._needs_pg_dump and not self._needs_pg_restore:
             self.context.logger.info("Skip postgres utils exists check")
             return
 
         self.context.logger.info("Postgres utils exists checking")
 
-        if not self.context.pg_dump or not self.context.pg_restore:
-            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump or pg_restore path is not configured")
+        if self._needs_pg_dump:
+            if not self.context.pg_dump:
+                raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump path is not configured")
+            if not check_pg_util(self.context, self.context.pg_dump, "pg_dump"):
+                raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump not found")
 
-        pg_dump_exists = check_pg_util(self.context, self.context.pg_dump, "pg_dump")
-        pg_restore_exists = check_pg_util(self.context, self.context.pg_restore, "pg_restore")
-
-        if not pg_dump_exists or not pg_restore_exists:
-            raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_dump or pg_restore not found")
+        if self._needs_pg_restore:
+            if not self.context.pg_restore:
+                raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_restore path is not configured")
+            if not check_pg_util(self.context, self.context.pg_restore, "pg_restore"):
+                raise PgAnonError(ErrorCode.PG_TOOLS_NOT_FOUND, "pg_restore not found")
 
     async def _check_initialization(self) -> None:
         if self.context.options.mode in (
