@@ -11,6 +11,7 @@ These functions are required for processing data in the source database.
 
 ```commandline
 pg_anon init \
+    --db-host=127.0.0.1 \
     --db-user=postgres \
     --db-user-password=postgres \
     --db-name=source_db
@@ -22,10 +23,14 @@ pg_anon init \
 
 ### Common pg_anon options:
 
-| Option      | Required | Description                                                                                      |
-|-------------|----------|--------------------------------------------------------------------------------------------------|
-| `--verbose` | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
-| `--debug`   | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| Option                         | Required | Description                                                                                      |
+|--------------------------------|----------|--------------------------------------------------------------------------------------------------|
+| `--config`                     | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
+| `--verbose`                    | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
+| `--debug`                      | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| `--application-name-suffix`    | No       | Appends a suffix to the database connection name. Useful for automation. (default: none)         |
+| `--internal-operation-id`      | No       | Pre-generated operation ID. If not set, a random UUID is generated.                              |
+| `--version`                    | No       | Show the version number and exit.                                                                |
 
 ### Database configuration options:
 

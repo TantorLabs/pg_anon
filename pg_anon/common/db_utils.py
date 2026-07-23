@@ -108,16 +108,6 @@ async def get_tables_with_fields(
     return data
 
 
-async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> int:
-    """Get the count of fields available for scanning sensitive data."""
-    query = get_scan_fields_query(count_only=True)
-
-    db_conn = await create_connection(connection_params, server_settings=server_settings)
-    count = await db_conn.fetchval(query)
-    await db_conn.close()
-    return count
-
-
 async def get_fields_list(
     connection_params: ConnectionParams, table_schema: str, table_name: str, server_settings: dict = SERVER_SETTINGS
 ) -> list:

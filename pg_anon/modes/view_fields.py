@@ -2,7 +2,7 @@ import json
 
 from prettytable import PrettyTable, SINGLE_BORDER
 
-from pg_anon.common.db_utils import get_scan_fields_count, get_scan_fields_list
+from pg_anon.common.db_utils import get_scan_fields_list
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
@@ -10,17 +10,17 @@ from pg_anon.context import Context
 
 
 class ViewFieldsMode:
+    _large_output_hint_threshold: int = 1000
+
     def __init__(self, context: Context) -> None:
         self.context = context
-        self._processing_fields_limit: int = 5000
+        self._output_fields_limit: int | None = context.options.fields_count
         self._filter_dict_rule: dict | None = None
         self.fields: list[FieldInfo] | None = None
         self.table: PrettyTable | None = None
         self.json: str | None = None
         self.fields_cut_by_limits: bool = False
         self.empty_data_filler: str = "---"
-        if context.options.fields_count is not None:
-            self._processing_fields_limit = context.options.fields_count
         self._init_filter_dict_rule()
 
     def _init_filter_dict_rule(self) -> None:
@@ -66,7 +66,6 @@ class ViewFieldsMode:
         fields_list = await get_scan_fields_list(
             connection_params=self.context.connection_params,
             server_settings=self.context.server_settings,
-            limit=self._processing_fields_limit,
         )
 
         result = []
@@ -77,19 +76,20 @@ class ViewFieldsMode:
 
         return result
 
-    async def _make_notice_fields_cut_by_limits(self) -> None:
-        fields_count = await get_scan_fields_count(
-            connection_params=self.context.connection_params, server_settings=self.context.server_settings
-        )
+    def _notice_large_output(self) -> None:
+        if self.context.options.json:
+            return
+        if self._output_fields_limit is not None:
+            return
 
-        if fields_count > self._processing_fields_limit and not self.context.options.json:
-            print(
-                f"You try to get too many fields ({fields_count} fields)."
-                f" Will processed for output only first {self._processing_fields_limit} fields."
-                f" Use arguments --schema-name, --schema-mask, --table-name, --table-mask to reduce fields amount."
-                f" Also you can use --fields-count to extend limit."
-            )
-            self.fields_cut_by_limits = True
+        output_count = len(self.fields or [])
+        if output_count <= self._large_output_hint_threshold:
+            return
+
+        print(
+            f"{output_count} fields shown."
+            f" Use --fields-count to limit the output, or --json for machine-readable output."
+        )
 
     def _prepare_fields_for_view(self) -> None:
         fields_with_find_rules = []
@@ -172,12 +172,20 @@ class ViewFieldsMode:
             ensure_ascii=False,
         )
 
-    async def _output_fields(self) -> None:
-        await self._make_notice_fields_cut_by_limits()
+    def _apply_output_limit(self) -> None:
+        if self._output_fields_limit is None or not self.fields:
+            return
 
+        if len(self.fields) > self._output_fields_limit:
+            self.fields = self.fields[: self._output_fields_limit]
+            self.fields_cut_by_limits = True
+
+    async def _output_fields(self) -> None:
         self.fields = await self._get_fields_for_view()
         if self.fields:
             self._prepare_fields_for_view()
+
+        self._apply_output_limit()
 
         if self.context.options.json:
             self._prepare_json()
@@ -185,13 +193,14 @@ class ViewFieldsMode:
         else:
             self._prepare_table()
             print(self.table)
+            self._notice_large_output()
 
     async def run(self) -> None:
         """Run the view_fields mode to display table field details."""
         self.context.logger.info("-------------> Started view_fields mode")
 
-        if self._processing_fields_limit < 1:
-            raise PgAnonError(ErrorCode.INVALID_LIMIT, "Processing fields limit must be greater than zero!")
+        if self._output_fields_limit is not None and self._output_fields_limit < 1:
+            raise PgAnonError(ErrorCode.INVALID_LIMIT, "Fields count must be greater than zero!")
         self.context.read_prepared_dict(save_dict_file_name_for_each_rule=True)
         await self._output_fields()
 

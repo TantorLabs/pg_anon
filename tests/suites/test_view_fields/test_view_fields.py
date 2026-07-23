@@ -136,6 +136,13 @@ async def test_view_fields_filter_by_table_mask(source_db, db_params):
     assert all(re.search(mask, f.relname) for f in executor.fields)
 
 
+def test_fields_count_defaults_to_no_limit(db_params, source_db):
+    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py")))
+    assert options.fields_count is None
+    executor = ViewFieldsMode(PgAnonApp(options).context)
+    assert executor._output_fields_limit is None
+
+
 async def test_view_fields_respects_fields_count_limit(source_db, db_params):
     options = build_run_options(
         _options(
@@ -153,6 +160,38 @@ async def test_view_fields_respects_fields_count_limit(source_db, db_params):
     assert len(executor.fields) == 5
     assert len(executor.table.rows) == 5
     assert executor.fields_cut_by_limits is True
+
+
+async def test_view_fields_count_limit_applies_after_sensitive_filter(source_db, db_params):
+    dict_file = input_dict("view_fields.py")
+
+    all_sens = ViewFieldsMode(
+        PgAnonApp(
+            build_run_options(_options(db_params, source_db, dict_file, ["--view-only-sensitive-fields"]))
+        ).context
+    )
+    await all_sens.run()
+    total_sensitive = len(all_sens.fields)
+    assert total_sensitive > 1, "fixture invariant: dictionary must mark more than one sensitive field"
+
+    limit = total_sensitive - 1
+    limited = ViewFieldsMode(
+        PgAnonApp(
+            build_run_options(
+                _options(
+                    db_params,
+                    source_db,
+                    dict_file,
+                    ["--view-only-sensitive-fields", f"--fields-count={limit}"],
+                )
+            )
+        ).context
+    )
+    await limited.run()
+
+    assert len(limited.fields) == limit
+    assert all(f.rule != "---" for f in limited.fields)
+    assert limited.fields_cut_by_limits is True
 
 
 async def test_view_fields_only_sensitive_equals_sensitive_subset_of_full(source_db, db_params):

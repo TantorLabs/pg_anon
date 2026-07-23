@@ -374,8 +374,8 @@ def view_fields_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fields-count",
         type=int,
-        default=5000,
-        help="""Maximum number of fields to process for output. (default: %(default)s)""",
+        default=None,
+        help="""Limits the number of fields in the output, applied after all filters. (default: no limit)""",
     )
     p.add_argument(
         "--schema-name",
