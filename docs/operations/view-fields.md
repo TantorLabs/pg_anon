@@ -69,21 +69,35 @@ pg_anon view-fields \
 
 ## ORM names translation (1C)
 
-For databases created by an ORM (such as 1C:Enterprise), SQL names like `_reference77815` are hard to read. Pass `--orm-dict-file` with a JSON file describing the storage structure to see ORM names in the output instead:
+For databases created by an ORM (such as 1C:Enterprise), SQL names like `_reference77815` are hard to read. Pass `--orm-dict-file` with a JSON file describing the storage structure to see ORM names in the output instead.
+
+The file is a JSON list of table descriptors. Each descriptor maps a schema-qualified SQL table name to its ORM alias and a mapping of SQL field names to their aliases:
 
 ```json
-{
-    "_Reference77815X1": {
-        "TableName": "Справочник.НастройкаОбмена",
-        "TablePurpose": "Основная",
-        "Fields": {
+[
+    {
+        "schema": "public",
+        "table_name": "_Reference77815X1",
+        "table_alias": "Справочник.НастройкаОбмена",
+        "fields": {
             "_IDRRef": "Ссылка",
             "_Fld77818": "COMИмяБазы"
-        }
+        },
+        "comment": "Основная"
     }
-}
+]
 ```
 
-Matching is case-insensitive (`_reference77815x1` matches `_Reference77815X1`). Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
+Descriptor fields:
 
-For 1C:Enterprise databases, such a file can be generated with the [DatabaseStructure.epf](../../tools/1c/README.md) data processor shipped in `tools/1c/`.
+| Field         | Required | Description                                                                                     |
+|---------------|----------|-------------------------------------------------------------------------------------------------|
+| `schema`      | Yes      | SQL schema name the table belongs to. Matching is schema-qualified.                             |
+| `table_name`  | Yes      | Physical SQL table name.                                                                        |
+| `table_alias` | No       | ORM display name for the table. An empty value keeps the SQL name.                              |
+| `fields`      | No       | Mapping of physical SQL column names to their ORM display names. An empty value keeps the SQL name. |
+| `comment`     | No       | Free-form note for the operator. Ignored by pg_anon and not shown in the output.               |
+
+Matching is case-insensitive (`_reference77815x1` matches `_Reference77815X1`) and schema-qualified, so tables with the same name in different schemas are translated independently. Filters (`--table-name`, `--table-mask`, ...) still apply to SQL names. Tables and fields missing from the file keep their SQL names.
+
+The format is ORM-agnostic. For 1C:Enterprise databases such a file can be produced from the configuration metadata; a typical 1C infobase contains about 15,000 tables, and the generated file can be reused for any pg_anon run against that infobase until the configuration changes.

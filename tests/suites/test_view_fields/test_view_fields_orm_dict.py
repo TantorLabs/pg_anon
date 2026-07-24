@@ -17,23 +17,27 @@ from pg_anon.modes.view_fields import (
     ViewFieldsMode,
 )
 
-ORM_DATA = {
-    "_Reference77815X1": {
-        "TableName": "Справочник.plm_НастройкаОбмена",
-        "TablePurpose": "Основная",
-        "Fields": {
+ORM_DATA = [
+    {
+        "schema": "public",
+        "table_name": "_Reference77815X1",
+        "table_alias": "Справочник.plm_НастройкаОбмена",
+        "fields": {
             "_IDRRef": "Ссылка",
             "_Code": "Код",
             "_Fld77818": "COMИмяБазы",
             "_Fld77819": "",
         },
+        "comment": "Основная",
     },
-    "_DataHistoryVersionsExtX1": {
-        "TableName": "_DataHistoryVersionsExtX1",
-        "TablePurpose": "ВерсииИсторииДанных",
-        "Fields": {"_VersionNumber": ""},
+    {
+        "schema": "public",
+        "table_name": "_DataHistoryVersionsExtX1",
+        "table_alias": "",
+        "fields": {"_VersionNumber": ""},
+        "comment": "ВерсииИсторииДанных",
     },
-}
+]
 
 
 def _dbless_options(orm_dict_file: str | None = None):
@@ -69,20 +73,30 @@ def test_normalize_orm_name():
 def test_build_orm_index():
     index = _build_orm_index(ORM_DATA)
 
-    table_name, fields = index["_reference77815x1"]
-    assert table_name == "Справочник.plm_НастройкаОбмена"
+    table_alias, fields = index["public._reference77815x1"]
+    assert table_alias == "Справочник.plm_НастройкаОбмена"
     assert fields["_idrref"] == "Ссылка"
     assert fields["_fld77818"] == "COMИмяБазы"
     assert fields["_fld77819"] == ""
 
-    table_name, fields = index["_datahistoryversionsextx1"]
-    assert table_name == "_DataHistoryVersionsExtX1"
+    table_alias, fields = index["public._datahistoryversionsextx1"]
+    assert table_alias == ""
     assert fields["_versionnumber"] == ""
 
 
-def _field(relname: str, column_name: str) -> FieldInfo:
+def test_build_orm_index_ignores_comment():
+    index = _build_orm_index(ORM_DATA)
+    # comment is an operator-only field and must not leak into the index tuple
+    comments = {entry["comment"] for entry in ORM_DATA if entry.get("comment")}
+    assert comments  # guard: the sample data actually has comments to ignore
+    for table_alias, orm_fields in index.values():
+        assert table_alias not in comments
+        assert not comments & set(orm_fields.values())
+
+
+def _field(relname: str, column_name: str, nspname: str = "public") -> FieldInfo:
     return FieldInfo(
-        nspname="public",
+        nspname=nspname,
         relname=relname,
         column_name=column_name,
         type="text",
@@ -101,15 +115,23 @@ def test_apply_orm_names_translates_table_and_field():
 
 
 def test_apply_orm_names_matches_case_insensitively():
-    fields = [_field("_REFERENCE77815X1", "_IdrRef")]
+    fields = [_field("_REFERENCE77815X1", "_IdrRef", nspname="PUBLIC")]
     _apply_orm_names(fields, _build_orm_index(ORM_DATA))
     assert fields[0].relname == "Справочник.plm_НастройкаОбмена"
     assert fields[0].column_name == "Ссылка"
 
 
+def test_apply_orm_names_matches_within_schema():
+    # a same-named table in another schema must not be translated
+    fields = [_field("_reference77815x1", "_fld77818", nspname="other")]
+    _apply_orm_names(fields, _build_orm_index(ORM_DATA))
+    assert fields[0].relname == "_reference77815x1"
+    assert fields[0].column_name == "_fld77818"
+
+
 def test_apply_orm_names_keeps_sql_names_when_not_found_or_empty():
     fields = [
-        _field("_reference77815x1", "_fld77819"),  # display name is an empty string
+        _field("_reference77815x1", "_fld77819"),  # field alias is an empty string
         _field("_reference77815x1", "_fld99999"),  # field is absent from the ORM dict
         _field("unknown_table", "some_field"),  # table is absent from the ORM dict
         _field("reference77815x1", "_fld77818"),  # leading underscore is significant now
@@ -128,7 +150,7 @@ def test_load_orm_index_reads_file_with_utf8_bom(tmp_path):
     orm_file = tmp_path / "structure.json"
     orm_file.write_text(json.dumps(ORM_DATA, ensure_ascii=False), encoding="utf-8-sig")
     index = _load_orm_index(str(orm_file))
-    assert "_reference77815x1" in index
+    assert "public._reference77815x1" in index
 
 
 def test_load_orm_index_missing_file_raises_invalid_path(tmp_path):
@@ -142,6 +164,40 @@ def test_load_orm_index_invalid_json_raises_invalid_dict_file(tmp_path):
     bad_file.write_text("{not json", encoding="utf-8")
     with pytest.raises(PgAnonError) as err:
         _load_orm_index(str(bad_file))
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+def test_build_orm_index_rejects_non_list():
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index({"schema": "public", "table_name": "t"})
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+def test_build_orm_index_rejects_non_object_entry():
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index(["not-an-object"])
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+def test_build_orm_index_rejects_entry_without_required_keys():
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index([{"schema": "public", "fields": {}}])
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+def test_build_orm_index_rejects_non_object_fields():
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index([{"schema": "public", "table_name": "t", "fields": []}])
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+
+def test_build_orm_index_rejects_non_string_schema_or_table():
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index([{"schema": 1, "table_name": "t"}])
+    assert err.value.code == ErrorCode.INVALID_DICT_FILE
+
+    with pytest.raises(PgAnonError) as err:
+        _build_orm_index([{"schema": "public", "table_name": ["t"]}])
     assert err.value.code == ErrorCode.INVALID_DICT_FILE
 
 

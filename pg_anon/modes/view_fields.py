@@ -9,8 +9,10 @@ from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 
-ORM_TABLE_NAME_KEY = "TableName"
-ORM_FIELDS_KEY = "Fields"
+ORM_SCHEMA_KEY = "schema"
+ORM_TABLE_NAME_KEY = "table_name"
+ORM_TABLE_ALIAS_KEY = "table_alias"
+ORM_FIELDS_KEY = "fields"
 
 
 def _normalize_orm_name(name: str) -> str:
@@ -18,19 +20,49 @@ def _normalize_orm_name(name: str) -> str:
     return name.lower()
 
 
-def _build_orm_index(orm_data: dict) -> dict[str, tuple[str, dict[str, str]]]:
-    """Build a lookup index from the ORM structure file data.
+def _orm_table_key(schema: str, table_name: str) -> str:
+    """Build a normalized schema-qualified key for the ORM index."""
+    return f"{_normalize_orm_name(schema)}.{_normalize_orm_name(table_name)}"
 
-    Maps a normalized SQL table name to a tuple of the display table name and
-    a mapping of normalized SQL field names to display field names.
-    """
+
+def _build_orm_index(orm_data: list) -> dict[str, tuple[str, dict[str, str]]]:
+    """Build a lookup index from the ORM structure file data."""
+    if not isinstance(orm_data, list):
+        raise PgAnonError(
+            ErrorCode.INVALID_DICT_FILE,
+            "ORM dict file must contain a JSON list of table descriptors",
+        )
+
     index: dict[str, tuple[str, dict[str, str]]] = {}
-    for table_key, table_data in orm_data.items():
-        fields = {
-            _normalize_orm_name(field_key): field_display_name
-            for field_key, field_display_name in table_data.get(ORM_FIELDS_KEY, {}).items()
-        }
-        index[_normalize_orm_name(table_key)] = (table_data.get(ORM_TABLE_NAME_KEY, ""), fields)
+    for table_data in orm_data:
+        if not isinstance(table_data, dict):
+            raise PgAnonError(ErrorCode.INVALID_DICT_FILE, "Each ORM dict entry must be a JSON object")
+
+        schema = table_data.get(ORM_SCHEMA_KEY)
+        table_name = table_data.get(ORM_TABLE_NAME_KEY)
+        if not schema or not table_name:
+            raise PgAnonError(
+                ErrorCode.INVALID_DICT_FILE,
+                f"Each ORM dict entry must contain non-empty '{ORM_SCHEMA_KEY}' and '{ORM_TABLE_NAME_KEY}'",
+            )
+        if not isinstance(schema, str) or not isinstance(table_name, str):
+            raise PgAnonError(
+                ErrorCode.INVALID_DICT_FILE,
+                f"'{ORM_SCHEMA_KEY}' and '{ORM_TABLE_NAME_KEY}' must be strings",
+            )
+
+        orm_fields_data = table_data.get(ORM_FIELDS_KEY)
+        if orm_fields_data is None:
+            orm_fields_data = {}
+        if not isinstance(orm_fields_data, dict):
+            raise PgAnonError(
+                ErrorCode.INVALID_DICT_FILE,
+                f"'{ORM_FIELDS_KEY}' of an ORM dict entry must be a JSON object",
+            )
+
+        fields = {_normalize_orm_name(field_key): field_alias for field_key, field_alias in orm_fields_data.items()}
+        index[_orm_table_key(schema, table_name)] = (table_data.get(ORM_TABLE_ALIAS_KEY, ""), fields)
+
     return index
 
 
@@ -50,20 +82,21 @@ def _load_orm_index(orm_dict_file: str) -> dict[str, tuple[str, dict[str, str]]]
 
 
 def _apply_orm_names(fields: list[FieldInfo], orm_index: dict[str, tuple[str, dict[str, str]]]) -> None:
-    """Replace SQL table/field names with ORM display names in-place.
+    """Replace SQL table/field names with ORM aliases in-place.
 
-    Names absent from the index (or mapped to an empty string) are kept as is.
+    Matching is schema-qualified and case-insensitive. Names absent from the
+    index (or mapped to an empty alias) keep their SQL names.
     """
     for field in fields:
-        orm_table = orm_index.get(_normalize_orm_name(field.relname))
+        orm_table = orm_index.get(_orm_table_key(field.nspname, field.relname))
         if orm_table is None:
             continue
-        table_display_name, orm_fields = orm_table
-        if table_display_name:
-            field.relname = table_display_name
-        field_display_name = orm_fields.get(_normalize_orm_name(field.column_name))
-        if field_display_name:
-            field.column_name = field_display_name
+        table_alias, orm_fields = orm_table
+        if table_alias:
+            field.relname = table_alias
+        field_alias = orm_fields.get(_normalize_orm_name(field.column_name))
+        if field_alias:
+            field.column_name = field_alias
 
 
 class ViewFieldsMode:
