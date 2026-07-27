@@ -374,8 +374,8 @@ def view_fields_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fields-count",
         type=int,
-        default=5000,
-        help="""Maximum number of fields to process for output. (default: %(default)s)""",
+        default=None,
+        help="""Limits the number of fields in the output, applied after all filters. (default: no limit)""",
     )
     p.add_argument(
         "--schema-name",
@@ -405,6 +405,12 @@ def view_fields_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="""Outputs results in JSON format instead of a table.""",
+    )
+    p.add_argument(
+        "--orm-dict-file",
+        type=str,
+        default=None,
+        help="""Path to a JSON file with the ORM storage structure (e.g. generated from 1C:Enterprise metadata). When specified, table and field names in the output are replaced with their ORM names. Names missing from the file are shown as is.""",
     )
 
     return p

@@ -143,7 +143,9 @@ pg_anon dump \
 | `--db-connections-per-process` | No       | Number of database connections per process for I/O operations. (default: 4)                      |
 | `--verbose`                    | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
 | `--debug`                      | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
+| `--application-name-suffix`    | No       | Appends a suffix to the database connection name. Useful for automation. (default: none)         |
 | `--internal-operation-id`      | No       | Pre-generated operation ID. If not set, a random UUID is generated.                              |
+| `--version`                    | No       | Show the version number and exit.                                                                |
 
 
 ### Database configuration options:

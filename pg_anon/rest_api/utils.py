@@ -45,6 +45,16 @@ def write_dictionary_contents(
     return file_names
 
 
+def write_orm_dict_content(orm_dict_content: str, base_dir: Path) -> str:
+    """Write the ORM structure JSON content to a file and return its path."""
+    base_dir.mkdir(parents=True, exist_ok=True)
+    file_name = base_dir / "orm_dict.json"
+    with file_name.open("w") as out_file:
+        out_file.write(orm_dict_content)
+
+    return str(file_name)
+
+
 def read_dictionary_contents(file_path: str | Path) -> str:
     """Read and return the full text content of a dictionary file."""
     with Path(file_path).open() as dictionary_file:

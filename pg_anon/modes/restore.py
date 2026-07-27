@@ -41,6 +41,9 @@ _CUSTOM_OBJECTS_TOC_RE = re.compile(
 
 _EXTENSION_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
 
+_PUBLICATION_TABLE_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+PUBLICATION TABLE(?:S IN SCHEMA)?\s+(?P<schema>\S+)")
+_SCHEMA_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA - (?P<schema>\S+)")
+
 _TOC_FAILED_ENTRY_RE = re.compile(r"from TOC entry (\d+)")
 _TOC_LIST_LINE_RE = re.compile(r"^(\d+);\s")
 
@@ -341,6 +344,8 @@ class RestoreMode:
         if self.metadata.extensions:
             blacklist.append(_EXTENSION_TOC_RE)
 
+        available_schemas = set(self._restored_schemas)
+
         for section in ["pre_data", "post_data"]:
             command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]
             if section == "pre_data":
@@ -361,6 +366,18 @@ class RestoreMode:
                     is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
                     if is_blacklisted:
                         self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by blacklist - "%s" ', toc_line)
+                        continue
+
+                    schema_match = _SCHEMA_TOC_RE.match(toc_line)
+                    if schema_match:
+                        available_schemas.add(schema_match.group("schema"))
+
+                    pub_match = _PUBLICATION_TABLE_TOC_RE.match(toc_line)
+                    if pub_match and pub_match.group("schema") not in available_schemas:
+                        self.context.logger.debug(
+                            'TOC: Skip orphaned publication membership (schema not restored) - "%s" ',
+                            toc_line,
+                        )
                         continue
 
                     is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)

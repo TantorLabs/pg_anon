@@ -187,6 +187,7 @@ Runs pg_anon in [view-fields mode](operations/view-fields.md) and returns the re
 | table_mask                 | string                                            | No       | Filter by table name using a regular expression.                                                   |
 | view_only_sensitive_fields | boolean                                           | No       | Displays only sensitive fields (default: `all fields`).                                           |
 | fields_limit_count         | integer                                           | No       | Maximum number of fields to include for output (default: `5000`).                                  |
+| orm_dict_content           | string                                            | No       | JSON content of the [ORM structure file](operations/view-fields.md#orm-names-translation). When set, table and field names in the output are replaced with their ORM names. |
 
 #### Example
 ```shell

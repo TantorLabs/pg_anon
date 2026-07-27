@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from .conftest import input_dict_text
 from .helpers import build_view_fields_request
 
@@ -65,6 +67,38 @@ async def test_view_fields_fields_limit_count(api_client, api_source_db, db_para
     resp = await api_client.post("/api/stateless/view-fields", json=body)
     fields = (await resp.json())["content"]
     assert len(fields) <= 2
+
+
+async def test_view_fields_orm_dict_translates_names(api_client, api_source_db, db_params):
+    orm_dict_content = json.dumps(
+        [
+            {
+                "schema": "hr",
+                "table_name": "Employee",
+                "table_alias": "Справочник.Сотрудники",
+                "fields": {"First_Name": "Имя", "Last_Name": ""},
+                "comment": "Основная",
+            }
+        ],
+        ensure_ascii=False,
+    )
+    body = build_view_fields_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        schema_name="hr",
+        table_name="employee",
+        orm_dict_content=orm_dict_content,
+    )
+    resp = await api_client.post("/api/stateless/view-fields", json=body)
+    assert resp.status == 200
+    fields = (await resp.json())["content"]
+
+    assert all(f["table_name"] == "Справочник.Сотрудники" for f in fields)
+    field_names = {f["field_name"] for f in fields}
+    assert "Имя" in field_names
+    assert "first_name" not in field_names
+    assert "last_name" in field_names  # empty ORM alias keeps the SQL name
 
 
 async def test_view_fields_schema_mask(api_client, api_source_db, db_params):

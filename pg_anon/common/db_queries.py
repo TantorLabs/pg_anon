@@ -27,24 +27,19 @@ def get_relation_size_query(schema: str, table: str) -> str:
     return f"""select pg_total_relation_size('"{schema}"."{table}"')"""
 
 
-def get_scan_fields_query(limit: int | None = None, count_only: bool = False) -> str:
+def get_scan_fields_query(limit: int | None = None) -> str:
     """Build a SQL query to retrieve scannable fields from the database."""
-    if not count_only:
-        fields = f"""
-            SELECT DISTINCT
-            n.nspname,
-            c.relname,
-            a.attname AS column_name,
-            lower(format_type(a.atttypid, a.atttypmod)) as type,
-            c.oid, a.attnum,
-            {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
-            {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
-        """
-        order_by = "ORDER BY 1, 2, a.attnum" if count_only else ""
-    else:
-        fields = "SELECT COUNT(*)"
-        order_by = ""
-
+    fields = f"""
+        SELECT DISTINCT
+        n.nspname,
+        c.relname,
+        a.attname AS column_name,
+        lower(format_type(a.atttypid, a.atttypmod)) as type,
+        c.oid, a.attnum,
+        {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname || '.' || a.attname, '', 'md5') as obj_id,
+        {ANON_UTILS_DB_SCHEMA_NAME}.digest(n.nspname || '.' || c.relname, '', 'md5') as tbl_id
+    """
+    order_by = "ORDER BY 1, 2, a.attnum"
     query_limit = get_limit_query(limit)
 
     return f"""

@@ -27,6 +27,10 @@ def _sql_quote_list(values: list[str]) -> str:
     return ", ".join("'" + v.replace("'", "''") + "'" for v in values)
 
 
+def _tables_as_arrays(tables: list[tuple[str, str]]) -> list[list[str]]:
+    return [[schema for schema, _ in tables], [table for _, table in tables]]
+
+
 async def create_connection(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> Connection:
     """Create a new asyncpg database connection."""
     return await asyncpg.connect(
@@ -102,16 +106,6 @@ async def get_tables_with_fields(
         await db_conn.close()
 
     return data
-
-
-async def get_scan_fields_count(connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS) -> int:
-    """Get the count of fields available for scanning sensitive data."""
-    query = get_scan_fields_query(count_only=True)
-
-    db_conn = await create_connection(connection_params, server_settings=server_settings)
-    count = await db_conn.fetchval(query)
-    await db_conn.close()
-    return count
 
 
 async def get_fields_list(
@@ -250,15 +244,14 @@ async def get_partitioned_ancestors(
     if not tables:
         return set()
 
-    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
-    args = [item for pair in tables for item in pair]
+    args = _tables_as_arrays(tables)
 
     rows = await connection.fetch(
-        f"""
+        """
         WITH RECURSIVE
         input_oids AS (
             SELECT c.oid
-              FROM (VALUES {values_placeholders}) AS v(s, t)
+              FROM unnest($1::text[], $2::text[]) AS v(s, t)
               JOIN pg_namespace n ON n.nspname = v.s
               JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
         ),
@@ -294,15 +287,14 @@ async def get_partition_ancestors_map(
     if not tables:
         return {}
 
-    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
-    args = [item for pair in tables for item in pair]
+    args = _tables_as_arrays(tables)
 
     rows = await connection.fetch(
-        f"""
+        """
         WITH RECURSIVE
         input_oids AS (
             SELECT c.oid
-              FROM (VALUES {values_placeholders}) AS v(s, t)
+              FROM unnest($1::text[], $2::text[]) AS v(s, t)
               JOIN pg_namespace n ON n.nspname = v.s
               JOIN pg_class c ON c.relname = v.t AND c.relnamespace = n.oid
         ),
@@ -515,12 +507,12 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
             WHEN typtype = 'e' THEN
                 'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) ||
                 ' AS ENUM (' ||
-                string_agg(quote_literal(e.enumlabel), ', ') || ');'
+                string_agg(quote_literal(e.enumlabel), ', ' ORDER BY e.enumsortorder) || ');'
             WHEN typtype = 'c' THEN
                 'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) || ' AS (' ||
                 string_agg(
                     quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod),
-                    ', '
+                    ', ' ORDER BY a.attnum
                 ) || ');'
             END || E'\n' ||
         '    END IF;' || E'\n' ||
@@ -528,7 +520,7 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
         '$$;' as ddl
     FROM user_types t
     LEFT JOIN pg_enum e ON e.enumtypid = t.oid
-    LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0
+    LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
     GROUP BY schema_name, type_name, typtype, t.oid, t.typbasetype
     ORDER BY schema_name, type_name;
     """
@@ -732,11 +724,10 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: li
 
 async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list:
     """Get index metadata for the given tables."""
-    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
-    args = [item for table_data in tables for item in table_data]
-    query = f"""
+    args = _tables_as_arrays(tables)
+    query = """
     WITH RECURSIVE tables_to_check(schema_name, table_name) AS (
-        VALUES {values_placeholders}
+        SELECT * FROM unnest($1::text[], $2::text[]) AS v(schema_name, table_name)
     ),
     expanded_tables(schema_name, table_name) AS (
         SELECT
@@ -775,11 +766,10 @@ async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]
 
 async def get_views_related_to_tables(connection: Connection, tables: list[tuple[str, str]]) -> list:
     """Get views and materialized views that reference the given tables."""
-    values_placeholders = ", ".join(f"(${i * 2 + 1}, ${i * 2 + 2})" for i in range(len(tables)))
-    args = [item for table_data in tables for item in table_data]
-    query = f"""
+    args = _tables_as_arrays(tables)
+    query = """
     WITH tables_to_check AS (
-        VALUES {values_placeholders}
+        SELECT * FROM unnest($1::text[], $2::text[]) AS v(schema_name, table_name)
     ),
     all_views AS (
         SELECT
@@ -813,12 +803,12 @@ async def get_views_related_to_tables(connection: Connection, tables: list[tuple
         ,v.view_type
         ,t.table_schema
         ,t.table_name
-        ,tt.column1 is null as "is_excluded"
+        ,tt.schema_name is null as "is_excluded"
     FROM all_views v
     JOIN all_tables t
       ON v.view_definition ILIKE '%' || t.table_schema || '.' || t.table_name || '%'
        OR v.view_definition ILIKE '%' || t.table_name || '%'
-    LEFT JOIN tables_to_check tt ON tt.column1 = t.table_schema AND tt.column2 = t.table_name
+    LEFT JOIN tables_to_check tt ON tt.schema_name = t.table_schema AND tt.table_name = t.table_name
     ORDER BY v.view_schema, v.view_name, t.table_schema, t.table_name;
     """
 

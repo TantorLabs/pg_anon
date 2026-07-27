@@ -3,7 +3,7 @@ from pg_anon.context import Context
 from pg_anon.modes.view_fields import ViewFieldsMode
 from pg_anon.rest_api.constants import BASE_TEMP_DIR
 from pg_anon.rest_api.pydantic_models import ViewFieldsContent, ViewFieldsRequest
-from pg_anon.rest_api.utils import write_dictionary_contents
+from pg_anon.rest_api.utils import write_dictionary_contents, write_orm_dict_content
 
 
 class ViewFieldsRunner:
@@ -55,6 +55,11 @@ class ViewFieldsRunner:
                 "--view-only-sensitive-fields",
             )
 
+    def _prepare_orm_dict_cli_params(self) -> None:
+        if self.request.orm_dict_content:
+            orm_dict_file_name = write_orm_dict_content(self.request.orm_dict_content, BASE_TEMP_DIR)
+            self.cli_params.append(f"--orm-dict-file={orm_dict_file_name}")
+
     def _prepare_limit_cli_params(self) -> None:
         if self.request.fields_limit_count:
             self.cli_params.append(
@@ -79,6 +84,7 @@ class ViewFieldsRunner:
         self._prepare_db_credentials_cli_params()
         self._prepare_dictionaries_cli_params()
         self._prepare_filters_cli_params()
+        self._prepare_orm_dict_cli_params()
         self._prepare_limit_cli_params()
         self._prepare_json_cli_params()
         self._prepare_verbosity_cli_params()

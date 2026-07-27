@@ -1,0 +1,14 @@
+[
+    {
+        "schema": "hr",
+        "table_name": "Employee",
+        "table_alias": "Справочник.Сотрудники",
+        "fields": {
+            "ID": "Ссылка",
+            "First_Name": "Имя",
+            "Email": "ЭлектроннаяПочта",
+            "Last_Name": ""
+        },
+        "comment": "Основная"
+    }
+]
