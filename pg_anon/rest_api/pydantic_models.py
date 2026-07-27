@@ -236,6 +236,8 @@ class ViewFieldsRequest(BaseModel):
     view_only_sensitive_fields: bool = False
     fields_limit_count: int | None = None
 
+    orm_dict_content: str | None = None
+
 
 class ViewFieldsContent(BaseModel):
     schema_name: str

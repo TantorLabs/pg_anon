@@ -262,6 +262,7 @@ def build_view_fields_request(
     table_mask: str | None = None,
     view_only_sensitive_fields: bool = False,
     fields_limit_count: int | None = None,
+    orm_dict_content: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "db_connection_params": db_creds(db_params, db_name=db_name),
@@ -278,6 +279,8 @@ def build_view_fields_request(
         body["table_mask"] = table_mask
     if fields_limit_count is not None:
         body["fields_limit_count"] = fields_limit_count
+    if orm_dict_content is not None:
+        body["orm_dict_content"] = orm_dict_content
     return body
 
 
