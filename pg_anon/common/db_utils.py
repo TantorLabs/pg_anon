@@ -507,12 +507,12 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
             WHEN typtype = 'e' THEN
                 'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) ||
                 ' AS ENUM (' ||
-                string_agg(quote_literal(e.enumlabel), ', ') || ');'
+                string_agg(quote_literal(e.enumlabel), ', ' ORDER BY e.enumsortorder) || ');'
             WHEN typtype = 'c' THEN
                 'CREATE TYPE ' || quote_ident(schema_name) || '.' || quote_ident(type_name) || ' AS (' ||
                 string_agg(
                     quote_ident(a.attname) || ' ' || pg_catalog.format_type(a.atttypid, a.atttypmod),
-                    ', '
+                    ', ' ORDER BY a.attnum
                 ) || ');'
             END || E'\n' ||
         '    END IF;' || E'\n' ||
@@ -520,7 +520,7 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
         '$$;' as ddl
     FROM user_types t
     LEFT JOIN pg_enum e ON e.enumtypid = t.oid
-    LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0
+    LEFT JOIN pg_attribute a ON a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped
     GROUP BY schema_name, type_name, typtype, t.oid, t.typbasetype
     ORDER BY schema_name, type_name;
     """
