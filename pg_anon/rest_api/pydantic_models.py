@@ -2,6 +2,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from pg_anon.common.enums import VerboseOptions
 from pg_anon.rest_api.enums import DumpMode, RestoreMode, ScanMode
 
 
@@ -50,6 +51,9 @@ class StatelessRunnerRequest(BaseModel):
     webhook_extra_headers: dict[str, str] | None = None
     webhook_verify_ssl: bool = True
     web_debug: bool = False
+    log_level: VerboseOptions | None = Field(
+        None, description="Log verbosity of the pg_anon run. Defaults to pg_anon's own default (info)."
+    )
     conn_count: int | None = Field(None, description="Number of concurrent database connections.")
     proc_conn_count: int | None = Field(None, description="Deprecated alias of conn_count.", deprecated=True)
 

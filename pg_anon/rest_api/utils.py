@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import multiprocessing
 import queue as std_queue
 import shutil
 from collections import deque
@@ -14,6 +16,8 @@ from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import simple_slugify, validate_exists_mode
 from pg_anon.rest_api.constants import DUMP_STORAGE_BASE_DIR, SUBPROCESS_TERMINATE_TIMEOUT
 from pg_anon.rest_api.pydantic_models import DictionaryContent, DictionaryMetadata
+
+logger = logging.getLogger(__name__)
 
 
 def get_full_dump_path(dump_path: str) -> str:
@@ -116,9 +120,10 @@ def delete_folder(folder_path: Path) -> None:
     """Recursively delete a folder and log the result."""
     try:
         shutil.rmtree(folder_path)
-        print(f"Folder {folder_path} deleted successfully.")
-    except Exception as e:
-        print(f"Error deleting folder {folder_path}: {e!s}")
+    except Exception:
+        logger.exception("Error deleting folder %s", folder_path)
+    else:
+        logger.info("Folder %s deleted successfully", folder_path)
 
 
 def run_pg_anon_subprocess_wrapper(queue: aioprocessing.AioQueue, cli_run_params: list[str]) -> None:
@@ -152,6 +157,11 @@ async def _terminate_subprocess(p: aioprocessing.AioProcess) -> None:
         await p.coro_join()
 
 
+def _ensure_spawn_start_method() -> None:
+    if multiprocessing.get_start_method(allow_none=True) != "spawn":
+        multiprocessing.set_start_method("spawn", force=True)
+
+
 async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[str]) -> PgAnonResult:
     """Spawn a pg_anon worker process and await its result via an async queue."""
     if not validate_exists_mode(mode):
@@ -160,6 +170,7 @@ async def run_pg_anon_worker(mode: str, operation_id: str, cli_run_params: list[
     application_name_suffix = f"worker__{mode}__{operation_id}"
     cli_run_params.append(f"--application-name-suffix={application_name_suffix}")
 
+    _ensure_spawn_start_method()
     result_queue = aioprocessing.AioQueue()
 
     p = aioprocessing.AioProcess(

@@ -72,14 +72,6 @@ class ViewFieldsRunner:
             "--json",
         )
 
-    def _prepare_verbosity_cli_params(self) -> None:
-        self.cli_params.extend(
-            [
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-
     def _prepare_cli_params(self) -> None:
         self.cli_params = ["view-fields"]
         self._prepare_db_credentials_cli_params()
@@ -88,7 +80,6 @@ class ViewFieldsRunner:
         self._prepare_orm_dict_cli_params()
         self._prepare_limit_cli_params()
         self._prepare_json_cli_params()
-        self._prepare_verbosity_cli_params()
 
     def _init_context(self) -> None:
         options = build_run_options(self.cli_params)

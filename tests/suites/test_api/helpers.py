@@ -169,6 +169,7 @@ def build_dump_request(
     webhook_metadata: object | None = None,
     webhook_extra_headers: dict[str, str] | None = None,
     webhook_verify_ssl: bool = True,
+    log_level: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "operation_id": operation_id or f"dump-{uuid_short()}",
@@ -196,6 +197,7 @@ def build_dump_request(
         "proc_count": proc_count,
         "proc_conn_count": proc_conn_count,
         "conn_count": conn_count,
+        "log_level": log_level,
     }
     body.update({key: value for key, value in optional.items() if value is not None})
     return body

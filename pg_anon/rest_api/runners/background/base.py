@@ -45,11 +45,8 @@ class BaseRunner:
             )
 
     def _prepare_verbosity_cli_params(self) -> None:
-        self.cli_params.extend(
-            [
-                "--debug",
-            ]
-        )
+        if self.request.log_level:
+            self.cli_params.append(f"--verbose={self.request.log_level.value}")
 
     def _prepare_cli_params(self) -> None:
         self.cli_params = [
