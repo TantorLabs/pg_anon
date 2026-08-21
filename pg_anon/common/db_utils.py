@@ -343,11 +343,11 @@ async def get_db_tables(
             FROM information_schema.tables t
             JOIN pg_class c ON c.relname = t.table_name
             JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-            LEFT JOIN pg_partitioned_table pt ON pt.partrelid = c.oid
             WHERE
                 t.table_schema NOT IN ({excluded_schemas_str})
                 AND t.table_type = 'BASE TABLE'
-                AND pt.partrelid IS NULL;
+                -- relkind 'p' marks partitioned parents; it simply never matches before PG 10
+                AND c.relkind <> 'p';
         """
 
     return [(row[0], row[1]) for row in await connection.fetch(query)]
@@ -415,6 +415,18 @@ async def get_available_schemas(connection: Connection) -> list[str]:
     return [row[0] for row in result]
 
 
+async def _fetch_ddl_rows(connection: Connection, query: str) -> list[str]:
+    """Run a DDL-generating query with search_path pinned, so reg* casts stay schema-qualified."""
+    previous_search_path = await connection.fetchval("SHOW search_path")
+    await connection.execute("SET search_path TO pg_catalog")
+    try:
+        result = await connection.fetch(query)
+    finally:
+        await connection.execute("SELECT set_config('search_path', $1, false)", previous_search_path)
+
+    return [row[0] for row in result]
+
+
 async def get_custom_functions_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
     """Get DDL statements for user-defined functions not owned by extensions."""
     if not excluded_schemas:
@@ -426,7 +438,7 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: lis
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname NOT IN ({excluded_schemas_str})
-    AND p.prokind != 'a'
+    AND NOT EXISTS (SELECT 1 FROM pg_aggregate ag WHERE ag.aggfnoid = p.oid)
     AND NOT EXISTS (
         SELECT 1
         FROM pg_depend d
@@ -435,8 +447,7 @@ async def get_custom_functions_ddl(connection: Connection, excluded_schemas: lis
     );
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -447,10 +458,18 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[
 
     query = f"""
     SELECT
-        'CREATE DOMAIN ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
+        'DO $$' || E'\n' ||
+        'BEGIN' || E'\n' ||
+        '    IF NOT EXISTS (SELECT 1 FROM pg_type pt JOIN pg_namespace pn ON pn.oid = pt.typnamespace'
+        || ' WHERE pn.nspname = ' || quote_literal(n.nspname)
+        || ' AND pt.typname = ' || quote_literal(t.typname) || ') THEN' || E'\n' ||
+        '        CREATE DOMAIN ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname) ||
         ' AS ' || pg_catalog.format_type(t.typbasetype, t.typtypmod) ||
         COALESCE(' DEFAULT ' || t.typdefault, '') ||
-        COALESCE(' ' || pg_get_constraintdef(c.oid), '') || ';' AS ddl
+        COALESCE(' ' || pg_get_constraintdef(c.oid), '') || ';' || E'\n' ||
+        '    END IF;' || E'\n' ||
+        'END;' || E'\n' ||
+        '$$;' AS ddl
     FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
     LEFT JOIN pg_constraint c ON c.contypid = t.oid
@@ -466,8 +485,7 @@ async def get_custom_domains_ddl(connection: Connection, excluded_schemas: list[
     ORDER BY n.nspname, t.typname;
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -501,7 +519,9 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
     SELECT
         'DO $$' || E'\n' ||
         'BEGIN' || E'\n' ||
-        '    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = ' || quote_literal(type_name) || ') THEN' || E'\n' ||
+        '    IF NOT EXISTS (SELECT 1 FROM pg_type pt JOIN pg_namespace pn ON pn.oid = pt.typnamespace'
+        || ' WHERE pn.nspname = ' || quote_literal(schema_name)
+        || ' AND pt.typname = ' || quote_literal(type_name) || ') THEN' || E'\n' ||
         '        ' ||
         CASE
             WHEN typtype = 'e' THEN
@@ -525,8 +545,7 @@ async def get_custom_types_ddl(connection: Connection, excluded_schemas: list[st
     ORDER BY schema_name, type_name;
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_ranges_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -569,8 +588,7 @@ async def get_custom_ranges_ddl(connection: Connection, excluded_schemas: list[s
     ORDER BY n.nspname, t.typname;
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -650,8 +668,7 @@ async def get_custom_casts_ddl(connection: Connection, excluded_schemas: list[st
         );
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_operators_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -664,14 +681,14 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: lis
 
     query = f"""
     SELECT
-        'CREATE OPERATOR ' || o.oid::regoperator || ' (' ||
-        'PROCEDURE = ' || o.oprcode::regprocedure ||
-        COALESCE(', LEFTARG = ' || format_type(o.oprleft, NULL), '') ||
-        COALESCE(', RIGHTARG = ' || format_type(o.oprright, NULL), '') ||
-        COALESCE(', COMMUTATOR = ' || o.oprcom::regoperator, '') ||
-        COALESCE(', NEGATOR = ' || o.oprnegate::regoperator, '') ||
-        COALESCE(', RESTRICT = ' || o.oprrest::regprocedure, '') ||
-        COALESCE(', JOIN = ' || o.oprjoin::regprocedure, '') ||
+        'CREATE OPERATOR ' || quote_ident(n.nspname) || '.' || o.oprname || ' (' ||
+        'PROCEDURE = ' || o.oprcode::regproc ||
+        COALESCE(', LEFTARG = ' || format_type(NULLIF(o.oprleft, 0), NULL), '') ||
+        COALESCE(', RIGHTARG = ' || format_type(NULLIF(o.oprright, 0), NULL), '') ||
+        COALESCE(', COMMUTATOR = OPERATOR(' || NULLIF(o.oprcom, 0)::regoper || ')', '') ||
+        COALESCE(', NEGATOR = OPERATOR(' || NULLIF(o.oprnegate, 0)::regoper || ')', '') ||
+        COALESCE(', RESTRICT = ' || NULLIF(o.oprrest, 0)::regproc, '') ||
+        COALESCE(', JOIN = ' || NULLIF(o.oprjoin, 0)::regproc, '') ||
         ');' AS ddl
     FROM pg_operator o
     JOIN pg_namespace n ON n.oid = o.oprnamespace
@@ -685,8 +702,7 @@ async def get_custom_operators_ddl(connection: Connection, excluded_schemas: lis
         );
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: list[str] | None = None) -> list[str]:
@@ -699,10 +715,11 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: li
 
     query = f"""
     SELECT
-        'CREATE AGGREGATE ' || p.oid::regprocedure || ' (' ||
-        'SFUNC = ' || a.aggtransfn::regprocedure ||
+        'CREATE AGGREGATE ' || quote_ident(n.nspname) || '.' || quote_ident(p.proname) ||
+        '(' || pg_get_function_identity_arguments(p.oid) || ') (' ||
+        'SFUNC = ' || a.aggtransfn::regproc ||
         ', STYPE = ' || format_type(a.aggtranstype, NULL) ||
-        COALESCE(', FINALFUNC = ' || a.aggfinalfn::regprocedure, '') ||
+        COALESCE(', FINALFUNC = ' || NULLIF(a.aggfinalfn, 0)::regproc, '') ||
         COALESCE(', INITCOND = ' || quote_literal(a.agginitval), '') ||
         ');' AS ddl
     FROM pg_aggregate a
@@ -718,8 +735,7 @@ async def get_custom_aggregates_ddl(connection: Connection, excluded_schemas: li
         );
     """
 
-    result = await connection.fetch(query)
-    return [row[0] for row in result]
+    return await _fetch_ddl_rows(connection, query)
 
 
 async def get_indexes_data(connection: Connection, tables: list[tuple[str, str]]) -> list:
