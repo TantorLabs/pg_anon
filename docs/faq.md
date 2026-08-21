@@ -26,7 +26,7 @@ For the same reason, a regular backup created with pg_dump cannot be restored us
 
 pg_anon does **not** modify either the structure or the data of the source database.
 
-The only thing pg_anon adds is the `anon_funcs` schema, which is required for its internal operations.
+The `anon_funcs` schema is created by the separate `init` mode; the modes listed above only read from the source database.
 
 ---
 

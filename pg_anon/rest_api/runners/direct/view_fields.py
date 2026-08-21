@@ -1,4 +1,5 @@
 from pg_anon.cli import build_run_options
+from pg_anon.common.db_utils import require_anon_utils_db_schema
 from pg_anon.context import Context
 from pg_anon.modes.view_fields import ViewFieldsMode
 from pg_anon.rest_api.constants import BASE_TEMP_DIR
@@ -122,5 +123,8 @@ class ViewFieldsRunner:
 
     async def run(self) -> list[ViewFieldsContent]:
         """Execute the view-fields operation and return formatted content."""
+        await require_anon_utils_db_schema(
+            connection_params=self.context.connection_params, server_settings=self.context.server_settings
+        )
         await self._executor.run()
         return self._format_output()

@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import json
-import os
 import re
 import shlex
 import shutil
@@ -26,6 +25,7 @@ from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
+    build_pg_util_env,
     get_major_version,
     get_pg_util_version,
     pretty_size,
@@ -400,11 +400,9 @@ class RestoreMode:
     def _make_pg_restore_env(self) -> dict[str, str]:
         # LC_ALL=C is required so we can parse "from TOC entry NNN" markers from stderr
         # regardless of the system locale (default would localize pg_restore messages).
-        env = os.environ.copy()
+        env = build_pg_util_env(self.context.options)
         env["LC_ALL"] = "C"
         env["LC_MESSAGES"] = "C"
-        if self.context.options.db_user_password:
-            env["PGPASSWORD"] = self.context.options.db_user_password
         return env
 
     def _build_pg_restore_command(
@@ -497,9 +495,6 @@ class RestoreMode:
         return retry_toc
 
     async def _run_pg_restore(self, section: str) -> None:
-        if self.context.options.db_user_password:
-            os.environ["PGPASSWORD"] = self.context.options.db_user_password
-
         parallelism = self.context.options.db_connections_per_process
         command = self._build_pg_restore_command(section, parallelism=parallelism)
 

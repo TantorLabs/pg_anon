@@ -176,17 +176,20 @@ POST /api/stateless/view-fields
 #### Description
 Runs pg_anon in [view-fields mode](operations/view-fields.md) and returns the result in the response.
 
+The `anon_funcs` schema must already exist in the source database — see [init mode](operations/init.md).
+Without it the endpoint answers `400` with the error code `SCHEMA_NOT_INITIALIZED`.
+
 #### 📦 View-fields request body schema
 | Field                      | Type                                              | Required | Description                                                                                        |                             
 |----------------------------|---------------------------------------------------|----------|----------------------------------------------------------------------------------------------------|
 | db_connection_params       | [db connection params](#dbconnectionparams)       | Yes      | Source database credentials.                                                                       |
-| sens_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | [Sensitive dictionary](dicts/sens-dict-schema.md) content that defines rules for sensitive fields. |
+| sens_dict_contents         | array of [dictionary content](#dictionarycontent) | Yes      | [Sensitive dictionary](dicts/sens-dict-schema.md) content that defines rules for sensitive fields. |
 | schema_name                | string                                            | No       | Filter by schema name.                                                                             |
 | schema_mask                | string                                            | No       | Filter by schema name using a regular expression.                                                  |
 | table_name                 | string                                            | No       | Filter by table name.                                                                              |
 | table_mask                 | string                                            | No       | Filter by table name using a regular expression.                                                   |
 | view_only_sensitive_fields | boolean                                           | No       | Displays only sensitive fields (default: `all fields`).                                           |
-| fields_limit_count         | integer                                           | No       | Maximum number of fields to include for output (default: `5000`).                                  |
+| fields_limit_count         | integer                                           | No       | Maximum number of fields to include for output (default: no limit).                                |
 | orm_dict_content           | string                                            | No       | JSON content of the [ORM structure file](operations/view-fields.md#orm-names-translation). When set, table and field names in the output are replaced with their ORM names. |
 
 #### Example

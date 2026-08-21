@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import hashlib
-import os
 import re
 import shlex
 import shutil
@@ -42,7 +41,13 @@ from pg_anon.common.db_utils import (
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import get_dict_rule_for_table, get_pg_util_version, safe_compile, save_dicts_info_file
+from pg_anon.common.utils import (
+    build_pg_util_env,
+    get_dict_rule_for_table,
+    get_pg_util_version,
+    safe_compile,
+    save_dicts_info_file,
+)
 from pg_anon.context import Context
 
 
@@ -73,9 +78,6 @@ class DumpMode:
         self._all_db_schemas: list[str] = []
         self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
         self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
-
-        if self.context.options.db_user_password:
-            os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
         if not self.context.options.output_dir:
             if not self.context.options.prepared_sens_dict_files:
@@ -349,7 +351,12 @@ class DumpMode:
 
         command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=build_pg_util_env(self.context.options),
+        )
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
         # pg_dump put logs into stderr
         _, pg_dump_logs_bytes = proc.communicate()

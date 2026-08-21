@@ -76,6 +76,17 @@ async def check_anon_utils_db_schema_exists(
     return exists
 
 
+async def require_anon_utils_db_schema(
+    connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS
+) -> None:
+    """Raise a clear error when the anonymization utils schema is missing."""
+    if not await check_anon_utils_db_schema_exists(connection_params, server_settings=server_settings):
+        raise PgAnonError(
+            ErrorCode.SCHEMA_NOT_INITIALIZED,
+            f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. Please run init mode first.",
+        )
+
+
 async def get_scan_fields_list(
     connection_params: ConnectionParams, server_settings: dict = SERVER_SETTINGS, limit: int | None = None
 ) -> list:

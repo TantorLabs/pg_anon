@@ -4,6 +4,7 @@ import ast
 import concurrent.futures
 import decimal
 import json
+import os
 import re
 import subprocess
 import sys
@@ -43,6 +44,16 @@ def get_pg_util_version(util_name: str) -> str:
     command = [util_name, "--version"]
     res = subprocess.run(command, capture_output=True, text=True, check=False)
     return re.findall(r"(\d+\.\d+)", str(res.stdout))[0]
+
+
+def build_pg_util_env(options: RunOptions) -> dict[str, str]:
+    """Build the env for a pg_dump/pg_restore subprocess."""
+    env = os.environ.copy()
+    if options.db_user_password:
+        env["PGPASSWORD"] = options.db_user_password
+    if options.db_passfile:
+        env["PGPASSFILE"] = options.db_passfile
+    return env
 
 
 def check_pg_util(ctx: Context, util_name: str, output_util_res: str) -> bool:
