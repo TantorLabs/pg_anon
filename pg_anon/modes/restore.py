@@ -807,17 +807,30 @@ class RestoreMode:
                     )
                     self.context.total_rows += int(re.findall(r"(\d+)", result)[0])
                     await connection.execute("COMMIT;")
-        except Exception:
+        except Exception as exc:
             self.context.logger.exception(
                 "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s extracted_file=%s",
                 schema_name,
                 table_name,
                 extracted_file,
             )
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, f"Can't restore data into {schema_name}.{table_name}") from exc
         finally:
             extracted_file.unlink()
 
         self.context.logger.info("%s Finished task %s.%s", ">" * 20, schema_name, table_name)
+
+    @staticmethod
+    def _raise_first_task_exception(done: set[asyncio.Task], pending: set[asyncio.Task]) -> None:
+        """Re-raise the first task failure, cancelling the tasks still in flight."""
+        for task in done:
+            exception = task.exception()
+            if exception is None:
+                continue
+
+            for pending_task in pending:
+                pending_task.cancel()
+            raise exception
 
     async def _process_restore_data(self, transaction_snapshot_id: str) -> None:
         pool = await create_pool(
@@ -853,10 +866,7 @@ class RestoreMode:
                 if len(tasks) >= self.context.options.db_connections_per_process:
                     # Wait for some restore to finish before adding a new one
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                    exception = done.pop().exception()
-                    if exception is not None:
-                        await pool.close()
-                        raise exception
+                    self._raise_first_task_exception(done, pending=tasks)
                 tasks.add(
                     loop.create_task(
                         self._restore_table_data(
@@ -870,8 +880,9 @@ class RestoreMode:
                 )
 
             # Wait for the remaining restores to finish
-            if tasks:
-                await asyncio.wait(tasks)
+            while tasks:
+                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                self._raise_first_task_exception(done, pending=tasks)
         finally:
             await pool.close()
 
@@ -1003,19 +1014,22 @@ class RestoreMode:
         queries = self._generate_analyze_queries()
         loop = asyncio.get_event_loop()
         tasks: set[asyncio.Task[None]] = set()
-        for query in queries:
-            if len(tasks) >= self.context.options.db_connections_per_process:
+
+        try:
+            for query in queries:
+                if len(tasks) >= self.context.options.db_connections_per_process:
+                    done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    self._raise_first_task_exception(done, pending=tasks)
+
+                tasks.add(loop.create_task(run_query_in_pool(pool, query)))
+
+            # Wait for the remaining queries to finish
+            while tasks:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                exception = done.pop().exception()
-                if exception is not None:
-                    await pool.close()
-                    raise exception
+                self._raise_first_task_exception(done, pending=tasks)
+        finally:
+            await pool.close()
 
-            tasks.add(loop.create_task(run_query_in_pool(pool, query)))
-
-        # Wait for the remaining queries to finish
-        await asyncio.wait(tasks)
-        await pool.close()
         self.context.logger.info("<------------- Finished analyze")
 
     @staticmethod
@@ -1023,11 +1037,7 @@ class RestoreMode:
         """Validate the restored data against the source database."""
         context.logger.info("-------------> Started validate_restore")
 
-        try:
-            context.read_prepared_dict()
-        except Exception:
-            context.logger.exception("Failed to read prepared dict")
-            return
+        context.read_prepared_dict()
 
         if "validate_tables" in context.prepared_dictionary_obj:
             connection = await create_connection(context.connection_params, server_settings=context.server_settings)
@@ -1085,7 +1095,9 @@ class RestoreMode:
                 self.context.connection_params, server_settings=self.context.server_settings
             )
 
-            await check_required_connections(connection, self.context.options.db_connections_per_process)
+            if not self.context.options.disable_checks:
+                # pg_restore -j N uses N workers and a control connection, alongside this one
+                await check_required_connections(connection, self.context.options.db_connections_per_process + 2)
 
             await self._check_db_is_empty(connection)
             await self._check_no_extra_tables_in_target(connection)

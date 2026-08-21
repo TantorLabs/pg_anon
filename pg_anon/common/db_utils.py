@@ -962,22 +962,21 @@ async def get_available_connections(connection: Connection) -> int:
         FROM pg_settings
         WHERE name = 'max_connections'
     ),
-    superuser_reserved_conn AS (
-        SELECT setting::int AS superuser_reserved_connections
-        FROM pg_settings
-        WHERE name = 'superuser_reserved_connections'
+    reserved_conn AS (
+        SELECT
+            current_setting('superuser_reserved_connections')::int
+            + COALESCE(current_setting('reserved_connections', true)::int, 0) AS reserved_connections
     ),
     used_conn AS (
         SELECT COUNT(*) AS used_connections
         FROM pg_stat_activity
-        WHERE pid <> pg_backend_pid()
-          AND datname IS NOT NULL
+        WHERE datname IS NOT NULL
     )
     SELECT
-        max_conn.max_connections - superuser_reserved_conn.superuser_reserved_connections - used_conn.used_connections AS available_connections
+        max_conn.max_connections - reserved_conn.reserved_connections - used_conn.used_connections AS available_connections
     FROM
         max_conn,
-        superuser_reserved_conn,
+        reserved_conn,
         used_conn;
     """
     result = await connection.fetchrow(query)

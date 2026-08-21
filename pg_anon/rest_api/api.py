@@ -308,7 +308,7 @@ async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(ge
 
     if not (saved_dicts_info_file_path.exists() and run_options_file_path.exists() and run_status_file_path.exists()):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Operation run directory have a wrong structure",
         )
 

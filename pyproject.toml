@@ -28,6 +28,8 @@ dev = [
     "pydantic",
     "pytest>=9.0.2,<10.0",
     "pytest-asyncio>=1.3,<2.0",
+    # starlette.testclient warns when it falls back from httpx2 to httpx.
+    "httpx2>=2.11",
 ]
 
 [build-system]

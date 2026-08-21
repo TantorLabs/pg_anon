@@ -765,7 +765,9 @@ class DumpMode:
                 self.context.connection_params, server_settings=self.context.server_settings
             )
 
-            await check_required_connections(connection, self.context.options.db_connections_per_process)
+            if not self.context.options.disable_checks:
+                # dump pool plus this connection, which holds the snapshot transaction
+                await check_required_connections(connection, self.context.options.db_connections_per_process + 1)
 
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()
