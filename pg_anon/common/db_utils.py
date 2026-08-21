@@ -1034,7 +1034,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
     fields_cache: dict | None = None,
     legacy_inherits_parents: set[tuple[str, str]] | None = None,
 ) -> str | None:
-    """Build the SELECT query used to dump a table with optional anonymization rules."""
+    """Build the SELECT query used to dump a table with optional masking rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
     from_clause_target = (
         f"ONLY {table_name_full}"
@@ -1082,7 +1082,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
             ctx.logger.info(str(query))
             return query
         return table_rule["raw_sql"]
-    # the table is transferred with the specific fields for anonymization or transferred "as is"
+    # the table is transferred with the specific fields for masking or transferred "as is"
     if fields_cache is not None:
         fields_list = fields_cache.get((table_schema, table_name), [])
     else:

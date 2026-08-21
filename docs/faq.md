@@ -16,7 +16,7 @@ They contain all input and output dictionaries for that run.
 
 ### 2. Can I restore a pg_anon dump using pg_dump?
 
-**No.** The pg_anon dump format is not compatible with pg_dump due to the specifics of anonymization.
+**No.** The pg_anon dump format is not compatible with pg_dump due to the specifics of masking.
 
 For the same reason, a regular backup created with pg_dump cannot be restored using pg_anon.
 
@@ -55,11 +55,11 @@ $$ LANGUAGE plpgsql;
 
 ---
 
-### 5. Can I use custom functions for anonymization?
+### 5. Can I use custom functions for masking?
 
 **Yes.** You can use any functions and values available in the source database.
 
-You must ensure that anonymized values match the field format.  
+You must ensure that masked values match the field format.  
 For example, if the field type is `varchar(15)`, you must **manually** ensure the generated value does not exceed 15 characters.
 
 If the format is violated, the dump may be created successfully, but restoring it may fail.
@@ -102,7 +102,7 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-The meta-dict rule below can be used to detect email fields with a length of 20 characters and anonymize them while preserving both format and length.
+The meta-dict rule below can be used to detect email fields with a length of 20 characters and mask them while preserving both format and length.
 ```python
 {
     "data_func": {
@@ -185,32 +185,35 @@ You must terminate all active sessions and run the restore operation again.
 
 ---
 
-### 13. Determining Optimal Process and Connection Counts
+### 13. Determining the Optimal Connection Count
 
-To configure optimal values, first identify these system parameters:
-  - max_connections - maximum connections allowed by your PostgreSQL database
-  - CPU core count
-  - Reserved connections (typically 3-10 for maintenance/admin connections)
+pg_anon runs as a single process and opens one pool of `--db-connections` connections,
+plus one control connection that stays open for the whole operation.
 
-Important Considerations:
-  - Exceeding max_connections may cause pg_anon failures and affect other database applications
+To choose a value, identify these system parameters:
+  - `max_connections` - maximum connections allowed by your PostgreSQL database
+  - reserved connections - `superuser_reserved_connections`, plus `reserved_connections` on PostgreSQL 16 and above
+  - connections already used by other applications
+
+Important considerations:
+  - Exceeding `max_connections` may cause pg_anon failures and affect other database applications
   - Ensure sufficient connection headroom for other services
 
 #### Recommended Configuration:
 
-Process Count
 ```bash
---processes = CPU cores
-```
-Database Connections per Process
-```bash
---db-connections-per-process ≤ (max_connections - reserved_connections) / --processes
+--db-connections ≤ max_connections - reserved_connections - connections_used_by_others - 2
 ```
 
+The trailing `2` covers the control connection and, in restore mode, the extra connection
+`pg_restore` opens to coordinate its workers.
+
 #### Example Calculation:
-  - CPU cores: 4
-  - max_connections: 100
-  - reserved_connections: 5
-  - --processes: 4
-  - --db-connections-per-process: (100 - 5) / 4 ≈ 23.75 → 23
-  - **Verification:** 4 processes × 23 connections = 92 total connections (within 100 limit)
+  - `max_connections`: 100
+  - reserved connections: 5
+  - used by other applications: 20
+  - `--db-connections`: 100 - 5 - 20 - 2 = 73
+
+pg_anon performs this check itself before starting and fails early with a clear message
+if the database cannot provide the requested number of connections. To skip it, use
+`--disable-checks`.

@@ -67,6 +67,7 @@ target-version = "py311"
 output-format = "full"
 extend-exclude = [
     ".idea",
+    "demo/meta_dict.py",
     "tests/suites/*/expected/",
     "tests/suites/*/input_dict/",
     "tests/suites/*/output_dict/",

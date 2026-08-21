@@ -109,7 +109,7 @@ class PgAnonApp:
         raise PgAnonError(ErrorCode.UNKNOWN_MODE, "Unknown mode: " + self.context.options.mode.value)
 
     async def run(self) -> PgAnonResult:
-        """Execute the anonymization pipeline and return the result."""
+        """Execute pipeline and return the result."""
         self._bootstrap()
         self.result.start(self.context.options)
         try:

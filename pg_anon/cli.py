@@ -227,7 +227,7 @@ def scan_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input and output dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
+        help="""Duplicate all input and output dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
 
     return p
@@ -290,7 +290,7 @@ def dump_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
+        help="""Duplicate all input dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
     p.add_argument(
         "--ignore-privileges",
@@ -361,7 +361,7 @@ def restore_parser() -> argparse.ArgumentParser:
         "--pg-restore",
         type=str,
         default=DEFAULT_PG_RESTORE_PATH,
-        help="""Path to the pg_restore Postgres tool. """,
+        help="""Path to the pg_restore Postgres tool (default: %(default)s).""",
     )
     group = p.add_mutually_exclusive_group()
     group.add_argument(
@@ -377,7 +377,7 @@ def restore_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes. """,
+        help="""Duplicate all input dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
     p.add_argument(
         "--ignore-privileges",
@@ -513,7 +513,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="pg_anon",
-        description="PostgreSQL database anonymization tool",
+        description="Data masking tool for PostgreSQL.",
     )
 
     sub = parser.add_subparsers(dest="mode", help="Work mode", required=True)
@@ -532,9 +532,9 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
     # Dump modes
     for mode_name, help_text in [
-        ("dump", "Creates an anonymized backup using rules from the sensitive dictionary."),
-        ("sync-struct-dump", "Creates a backup containing only the database structure without anonymized data."),
-        ("sync-data-dump", "Create backup contains only anonymized data without database structure."),
+        ("dump", "Creates a masked backup using rules from the sensitive dictionary."),
+        ("sync-struct-dump", "Creates a backup containing only the database structure, without data."),
+        ("sync-data-dump", "Creates a backup containing only masked data, without the database structure."),
     ]:
         sub.add_parser(
             mode_name,
@@ -544,9 +544,9 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
     # Restore modes
     for mode_name, help_text in [
-        ("restore", "Restores an anonymized backup created using pg_anon in the dump mode."),
+        ("restore", "Restores a masked backup created by pg_anon in the dump mode."),
         ("sync-struct-restore", "Restores only the database structure."),
-        ("sync-data-restore", "Restores data only from anonymized backup."),
+        ("sync-data-restore", "Restores data only, from a masked backup."),
     ]:
         sub.add_parser(
             mode_name,
@@ -557,13 +557,13 @@ def get_arg_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "view-fields",
         parents=[common_parser(), view_fields_parser()],
-        help="""Displays how database fields match the anonymization rules.""",
+        help="""Displays how database fields match the masking rules.""",
     )
 
     sub.add_parser(
         "view-data",
         parents=[common_parser(), view_data_parser()],
-        help="""Displays anonymized table data without creating a dump.""",
+        help="""Displays masked table data without creating a dump.""",
     )
 
     # backward compatibility

@@ -1,7 +1,7 @@
 # How it works
 > [🏠 Home](../README.md#-documentation-index) | [💬 FAQ](faq.md)
 
-## Anonymization (masking)
+## Masking (pseudonymization)
 
 The diagram below illustrates how data is transferred from the **source DB** to the **target DB**.
 
@@ -10,7 +10,7 @@ The source database contains sensitive information and is typically located in a
 ![Dump-Resore-Terms.drawio.png](../images/Dump-Resore-Terms.drawio.png)
 
 A trusted administrator runs pg_anon with credentials for the **source DB**.
-Using the prepared and approved sensitive dictionary, pg_anon creates an anonymized dump in the specified directory.
+Using the prepared and approved sensitive dictionary, pg_anon creates a masked dump in the specified directory.
 The dictionary must be created in advance and validated by the security team.
 
 The resulting dump directory is then transferred to the host of the target database.
@@ -19,13 +19,13 @@ Compression during transfer is unnecessary because the dump files are already co
 Once the directory is placed on the target host, the restore process is started using target database credentials.
 The target database must be created beforehand using CREATE DATABASE and must be empty.
 
-After a successful restore, the anonymized database is ready for development or testing. Any number of employees can safely use it without risking exposure of sensitive data.
+After a successful restore, the masked database is ready to be used outside production. Because the sensitive values were replaced on the source side, it can be shared with far more people than the original — how many, and under which rules, stays your decision.
 
 ---
 
 ## What kind of work does pg_anon do inside during dump and restore? The simplest representation.
 
-### For example, we have data that we want to anonymize:
+### For example, we have data that we want to mask:
 
 1. Create the `source` table:
 
@@ -65,7 +65,7 @@ select * from users;
     ...
 ```
 
-**The 'email' field contains `sensitive data`. We need to `anonymize` it.**
+**The 'email' field contains `sensitive data`. We need to `mask` it.**
 
 
 ### What is the process of creating a dump with masking?

@@ -25,73 +25,46 @@ However, this means that the system that integrates pg_anon must implement its o
 
 ---
 
-## Linux
+## Installing pg_anon
 
-1. Install Python 3.11+ if it is not installed: `sudo apt-get install python3.11` (for Ubuntu), `sudo yum install python311` (for Redhat/Centos)
-2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
-3. Go to the project directory: `cd pg_anon`
-4. Set up a virtual environment:
-    - Install the virtual environment: `python3 -m venv venv`
-    - Activate the virtual environment: `source venv/bin/activate`
-5. Install the package:
-    - CLI only: `pip install .`
-    - CLI + REST API: `pip install ".[api]"`
+Requires Python 3.11+.
 
-   Alternatively, build and install from wheel:
-    ```bash
-    pip install build
-    python -m build
-    pip install dist/pg_anon-*.whl           # CLI only
-    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
-    ```
+```bash
+pip install pg_anon              # CLI only
+pip install "pg_anon[api]"       # CLI + REST API service
+```
 
-## Windows
+This installs two commands: `pg_anon` (CLI) and, with the `api` extra,
+`pg_anon_api` (REST API service).
 
-1. Install Python 3.11+ if it is not installed: Download it from the official [Python website](https://www.python.org/downloads/)
-2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
-3. Go to the project directory: `cd pg_anon`
-4. Set up a virtual environment:
-    - Install the virtual environment: `py -m venv venv`
-    - Activate the virtual environment: `.\venv\Scripts\activate`
-5. Install the package:
-    - CLI only: `pip install .`
-    - CLI + REST API: `pip install ".[api]"`
+Where the system Python is externally managed, install it in an environment of
+its own: `pipx install "pg_anon[api]"` or `uv tool install "pg_anon[api]"`.
 
-   Alternatively, build and install from wheel:
-    ```bash
-    pip install build
-    python -m build
-    pip install dist/pg_anon-*.whl           # CLI only
-    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
-    ```
+### Installing from source
 
-## macOS
+Needed to get an unreleased version, or to work on pg_anon itself:
 
-1. Install Python 3.11+ if it is not installed:
-    - Install [Homebrew](https://brew.sh/)
-    - [`brew install python@3.11`](https://formulae.brew.sh/formula/python@3.11)
-2. Clone the repository: `git clone https://github.com/TantorLabs/pg_anon.git`
-3. Go to the project directory: `cd pg_anon`
-4. Set up a virtual environment:
-    - Install the virtual environment: `python3 -m venv venv`
-    - Activate the virtual environment: `source venv/bin/activate`
-5. Install the package:
-    - CLI only: `pip install .`
-    - CLI + REST API: `pip install ".[api]"`
+```bash
+git clone https://github.com/TantorLabs/pg_anon.git
+cd pg_anon
+pip install .                    # CLI only
+pip install ".[api]"             # CLI + REST API service
+```
 
-   Alternatively, build and install from wheel:
-    ```bash
-    pip install build
-    python -m build
-    pip install dist/pg_anon-*.whl           # CLI only
-    pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API
-    ```
+Or build a wheel first and install that:
+
+```bash
+pip install build
+python -m build
+pip install dist/pg_anon-*.whl           # CLI only
+pip install "dist/pg_anon-*.whl[api]"    # CLI + REST API service
+```
 
 ---
 
 ## Configuring pg_anon
 
-To specify custom `pg_dump` and `pg_restore` utilities, use the `--pg-dump` and `--pg-restore` parameters.
+By default pg_anon calls `/usr/bin/pg_dump` and `/usr/bin/pg_restore`. To use other binaries, pass the `--pg-dump` and `--pg-restore` parameters.
 
 Advanced configuration is also available:
 - CLI - use run parameter `--config`
@@ -172,5 +145,5 @@ PG_ANON_HOME=/opt/pg_anon/data pg_anon_api --host 0.0.0.0 --port 8000 --workers=
 ```
 
 - Recommended worker count = `2 * CPU_CORES + 1`
-- Service OpenAPI documentation will be able by address - http://0.0.0.0:8000/docs#/
+- Service OpenAPI documentation is available at http://0.0.0.0:8000/docs
 - Also, you can see [API documentation](api.md) 

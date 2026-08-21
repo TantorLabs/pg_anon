@@ -137,7 +137,7 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
     },
 )
 async def stateless_view_fields(request: ViewFieldsRequest) -> ViewFieldsResponse:
-    """Render a preview of anonymization rules by database fields."""
+    """Render a preview of masking rules by database fields."""
     runner = ViewFieldsRunner(request)
     data = await runner.run()
 
@@ -197,7 +197,7 @@ async def stateless_preview_schema_tables(
     },
 )
 async def stateless_view_data(request: ViewDataRequest) -> ViewDataResponse:
-    """Render a preview of anonymized data for a given table."""
+    """Render a preview of masked data for a given table."""
     runner = ViewDataRunner(request)
     data = await runner.run()
 

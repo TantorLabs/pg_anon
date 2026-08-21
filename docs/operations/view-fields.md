@@ -3,11 +3,11 @@
 
 ## Overview
 
-This mode displays how database fields match the anonymization rules.
+This mode displays how database fields match the masking rules.
 
 ## Prerequisites
-- The `anon_funcs` schema with anonymization functions must already exist. See [init mode](init.md).
-- A sensitive dictionary containing data about database fields and their anonymization rules must be prepared beforehand. See [create-dict (scan) mode](scan.md).
+- The `anon_funcs` schema with masking functions must already exist. See [init mode](init.md).
+- A sensitive dictionary containing data about database fields and their masking rules must be prepared beforehand. See [create-dict (scan) mode](scan.md).
 
 ## Run example
 

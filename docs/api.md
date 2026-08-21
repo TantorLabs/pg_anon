@@ -6,10 +6,10 @@
 |-------------------------------------------------------------------------------------------------------|
 | [Check DB connection](#check-db-connection)                                                           |
 | [Run create-dict (scan) operation](#run-create-dict-scan-operation)                                   |
-| [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) |
+| [Display database fields with masking rules](#display-database-fields-with-masking-rules) |
 | [Display database schemas only for preview](#display-database-schemas-only-for-preview)               |
 | [Display database tables with fields for preview](#display-database-tables-with-fields-for-preview)   |
-| [Display table with anonymization data](#display-table-with-anonymization-data)                       |
+| [Display table with masked data](#display-table-with-masked-data)                       |
 | [Run dump operation](#run-dump-operation)                                                             |
 | [Run restore operation](#run-restore-operation)                                                       |
 
@@ -77,7 +77,7 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the scan operation has been successfully started.
+   - `201` — the scan operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [scan webhook request](#scan-webhook-request-schema) schema
 4. The operation executes in the background.
@@ -131,7 +131,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
     "content": "{\"data_regex\": {\"rules\": [\".*@.*\"]}, \"funcs\": {\"text\": \"md5(%s)\"}}"
   }],
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "no_sens_dict_contents": [{
@@ -169,7 +169,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
 
 ---
 
-### Display database fields with anonymization rules
+### Display database fields with masking rules
 ```http request
 POST /api/stateless/view-fields
 ```
@@ -206,7 +206,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "schema_name": "public",
@@ -226,23 +226,26 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
 
 ---
 
-### Display table with anonymization data
+### Display table with masked data
 ```http request
 POST /api/stateless/view-data
 ```
 
 #### Description
-Displays table data in original and anonymized variants for comparison.
+Displays table data in original and masked variants for comparison.
 Runs pg_anon in [view-data mode](operations/view-data.md) and returns the result in the response.
+
+The `anon_funcs` schema must already exist in the source database — see [init mode](operations/init.md).
+Without it the endpoint answers `400` with the error code `SCHEMA_NOT_INITIALIZED`.
 
 #### 📦 View-data request body schema
 | Field                | Type                                              | Required | Description                                                                                    |
 |----------------------|---------------------------------------------------|----------|------------------------------------------------------------------------------------------------|
 | db_connection_params | [db connection params](#dbconnectionparams)       | Yes      | Source database credentials.                                                                   |
-| sens_dict_contents   | array of [dictionary content](#dictionarycontent) | No       | [Sensitive dictionary](dicts/sens-dict-schema.md) content defining rules for sensitive fields. |
+| sens_dict_contents   | array of [dictionary content](#dictionarycontent) | Yes      | [Sensitive dictionary](dicts/sens-dict-schema.md) content defining rules for sensitive fields. |
 | schema_name          | string                                            | Yes      | Schema name.                                                                                   |
 | table_name           | string                                            | Yes      | Table name.                                                                                    |
-| limit                | integer                                           | No       | Number of rows to display (default: `100`).                                                    |
+| limit                | integer                                           | No       | Number of rows to display (default: `10`).                                                     |
 | offset               | integer                                           | No       | Row offset for pagination (default: `0`).                                                      |
 
 #### Example
@@ -258,7 +261,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "schema_name": "public",
@@ -354,7 +357,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/preview/public \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "limit": 20,
@@ -385,7 +388,7 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the dump operation has been successfully started.
+   - `201` — the dump operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [dump webhook request](#dump-webhook-request-schema) schema.
 4. The operation executes in the background.
@@ -490,7 +493,7 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the restore operation has been successfully started.
+   - `201` — the restore operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [restore webhook request](#restore-webhook-request-schema) schema.
 4. The operation executes in the background.
@@ -508,7 +511,7 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 | webhook_verify_ssl                   | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                                                                                                                                                            |
 | web_debug                            | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                                                                                                                                                      |
 | save_dicts                           | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                                                                                                                                                                |
-| type                                 | string                                            | No       | Defines the restore type. Options: [`restore`](operations/restore.md#full-restore-restore-mode), [`sync-struct-restore`](operations/restore.md#structure-restore-sync-struct-restore-mode), [`sync-data-restore`](operations/restore.md#data-restore-sync-data-restore-mode). Default: `restore`. |
+| type                                 | string                                            | Yes      | Defines the restore type. Options: [`restore`](operations/restore.md#full-restore-restore-mode), [`sync-struct-restore`](operations/restore.md#structure-restore-sync-struct-restore-mode), [`sync-data-restore`](operations/restore.md#data-restore-sync-data-restore-mode). |
 | input_path                           | string                                            | Yes      | Path to the dump to restore, relative to `pg_anon_output/`. Example: `"my_dump"` will restore from `pg_anon_output/my_dump`.                                                                                                                                                                      |
 | partial_tables_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **include** in a [partial restore](operations/restore.md#create-partial-restore)                                                                                                                             |
 | partial_tables_exclude_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **exclude** from a [partial restore](operations/restore.md#create-partial-restore)                                                                                                                           |
@@ -675,7 +678,7 @@ GET /operation/{internal_operation_id}/logs
 ```
 
 #### Description
-Returns log output for a background operation (scan, dump, restore). Only operations executed with `save_dicts` enabled are included. Useful for integration purposes.
+Returns log output for a background operation (scan, dump, restore). Available for any operation whose `internal_operation_id` you know — unlike the two endpoints above, it does not require `save_dicts`. Useful for integration purposes.
 
 #### 📦 Operations logs request params
 | Name                  | Type    | Required | Description                                                           |
@@ -712,13 +715,13 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 |-----------------|--------|----------|-----------------------------------------------------------------------|
 | name            | string | Yes      | Dictionary name. For example can be used as dictionary filename       |
 | content         | string | Yes      | Dictionary content that using for operations processing               |
-| additional_info | Any    | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
+| additional_info | string | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
 
 ## DictionaryMetadata
 | Field           | Type   | Required | Description                                                           |
 |-----------------|--------|----------|-----------------------------------------------------------------------|
 | name            | string | Yes      | Dictionary name. For example can be used as dictionary filename       |
-| additional_info | Any    | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
+| additional_info | string | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
 
 ## OperationDataResponse
 | Field        | Type                                  | Required | Description                                                                                               |
@@ -761,15 +764,15 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | table_name       | string       | Yes      | Table name                                                              |
 | field_names      | array        | Yes      | Table field names. It needs for rendering table header                  |
 | total_rows_count | integer      | Yes      | Total rows count in table. It useful for pagination                     |
-| rows_before      | array        | Yes      | Source rows data "as is" without anonymization                          |
-| rows_after       | array        | Yes      | Anonymized rows, for display how anonymization will work on source data |
+| rows_before      | array        | Yes      | Source rows data "as is", without masking                               |
+| rows_after       | array        | Yes      | Masked rows, showing how the rules will work on the source data         |
 
 ## ViewFieldsResponse
 | Field     | Type                                    | Required | Description                                                          |
 |-----------|-----------------------------------------|----------|----------------------------------------------------------------------|
 | status_id | integer                                 | Yes      | Integer code of operation status. Can be: `2` - success, `3` - error |
 | status    | string                                  | Yes      | Human readable operation status. Can be: `success`, `error`          |
-| content   | [ViewFieldsContent](#viewfieldscontent) | No       | Operation result data                                                |
+| content   | array of [ViewFieldsContent](#viewfieldscontent) | No | Operation result data                                                |
 
 ## ViewFieldsContent
 | Field       | Type                                      | Required | Description                                               |
@@ -778,8 +781,8 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | table_name  | string                                    | Yes      | Table name                                                |
 | field_name  | string                                    | Yes      | Field name                                                |
 | type        | string                                    | Yes      | Field data type                                           |
-| dict_data   | [DictionaryMetadata](#dictionarymetadata) | No       | Matched dictionary metadata containing anonymization rule |
-| rule        | str                                       | No       | Matched anonymization rule if field is sensitive          |
+| dict_data   | [DictionaryMetadata](#dictionarymetadata) | No       | Matched dictionary metadata containing the masking rule   |
+| rule        | str                                       | No       | Matched masking rule if field is sensitive                |
 
 ## PreviewSchemasResponse
 | Field     | Type            | Required | Description                                                          |
@@ -808,8 +811,8 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 |--------------|---------|----------|-------------------------------------------------|
 | field_name   | string  | Yes      | Field name                                      |
 | type         | string  | Yes      | Field data type                                 |
-| is_sensitive | boolean | Yes      | Whether the field matches an anonymization rule  |
-| rule         | string  | No       | Matched anonymization rule if field is sensitive |
+| is_sensitive | boolean | Yes      | Whether the field matches a masking rule         |
+| rule         | string  | No       | Matched masking rule if field is sensitive       |
 
 ## ErrorResponse
 | Field      | Type   | Required | Description                                        |

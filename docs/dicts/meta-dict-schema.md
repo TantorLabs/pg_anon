@@ -16,10 +16,13 @@ The meta-dictionary allows you to:
   - field names
   - data patterns (regex)
   - exact or partial constants
-  - custom Python functions
+  - custom SQL functions
   - SQL filtering conditions
   - select which PostgreSQL types should be scanned
-  - specify anonymization functions per data type
+  - specify masking functions per data type
+
+All dictionary parameters accept a list of files. pg_anon merges them into a single meta-dictionary
+before scanning, so a rule defined in any file applies to the whole run.
 
 To make it easier to navigate, each section of the meta-dictionary is described separately below, with purpose, schema, and example.
 
@@ -38,7 +41,7 @@ To make it easier to navigate, each section of the meta-dictionary is described 
 | 5        | [data_func](#6-section-data_func)                                                                                                                     | No       | Match data by custom data-scanning functions                              |
 | 6        | [data_const](#7-section-data_const)                                                                                                                   | No       | Match data by constant values                                             |
 | 7        | [data_regex](#8-section-data_regex)                                                                                                                   | No       | Match data by regular expressions                                         |
-| 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign anonymization functions according to detected data type            |
+| 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign masking functions according to detected data type            |
 
 ![scan_workflow.png](../../images/scan_workflow.png)
 
@@ -87,7 +90,7 @@ Useful for large schemas without sensitive data or for reducing processing time.
 {
     "skip_rules": [
         {
-          "schema_msk": "^tmp.*"
+          "schema_mask": "^tmp.*"
         },
       {
         "schema": "ecommerce",
@@ -116,7 +119,7 @@ Useful for large schemas without sensitive data or for reducing processing time.
 | public     | employees | password                | No         |
 | public     | employees | phone                   | No         |
 | public     | employees | hire_date               | No         |
-| public     | salaries  | employee_id             | No         |
+| public     | salaries  | employee_id             | Yes        |
 | public     | salaries  | monthly_salary          | No         |
 | public     | salaries  | currency                | Yes        |
 | ecommerce  | orders    | product_id              | No         |
@@ -177,7 +180,7 @@ Useful when:
 {
     "include_rules": [
         {
-          "schema_msk": "^tmp.*"
+          "schema_mask": "^tmp.*"
         },
       {
         "schema": "ecommerce",
@@ -206,7 +209,7 @@ Useful when:
 | public     | employees | password                | Yes        |
 | public     | employees | phone                   | Yes        |
 | public     | employees | hire_date               | Yes        |
-| public     | salaries  | employee_id             | Yes        |
+| public     | salaries  | employee_id             | No         |
 | public     | salaries  | monthly_salary          | Yes        |
 | public     | salaries  | currency                | No         |
 | ecommerce  | orders    | product_id              | Yes        |
@@ -293,6 +296,8 @@ Define which PostgreSQL types are scanned. Field types not included in this list
 
 If omitted or empty → default types are used: `text`, `character`, `varchar`, `mvarchar`, `json`, `integer`, `bigint`
 
+Defaults apply only when **no** meta-dictionary file defines this section; otherwise the union of all listed types is used.
+
 ### Schema
 ```python
 {
@@ -351,8 +356,9 @@ Specify custom SQL WHERE conditions to sample the data instead of scanning the w
 ### Rules
 1. `schema` or `schema_mask` — required
    - You must specify one of `schema` or `schema_mask`
-2. `table` or `table_mask` — optional
-   - You must specify one of `table` or `table_mask`
+2. `table` or `table_mask` — required
+   - You must specify one of `table` or `table_mask`; a rule without either never matches.
+   - To apply the condition to every table in the schema, use `"table_mask": "*"`.
 3. `sql_condition` — required
    - Must specify SQL condition for `WHERE` section
    - Keyword `WHERE` into `sql_condition` is not required
@@ -382,7 +388,7 @@ For data scan of table `public.salaries` will be used only data by January 2024.
 
 ## 6. Section: `data_func`
 ### Purpose
-Using custom SQL functions to detect sensitive fields and apply the appropriate anonymization function. 
+Using custom SQL functions to detect sensitive fields and apply the appropriate masking function. 
 
 ### Schema
 ```python
@@ -391,11 +397,11 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
         "<field_type: string>": [
             {
                 "scan_func_per_field": "<scan_function_for_whole_field: string>",  
-                "anon_func": "<anonymization_rule_template_for_field: string>", 
+                "anon_func": "<masking_rule_template_for_field: string>", 
             },   
             {
                 "scan_func": "<scan_function_for_field_per_row: string>",  
-                "anon_func": "<anonymization_rule_template_for_field: string>", 
+                "anon_func": "<masking_rule_template_for_field: string>", 
                 "n_count": "<how_many_checks_must_be_passed: integer>", 
             },
         ],
@@ -406,9 +412,9 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 | Key                   | Meaning                                                                                                                                             |
 |-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
 | `field_type`          | PostgreSQL type (or custom type). `"anyelement"` applies to all types.                                                                              |
-| `scan_func_per_field` | Python function called once for whole field. Must return Boolean.                                                                                   |
-| `scan_func`           | Python function called for each field value. Must return Boolean.                                                                                   |
-| `anon_func`           | Template anonymization rule. **Must contain `%s` placeholder** for the field name.                                                                  |
+| `scan_func_per_field` | SQL function called once for the whole field. Must return Boolean.                                                                                  |
+| `scan_func`           | SQL function called for each field value. Must return Boolean.                                                                                      |
+| `anon_func`           | Masking rule for the field. **May contain the `%s` placeholder**, which is replaced with the field name; without it the rule is used as is. |
 | `n_count`             | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. Uses only for `scan_func`. (default: 1) |
 
 ### Rule Combinations
@@ -423,8 +429,8 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 > CREATE OR REPLACE FUNCTION <schema>.<function_name>(
 >   schema_name TEXT,
 >   table_name TEXT,
->   field_name TEXT
->   field_type TEXT,
+>   field_name TEXT,
+>   field_type TEXT
 > )
 > RETURNS boolean AS $$
 > BEGIN
@@ -617,14 +623,14 @@ Detect sensitive data by scanning field values using regular expressions.
 
 ## 9. Section: `funcs`
 ### Purpose
-Configure anonymization functions per PostgreSQL type.
+Configure masking functions per PostgreSQL type.
 
 ### Schema
 ```python
 {
     "funcs": {
-        "<field_type: string>": "<anonymization_function_for_field_type: string>", 
-        "default": "<universal_anonymization_function_for_all_field_types: string>"
+        "<field_type: string>": "<masking_function_for_field_type: string>", 
+        "default": "<universal_masking_function_for_all_field_types: string>"
     }
 }
 ```
@@ -707,8 +713,12 @@ Configure anonymization functions per PostgreSQL type.
     "data_func": {  
         "<field_type: string>": [ 
             {
-                "scan_func": "<scan_function_for_field: string>",  
-                "anon_func": "<anonymization_rule_template_for_field: string>", 
+                "scan_func_per_field": "<scan_function_for_whole_field: string>",  
+                "anon_func": "<masking_rule_template_for_field: string>", 
+            },
+            {
+                "scan_func": "<scan_function_for_field_per_row: string>",  
+                "anon_func": "<masking_rule_template_for_field: string>", 
                 "n_count": "<how_many_checks_must_be_passed: integer>", 
             },
         ],
@@ -727,8 +737,8 @@ Configure anonymization functions per PostgreSQL type.
         ]
     },
     "funcs": {
-        "<field_type: string>": "<anonymization_function_for_field_type: string>", 
-        "default": "<universal_anonymization_function_for_all_field_types: string>"
+        "<field_type: string>": "<masking_function_for_field_type: string>", 
+        "default": "<universal_masking_function_for_all_field_types: string>"
     }
 }
 ```
