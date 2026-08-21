@@ -27,7 +27,6 @@ def _create_dict_options(db_params, source_db, *, scan_mode: str, sens_out: str,
             f"--meta-dict-file={input_dict('meta.py')}",
             f"--output-sens-dict-file={sens_out}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--processes={db_params.test_processes}",
             f"--scan-partial-rows={partial_rows}",
             "--debug",
         ]
@@ -77,7 +76,6 @@ async def test_stress_dump_restore_roundtrip(source_db, target_db, db_params, pg
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

@@ -53,7 +53,6 @@ async def test_scan_partial_passes_depth_to_runner(
         webhook_url=webhook_recorder.url,
         scan_type="partial",
         depth=50,
-        proc_count=2,
         proc_conn_count=2,
     )
     resp = await api_client.post("/api/stateless/scan", json=body)
@@ -63,7 +62,6 @@ async def test_scan_partial_passes_depth_to_runner(
     run_options = terminal["run_options"]
     assert run_options["scan_mode"] == "partial"
     assert run_options["scan_partial_rows"] == 50
-    assert run_options["processes"] == 2
     assert run_options["db_connections_per_process"] == 2
 
 

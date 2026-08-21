@@ -55,7 +55,6 @@ async def test_dump_metadata_links_partitioned_index_to_leaves(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -110,7 +109,6 @@ async def test_restore_drops_index_attach_when_parent_index_excluded(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -176,7 +174,6 @@ async def test_full_clone_preserves_fk_on_partitioned(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -214,7 +211,6 @@ async def test_partial_whitelist_leaves_and_referrer_keeps_partitioning_and_fk(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             f"--partial-tables-dict-file={input_dict('whitelist_leaves_and_referrer.py')}",
@@ -276,7 +272,6 @@ async def test_partial_whitelist_subpartition_leaves_includes_all_ancestors(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             f"--partial-tables-dict-file={input_dict('whitelist_subpartition_leaves.py')}",
@@ -345,7 +340,6 @@ async def test_partial_whitelist_legacy_inherits_child_does_not_pull_parent(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             f"--partial-tables-dict-file={input_dict('whitelist_legacy_inherits_child.py')}",
@@ -393,7 +387,6 @@ async def test_anon_rule_on_partitioned_parent_applies_to_leaves(
         [
             f"--prepared-sens-dict-file={input_dict('anon_parent_rule.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -438,7 +431,6 @@ async def test_anon_rule_on_partition_leaves_directly(
         [
             f"--prepared-sens-dict-file={input_dict('anon_leaf_rules.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -477,7 +469,6 @@ async def test_anon_partition_rule_overrides_parent_rule(
         [
             f"--prepared-sens-dict-file={input_dict('anon_parent_and_leaf_rules.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -521,7 +512,6 @@ async def test_partial_blacklist_one_leaf_drops_fk(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             f"--partial-tables-exclude-dict-file={input_dict('exclude_one_leaf.py')}",

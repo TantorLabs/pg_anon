@@ -65,11 +65,8 @@ class ScanRunner(BaseRunner):
             )
 
     def _prepare_parallelization_cli_params(self) -> None:
-        if self.request.proc_count:
-            self.cli_params.append(f"--processes={self.request.proc_count}")
-
-        if self.request.proc_conn_count:
-            self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
+        if self.request.conn_count:
+            self.cli_params.append(f"--db-connections={self.request.conn_count}")
 
     def _prepare_scan_mode_cli_params(self) -> None:
         if self.request.type == ScanMode.PARTIAL and self.request.depth:

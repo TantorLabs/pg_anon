@@ -16,7 +16,6 @@ async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, out
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -333,7 +332,6 @@ async def test_full_clone_with_no_publications_strips_them(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--pg-dump-options=--no-publications",

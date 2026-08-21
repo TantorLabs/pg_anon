@@ -64,11 +64,8 @@ class DumpRunner(BaseRunner):
         )
 
     def _prepare_parallelization_cli_params(self) -> None:
-        if self.request.proc_count:
-            self.cli_params.append(f"--processes={self.request.proc_count}")
-
-        if self.request.proc_conn_count:
-            self.cli_params.append(f"--db-connections-per-process={self.request.proc_conn_count}")
+        if self.request.conn_count:
+            self.cli_params.append(f"--db-connections={self.request.conn_count}")
 
     def _prepare_pg_dump_cli_params(self) -> None:
         if self.request.pg_dump_path:

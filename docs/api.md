@@ -95,14 +95,15 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
 | webhook_verify_ssl    | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                       |
 | web_debug             | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                 |
 | save_dicts            | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                           |
-| type                  | string                                            | No       | Defines the scan mode: `full` or `partial`. Default: `partial`.                                                                                              |
+| type                  | string                                            | Yes      | Defines the scan mode: `full` or `partial`.                                                                                              |
 | depth                 | integer                                           | No       | Maximum number of table rows used for partial scan. Applies only when `type = partial`. Default: `10000`.                                                    |
 | meta_dict_contents    | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [meta dictionary](dicts/meta-dict-schema.md), defining rules for scanning fields.                                                            |
 | sens_dict_contents    | array of [dictionary content](#dictionarycontent) | No       | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md). Used to improve scan performance.                                                         |
 | no_sens_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [non-sensitive dictionary](dicts/non-sens-dict-schema.md). Used to improve scan performance.                                                 |
 | need_no_sens_dict     | boolean                                           | No       | If `true`, generates a [non-sensitive dictionary](dicts/non-sens-dict-schema.md) and returns it in the `no_sens_dict_contents` field of the webhook payload. |
-| proc_count            | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                  |
-| proc_conn_count       | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                       |
+| conn_count            | integer                                           | No       | Number of concurrent database connections. Default: `4`.                                                                                                     |
+| proc_conn_count       | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                     |
+| proc_count            | integer                                           | No       | **Deprecated**. Still accepted, but has no effect.                                                                                                           |
 
 #### Example
 ```shell
@@ -137,8 +138,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
     "content": "{\"no_sens_dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": [\"id\", \"created\"]}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": [\"id\", \"registered\"]}]}"
   }],
   "need_no_sens_dict": true,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 
@@ -402,16 +402,17 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
 | webhook_verify_ssl                   | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                                                                                                                                                            |
 | web_debug                            | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                                                                                                                                                      |
 | save_dicts                           | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                                                                                                                                                                |
-| type                                 | string                                            | No       | Defines the dump type. Options: [`dump`](operations/dump.md#full-dump-dump-mode), [`sync-struct-dump`](operations/dump.md#structure-dump-sync-struct-dump-mode), [`sync-data-dump`](operations/dump.md#data-dump-sync-data-dump-mode). Default: [`dump`](operations/dump.md#full-dump-dump-mode). |
-| sens_dict_contents                   | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md), defining rules for data anonymization during the dump.                                                                                                                                                                         |
+| type                                 | string                                            | Yes      | Defines the dump type. Options: [`dump`](operations/dump.md#full-dump-dump-mode), [`sync-struct-dump`](operations/dump.md#structure-dump-sync-struct-dump-mode), [`sync-data-dump`](operations/dump.md#data-dump-sync-data-dump-mode). |
+| sens_dict_contents                   | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md), defining the masking rules applied during the dump.                                                                                                                                                                         |
 | partial_tables_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **include** in a [partial dump](operations/dump.md#create-partial-dump).                                                                                                                                     |
 | partial_tables_exclude_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **exclude** from a [partial dump](operations/dump.md#create-partial-dump).                                                                                                                                   |
-| output_path                          | string                                            | No       | Path where the dump will be created under `pg_anon_output/`. For example, `"my_dump"` will be located at `pg_anon_output/my_dump`.                                                                                                                                                                |
+| output_path                          | string                                            | Yes      | Path where the dump will be created under `pg_anon_output/`. For example, `"my_dump"` will be located at `pg_anon_output/my_dump`.                                                                                                                                                                |
 | pg_dump_path                         | string                                            | No       | Path to the `pg_dump` Postgres tool. Default: `/usr/bin/pg_dump`.                                                                                                                                                                                                                                 |
 | pg_dump_options                      | string                                            | No       | Additional options passed directly to `pg_dump` utility. Example: `"--no-comments --encoding=LATIN1"`.                                                                                                                                                                                            |
 | ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
-| proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
-| proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
+| conn_count                           | integer                                           | No       | Number of concurrent database connections. Default: `4`.                                                                                                                                                                                                                                          |
+| proc_conn_count                      | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                                                                                                                                                          |
+| proc_count                           | integer                                           | No       | **Deprecated**. Still accepted, but has no effect.                                                                                                                                                                                                                                                |
  
 #### Example
 ```shell
@@ -433,22 +434,21 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
   "save_dicts": true,
   "type": "dump",
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "partial_tables_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to include",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table\": \"users\"}, {\"schema\": \"public\", \"table\": \"clients\"}]}"
   }],
   "partial_tables_exclude_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to exclude",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table_mask\": \"^tmp_\"}]}"
   }],
   "output_path": "my_dump",
   "pg_dump_path": "/usr/lib/postgresql/17/bin/pg_dump",
   "ignore_privileges": false,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 
@@ -516,8 +516,8 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 | clean_db                             | boolean                                           | No       | Cleans existing database objects before restoring. Mutually exclusive with `drop_db`.                                                                                                                                                                                                             |
 | drop_db                              | boolean                                           | No       | Drops the target database before restoring. Mutually exclusive with `clean_db`.                                                                                                                                                                                                                   |
 | ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
-| proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
-| proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
+| conn_count                           | integer                                           | No       | Number of concurrent database connections, also passed to `pg_restore` as `-j`. Default: `4`.                                                                                                                                            |
+| proc_conn_count                      | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                                                                                                                                                          |
 
 #### Example
 ```shell
@@ -540,20 +540,19 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
   "type": "restore",
   "input_path": "my_dump",
   "partial_tables_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to include",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table\": \"users\"}, {\"schema\": \"public\", \"table\": \"clients\"}]}"
   }],
   "partial_tables_exclude_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to exclude",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table_mask\": \"^tmp_\"}]}"
   }],
   "pg_restore_path": "/usr/lib/postgresql/17/bin/pg_restore",
   "drop_custom_check_constr": false,
   "clean_db": false,
   "drop_db": false,
   "ignore_privileges": false,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 

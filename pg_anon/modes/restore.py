@@ -28,7 +28,6 @@ from pg_anon.common.utils import (
     build_pg_util_env,
     get_major_version,
     get_pg_util_version,
-    pretty_size,
     resolve_dependencies,
     save_dicts_info_file,
 )
@@ -181,30 +180,6 @@ class RestoreMode:
             f"Target DB has {len(sorted_extras)} table(s) not present in the dump: {preview}. "
             "--clean-db would leave them untouched — aborting to avoid silent data loss.",
         )
-
-    async def _check_free_disk_space(self, connection: Connection) -> None:
-        data_directory_location: str | None = await connection.fetchval(
-            """
-            SELECT setting
-            FROM pg_settings
-            WHERE name = 'data_directory'
-            """
-        )
-        if not data_directory_location:
-            raise PgAnonError(ErrorCode.INVALID_CONFIG, "Could not determine data_directory from pg_settings")
-        disk_size = shutil.disk_usage(data_directory_location)
-        total_tables_size = int(self.metadata.total_tables_size or 0)
-        free_disk_space = pretty_size(disk_size.free)
-        required_disk_space = pretty_size(int(total_tables_size * 1.5))
-
-        self.context.logger.info("Free disk space: %s", free_disk_space)
-        self.context.logger.info("Required disk space: %s", required_disk_space)
-
-        if disk_size.free < total_tables_size * 1.5:
-            raise PgAnonError(
-                ErrorCode.INSUFFICIENT_DISK_SPACE,
-                f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}",
-            )
 
     def _make_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
         whitelist: list[re.Pattern[str]] = []
@@ -770,11 +745,6 @@ class RestoreMode:
             query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
             await connection.execute(query)
 
-    @staticmethod
-    def _extract_file(src_path: Path, dst_path: Path) -> None:
-        with gzip.open(src_path, "rb") as src_file, dst_path.open("wb") as trg_file:
-            shutil.copyfileobj(src_file, trg_file, length=1024 * 1024)
-
     async def _restore_table_data(
         self,
         pool: asyncpg.Pool,
@@ -784,9 +754,6 @@ class RestoreMode:
         transaction_snapshot_id: str,
     ) -> None:
         self.context.logger.info("%s Started task copy_to_table %s.%s", ">" * 20, schema_name, table_name)
-        extracted_file = dump_file.with_suffix("")
-
-        await asyncio.to_thread(self._extract_file, dump_file, extracted_file)
 
         try:
             async with pool.acquire() as connection:
@@ -794,24 +761,24 @@ class RestoreMode:
                     await connection.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
                     await connection.execute("SET LOCAL session_replication_role = 'replica';")
 
-                    result = await connection.copy_to_table(
-                        schema_name=schema_name,
-                        table_name=table_name,
-                        source=extracted_file,
-                        format="binary",
-                    )
+                    with gzip.open(dump_file, "rb") as source_file:
+                        result = await connection.copy_to_table(
+                            schema_name=schema_name,
+                            table_name=table_name,
+                            source=source_file,
+                            format="binary",
+                        )
+
                     self.context.total_rows += int(re.findall(r"(\d+)", result)[0])
                     await connection.execute("COMMIT;")
         except Exception as exc:
             self.context.logger.exception(
-                "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s extracted_file=%s",
+                "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s dump_file=%s",
                 schema_name,
                 table_name,
-                extracted_file,
+                dump_file,
             )
             raise PgAnonError(ErrorCode.RESTORE_FAILED, f"Can't restore data into {schema_name}.{table_name}") from exc
-        finally:
-            extracted_file.unlink()
 
         self.context.logger.info("%s Finished task %s.%s", ">" * 20, schema_name, table_name)
 

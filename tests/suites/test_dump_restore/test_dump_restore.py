@@ -18,7 +18,6 @@ async def _dump(pg_anon_runner, db_params, source_db, *, out_dir, dict_file, ext
     args = [
         f"--prepared-sens-dict-file={dict_file}",
         f"--output-dir={out_dir}",
-        f"--processes={db_params.test_processes}",
         f"--db-connections-per-process={db_params.db_connections_per_process}",
         "--clear-output-dir",
     ]
@@ -131,7 +130,6 @@ async def test_sync_struct_restores_empty_tables(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -170,7 +168,6 @@ async def test_sync_data_after_sync_struct(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={struct_out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -192,7 +189,6 @@ async def test_sync_data_after_sync_struct(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={data_out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -234,7 +230,6 @@ async def test_sync_struct_restore_with_clean_db(
             [
                 f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
                 f"--output-dir={out}",
-                f"--processes={db_params.test_processes}",
                 f"--db-connections-per-process={db_params.db_connections_per_process}",
                 "--clear-output-dir",
             ],
@@ -353,7 +348,6 @@ async def test_dump_with_save_dicts_snapshots_inputs(
             f"--partial-tables-dict-file={partial}",
             f"--partial-tables-exclude-dict-file={partial_exclude}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--save-dicts",
@@ -397,7 +391,6 @@ async def test_restore_with_save_dicts_snapshots_inputs(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

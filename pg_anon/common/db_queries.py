@@ -22,11 +22,6 @@ def get_database_size_query(db_name: str) -> str:
     return f"SELECT pg_database_size('{db_name}')"
 
 
-def get_relation_size_query(schema: str, table: str) -> str:
-    """Build a SQL query to get the total size of a relation."""
-    return f"""select pg_total_relation_size('"{schema}"."{table}"')"""
-
-
 def get_scan_fields_query(limit: int | None = None) -> str:
     """Build a SQL query to retrieve scannable fields from the database."""
     fields = f"""

@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import sys
 import uuid
+from typing import Any
 
 from pg_anon import PgAnonApp
 from pg_anon.common.constants import (
@@ -112,20 +113,62 @@ def common_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def multiprocessing_common_parser() -> argparse.ArgumentParser:
-    """Create the argument parser with multiprocessing options."""
+class DeprecatedOption(argparse.Action):
+    """Store a value, warning when the option is invoked by a deprecated name."""
+
+    def __init__(
+        self,
+        option_strings: list[str],
+        dest: str,
+        deprecated: tuple[str, ...] = (),
+        hint: str = "",
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        self._deprecated = set(deprecated) or set(option_strings)
+        self._hint = hint
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # noqa: ARG002
+        namespace: argparse.Namespace,
+        values: Any,  # noqa: ANN401
+        option_string: str | None = None,
+    ) -> None:
+        """Warn on a deprecated option name, then store the value as usual."""
+        if option_string in self._deprecated:
+            print(f"WARNING: {option_string} is deprecated{self._hint}", file=sys.stderr)
+        setattr(namespace, self.dest, values)
+
+
+def parallelism_common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with parallelism options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
+        "--db-connections",
         "--db-connections-per-process",
+        dest="db_connections_per_process",
+        action=DeprecatedOption,
+        deprecated=("--db-connections-per-process",),
+        hint=", use --db-connections instead",
+        metavar="N",
         type=int,
         default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
-        help="""Number of concurrent database connections for I/O operations. (default: %(default)s)""",
+        help="""Number of concurrent database connections. (default: %(default)s)""",
     )
     p.add_argument(
         "--processes",
+        action=DeprecatedOption,
+        hint=" and has no effect",
+        metavar="N",
         type=int,
         default=DEFAULT_PROCESSES,
-        help="""Number of concurrent compression workers for dump mode. (default: %(default)s)""",
+        help=argparse.SUPPRESS,
+    )
+    p.add_argument(
+        "--disable-checks",
+        action="store_true",
+        help="""Disable the pre-flight check for available database connections.""",
     )
 
     return p
@@ -288,15 +331,21 @@ def restore_parser() -> argparse.ArgumentParser:
         help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
     )
     p.add_argument(
+        "--db-connections",
         "--db-connections-per-process",
+        dest="db_connections_per_process",
+        action=DeprecatedOption,
+        deprecated=("--db-connections-per-process",),
+        hint=", use --db-connections instead",
+        metavar="N",
         type=int,
         default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
-        help="""Number of database connections. (default: %(default)s)""",
+        help="""Number of concurrent database connections, also passed to pg_restore as -j. (default: %(default)s)""",
     )
     p.add_argument(
         "--disable-checks",
         action="store_true",
-        help="""Disable checks of disk space and PostgreSQL version.""",
+        help="""Disable pre-flight checks: PostgreSQL version compatibility and available database connections.""",
     )
     p.add_argument(
         "--seq-init-by-max-value",
@@ -477,7 +526,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "create-dict",
-        parents=[common_parser(), multiprocessing_common_parser(), scan_parser()],
+        parents=[common_parser(), parallelism_common_parser(), scan_parser()],
         help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
     )
 
@@ -489,7 +538,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), multiprocessing_common_parser(), dump_parser()],
+            parents=[common_parser(), parallelism_common_parser(), dump_parser()],
             help=help_text,
         )
 
