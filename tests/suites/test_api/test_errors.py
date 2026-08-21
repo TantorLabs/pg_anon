@@ -26,6 +26,8 @@ async def test_pydantic_validation_returns_422(api_client):
 
 
 def test_global_exception_handler_maps_to_500_with_internal_error_code():
+    original_routes = list(app.router.routes)
+
     @app.get("/_test_only/raise_generic")
     async def _raise():
         raise RuntimeError("test_error")
@@ -34,15 +36,21 @@ def test_global_exception_handler_maps_to_500_with_internal_error_code():
     async def _raise_pganon():
         raise PgAnonError(ErrorCode.INVALID_DICT_FILE, "bad dict")
 
-    with TestClient(app, raise_server_exceptions=False) as client:
-        resp = client.get("/_test_only/raise_generic")
-        assert resp.status_code == 500
-        body = resp.json()
-        assert body["error_code"] == ErrorCode.INTERNAL_ERROR.value
-        assert "test_error" in body["message"]
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.get("/_test_only/raise_generic")
+            assert resp.status_code == 500
+            body = resp.json()
+            assert body["error_code"] == ErrorCode.INTERNAL_ERROR.value
+            assert "test_error" in body["message"]
 
-        resp = client.get("/_test_only/raise_pganon")
-        assert resp.status_code == 400
-        body = resp.json()
-        assert body["error_code"] == ErrorCode.INVALID_DICT_FILE.value
-        assert body["message"] == "bad dict"
+            resp = client.get("/_test_only/raise_pganon")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["error_code"] == ErrorCode.INVALID_DICT_FILE.value
+            assert body["message"] == "bad dict"
+    finally:
+        # `app` is shared across the whole suite: probe routes left behind would
+        # leak into the OpenAPI schema that test_packaging asserts on.
+        app.router.routes = original_routes
+        app.openapi_schema = None

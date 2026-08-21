@@ -53,6 +53,7 @@ The root `Makefile` provides shortcuts for common development tasks. Run `make h
 | `make check`       | Run linters over `pg_anon/`.             |
 | `make fix`         | Auto-fix lint issues and reformat code.  |
 | `make test`        | Run the pytest suite.                    |
+| `make openapi`     | Regenerate the OpenAPI schema file.      |
 | `make clean`       | Remove build artifacts and tool caches.  |
 
 ---
@@ -304,6 +305,15 @@ To run a specific test file:
 ```bash
 pytest tests/suites/test_validate/test_validate.py -v
 ```
+
+The suite is split by markers: `stress` (slow, timing-based, excluded by default) and
+`packaging` (distribution checks, need no PostgreSQL). Run them explicitly with
+`pytest -m stress` and `pytest -m packaging`.
+
+To check several Python versions locally, use [tox](https://tox.wiki) — it is installed
+standalone (`uv tool install tox` or `pipx install tox`): `tox` runs the packaging suite on
+3.11–3.14, `tox -e db-py311` the full suite against a live server, `tox -e stress` the stress
+one. CI does not use tox; it installs the dev extra and calls pytest directly.
 
 ### Test Database Configuration
 

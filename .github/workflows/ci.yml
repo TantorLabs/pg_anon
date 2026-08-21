@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matches the defaults in tests/infrastructure/params.py.
+  TEST_DB_USER: anon_test_user
+  TEST_DB_USER_PASSWORD: mYy5RexGsZ
+  TEST_DB_HOST: 127.0.0.1
+  TEST_DB_PORT: "5432"
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade ruff
+      - run: python -m ruff check --output-format=github
+      - run: python -m ruff format --check
+
+  types:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[api,dev]"
+      - run: python -m mypy pg_anon
+
+  packaging:
+    name: packaging ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        # Keeps the OS-independence claim honest.
+        include:
+          - os: macos-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install ".[api]" build twine pytest pytest-asyncio
+      - name: Check the distribution metadata and artifacts
+        run: python -m pytest -m packaging -ra
+
+  tests:
+    name: pytest / PG ${{ matrix.postgres }} / py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Sparse cross, not a full product: every PostgreSQL on the oldest Python,
+      # then every remaining Python on one PostgreSQL.
+      matrix:
+        postgres: ["12", "13", "14", "15", "16", "17", "18"]
+        python: ["3.11"]
+        include:
+          - { postgres: "17", python: "3.12" }
+          - { postgres: "17", python: "3.13" }
+          - { postgres: "17", python: "3.14" }
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: ${{ env.TEST_DB_USER }}
+          POSTGRES_PASSWORD: ${{ env.TEST_DB_USER_PASSWORD }}
+          POSTGRES_DB: postgres
+          # The suite creates its databases with this collation.
+          POSTGRES_INITDB_ARGS: "--locale=en_US.UTF-8"
+        ports:
+          - 5432:5432
+        # `options` cannot read the env context, hence the literal user.
+        options: >-
+          --health-cmd "pg_isready -U anon_test_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The client must match the server: a dump from a newer pg_dump fails to
+      # restore on settings the older server does not know.
+      - name: Install the PostgreSQL ${{ matrix.postgres }} client utilities
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-${{ matrix.postgres }}
+
+      # Two copies because the CLI reads --config (TEST_CONFIG) while the REST
+      # API reads ./config.yml relative to PG_ANON_HOME.
+      - name: Write the pg-utils config
+        run: |
+          BIN=/usr/lib/postgresql/${{ matrix.postgres }}/bin
+          test -x "$BIN/pg_dump" && test -x "$BIN/pg_restore"
+          cat > config.yml <<EOF
+          pg-utils-versions:
+            default:
+              pg_dump: "$BIN/pg_dump"
+              pg_restore: "$BIN/pg_restore"
+          EOF
+          cp config.yml "$RUNNER_TEMP/pg-anon-test-config.yml"
+          echo "TEST_CONFIG=$RUNNER_TEMP/pg-anon-test-config.yml" >> "$GITHUB_ENV"
+
+      - run: python -m pip install -e ".[api,dev]"
+
+      # A -m here replaces the one in addopts, so "not stress" is repeated.
+      - name: Run the test suite
+        run: python -m pytest -ra -m "not stress and not packaging"

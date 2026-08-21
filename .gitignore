@@ -173,3 +173,6 @@ cython_debug/
 
 # Quick Start passfile
 pgpass.conf
+
+# Local test config (TEST_CONFIG override)
+/config.yml

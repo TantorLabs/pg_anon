@@ -1,4 +1,4 @@
-.PHONY: help install install-dev build check fix fix/style fix/fmt test clean
+.PHONY: help install install-dev build check fix fix/style fix/fmt test openapi clean
 .SILENT: clean
 
 help:
@@ -9,6 +9,7 @@ help:
 	@echo "  check       Run linters (ruff + mypy) over pg_anon/"
 	@echo "  fix         Auto-fix lint issues and format the codebase"
 	@echo "  test        Run the pytest suite"
+	@echo "  openapi     Regenerate pg_anon/rest_api/openapi.json from the REST app"
 	@echo "  clean       Remove build artifacts and tool caches"
 
 install:
@@ -36,6 +37,9 @@ fix/fmt:
 
 test:
 	python -m pytest
+
+openapi:
+	python -c 'from pg_anon.rest_api.api import generate_openapi_doc_file; generate_openapi_doc_file()'
 
 clean:
 	rm -rf *.egg-info dist build
