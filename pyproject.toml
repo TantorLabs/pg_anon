@@ -100,6 +100,8 @@ target-version = "py311"
 output-format = "full"
 extend-exclude = [
     ".idea",
+    # ruff 0.16+ formats Python blocks inside Markdown, reflowing the documentation examples
+    "*.md",
     "demo/meta_dict.py",
     "tests/suites/*/expected/",
     "tests/suites/*/input_dict/",
