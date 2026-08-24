@@ -6,6 +6,7 @@ from decimal import Decimal
 from tests.infrastructure.assertions import checksum_tables, diff_catalog, diff_schema, list_tables
 
 from .conftest import input_dict, output_path
+from pg_anon.common.db_utils import create_connection, get_invalid_partitioned_indexes
 from pg_anon.common.enums import ResultCode
 
 
@@ -616,3 +617,41 @@ async def test_full_clone_preserves_constraint_quirks(
     except Exception:
         fk_raised = True
     assert fk_raised, "FK on partitioned parent must reject orphan rows on target"
+
+
+async def test_invalid_partitioned_index_is_reported(db_manager, target_db):
+    """The guard that runs after post-data must notice a partitioned index left invalid."""
+    await db_manager.execute(
+        target_db,
+        """
+        CREATE SCHEMA part_check;
+        CREATE TABLE part_check.root (id bigint, k int) PARTITION BY LIST (k);
+        CREATE TABLE part_check.p1 PARTITION OF part_check.root FOR VALUES IN (1);
+        CREATE TABLE part_check.p2 PARTITION OF part_check.root FOR VALUES IN (2);
+        -- ON ONLY leaves the parent index invalid until every partition has its index attached,
+        -- which is the state a concurrent post-data restore can leave behind
+        CREATE INDEX root_id_idx ON ONLY part_check.root (id);
+        """,
+    )
+    connection = await create_connection(db_manager._connection_params(target_db))  # noqa: SLF001
+    try:
+        invalid = await get_invalid_partitioned_indexes(connection)
+        assert "part_check.root_id_idx" in invalid, (
+            f"an invalid partitioned index went unnoticed, so a restore would report success "
+            f"while its primary key does not work; reported: {invalid}"
+        )
+
+        await db_manager.execute(
+            target_db,
+            """
+            CREATE INDEX p1_id_idx ON part_check.p1 (id);
+            CREATE INDEX p2_id_idx ON part_check.p2 (id);
+            ALTER INDEX part_check.root_id_idx ATTACH PARTITION part_check.p1_id_idx;
+            ALTER INDEX part_check.root_id_idx ATTACH PARTITION part_check.p2_id_idx;
+            """,
+        )
+        assert await get_invalid_partitioned_indexes(connection) == [], (
+            "a fully attached partitioned index must not be reported, otherwise every restore fails"
+        )
+    finally:
+        await connection.close()

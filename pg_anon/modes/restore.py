@@ -19,6 +19,7 @@ from pg_anon.common.db_utils import (
     create_pool,
     get_available_extensions_map,
     get_available_schemas,
+    get_invalid_partitioned_indexes,
     run_query_in_pool,
 )
 from pg_anon.common.dto import Metadata
@@ -59,6 +60,10 @@ class RestoreMode:
     _toc_list_pre_data_file_path: Path | None = None
     _toc_list_post_data_file_name: str = "toc_post_data_filtered.list"
     _toc_list_post_data_file_path: Path | None = None
+    _toc_list_post_data_head_file_name: str = "toc_post_data_head.list"
+    _toc_list_post_data_head_file_path: Path | None = None
+    _toc_list_post_data_tail_file_name: str = "toc_post_data_tail.list"
+    _toc_list_post_data_tail_file_path: Path | None = None
 
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
@@ -371,6 +376,10 @@ class RestoreMode:
             self._toc_list_pre_data_file_path.unlink(missing_ok=True)
         if self._toc_list_post_data_file_path:
             self._toc_list_post_data_file_path.unlink(missing_ok=True)
+        if self._toc_list_post_data_head_file_path:
+            self._toc_list_post_data_head_file_path.unlink(missing_ok=True)
+        if self._toc_list_post_data_tail_file_path:
+            self._toc_list_post_data_tail_file_path.unlink(missing_ok=True)
 
     def _make_pg_restore_env(self) -> dict[str, str]:
         # LC_ALL=C is required so we can parse "from TOC entry NNN" markers from stderr
@@ -469,9 +478,50 @@ class RestoreMode:
         retry_toc.write_text("\n".join(matching) + "\n", encoding="utf-8")
         return retry_toc
 
-    async def _run_pg_restore(self, section: str) -> None:
+    def _split_post_data_segments(self, section: str) -> list[tuple[Path | None, int]]:
+        """Split post-data into a parallel head and a serial tail starting at the first INDEX ATTACH.
+
+        Attaching partitioned indexes concurrently can leave the parent index invalid, so
+        everything from the first INDEX ATTACH onwards runs single-threaded.
+        """
         parallelism = self.context.options.db_connections_per_process
-        command = self._build_pg_restore_command(section, parallelism=parallelism)
+        if section != "post-data":
+            return [(None, parallelism)]
+
+        toc_path = self._toc_list_post_data_file_path
+        if toc_path is None or not Path(toc_path).exists():
+            return [(None, parallelism)]
+
+        lines = Path(toc_path).read_text(encoding="utf-8").splitlines()
+        first = next((i for i, line in enumerate(lines) if "INDEX ATTACH" in line), None)
+        if first is None or first == 0:
+            return [(None, parallelism)]
+
+        head_lines, tail_lines = lines[:first], lines[first:]
+        if len(head_lines) + len(tail_lines) != len(lines):
+            self.context.logger.warning("TOC split lost lines, falling back to a single pass")
+            return [(None, parallelism)]
+
+        self._toc_list_post_data_head_file_path = self.input_dir / self._toc_list_post_data_head_file_name
+        self._toc_list_post_data_head_file_path.write_text("\n".join(head_lines) + "\n", encoding="utf-8")
+
+        self._toc_list_post_data_tail_file_path = self.input_dir / self._toc_list_post_data_tail_file_name
+        self._toc_list_post_data_tail_file_path.write_text("\n".join(tail_lines) + "\n", encoding="utf-8")
+
+        self.context.logger.info(
+            "post-data split: head %d lines (-j %d), tail %d lines (-j 1)",
+            len(head_lines),
+            parallelism,
+            len(tail_lines),
+        )
+        return [(self._toc_list_post_data_head_file_path, parallelism), (self._toc_list_post_data_tail_file_path, 1)]
+
+    async def _run_pg_restore(self, section: str) -> None:
+        for toc_override, parallelism in self._split_post_data_segments(section):
+            await self._run_pg_restore_segment(section, parallelism, toc_override)
+
+    async def _run_pg_restore_segment(self, section: str, parallelism: int, toc_override: Path | None = None) -> None:
+        command = self._build_pg_restore_command(section, parallelism=parallelism, toc_override=toc_override)
 
         self.context.logger.debug(str(command))
         stderr_text, returncode = self._invoke_pg_restore(command)
@@ -901,6 +951,20 @@ class RestoreMode:
         await self._run_pg_restore("post-data")
         self.context.logger.info("<------------- Finished restore post-data (pg_restore)")
 
+    async def _check_partitioned_indexes(self, connection: Connection) -> None:
+        """Fail when the restore left a partitioned index invalid."""
+        invalid_indexes = await get_invalid_partitioned_indexes(connection)
+        if not invalid_indexes:
+            return
+
+        msg = (
+            f"restore left {len(invalid_indexes)} invalid partitioned index(es): "
+            f"{', '.join(invalid_indexes)}. They are ignored by the planner and cannot be "
+            f"referenced by foreign keys."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
+
     async def _drop_database(self) -> None:
         if not self.context.options.drop_db:
             return
@@ -1079,6 +1143,7 @@ class RestoreMode:
             await self._restore_data(connection)
 
             await self._restore_post_data()
+            await self._check_partitioned_indexes(connection)
             await self._sequences_init(connection)
 
             await self.run_analyze()

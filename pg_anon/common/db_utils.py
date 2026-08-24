@@ -981,6 +981,21 @@ async def get_pg_version(connection_params: ConnectionParams, server_settings: d
     return re.findall(r"(\d+\.\d+)", str(pg_version))[0]
 
 
+async def get_invalid_partitioned_indexes(connection: Connection) -> list[str]:
+    """Get partitioned indexes left invalid, which the planner ignores and foreign keys cannot reference."""
+    query = """
+    SELECT n.nspname || '.' || c.relname AS index_name
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indexrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE NOT i.indisvalid
+      -- relkind 'I' marks partitioned indexes; it simply never matches before PG 11
+      AND c.relkind = 'I'
+    ORDER BY 1;
+    """
+    return [row[0] for row in await connection.fetch(query)]
+
+
 async def get_available_connections(connection: Connection) -> int:
     """Get the number of available database connections."""
     query = """
