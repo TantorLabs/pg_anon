@@ -6,10 +6,10 @@
 |-------------------------------------------------------------------------------------------------------|
 | [Check DB connection](#check-db-connection)                                                           |
 | [Run create-dict (scan) operation](#run-create-dict-scan-operation)                                   |
-| [Display database fields with anonymization rules](#display-database-fields-with-anonymization-rules) |
+| [Display database fields with masking rules](#display-database-fields-with-masking-rules) |
 | [Display database schemas only for preview](#display-database-schemas-only-for-preview)               |
 | [Display database tables with fields for preview](#display-database-tables-with-fields-for-preview)   |
-| [Display table with anonymization data](#display-table-with-anonymization-data)                       |
+| [Display table with masked data](#display-table-with-masked-data)                       |
 | [Run dump operation](#run-dump-operation)                                                             |
 | [Run restore operation](#run-restore-operation)                                                       |
 
@@ -77,7 +77,7 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the scan operation has been successfully started.
+   - `201` — the scan operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [scan webhook request](#scan-webhook-request-schema) schema
 4. The operation executes in the background.
@@ -95,14 +95,16 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
 | webhook_verify_ssl    | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                       |
 | web_debug             | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                 |
 | save_dicts            | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                           |
-| type                  | string                                            | No       | Defines the scan mode: `full` or `partial`. Default: `partial`.                                                                                              |
+| type                  | string                                            | Yes      | Defines the scan mode: `full` or `partial`.                                                                                              |
 | depth                 | integer                                           | No       | Maximum number of table rows used for partial scan. Applies only when `type = partial`. Default: `10000`.                                                    |
 | meta_dict_contents    | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [meta dictionary](dicts/meta-dict-schema.md), defining rules for scanning fields.                                                            |
 | sens_dict_contents    | array of [dictionary content](#dictionarycontent) | No       | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md). Used to improve scan performance.                                                         |
 | no_sens_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [non-sensitive dictionary](dicts/non-sens-dict-schema.md). Used to improve scan performance.                                                 |
 | need_no_sens_dict     | boolean                                           | No       | If `true`, generates a [non-sensitive dictionary](dicts/non-sens-dict-schema.md) and returns it in the `no_sens_dict_contents` field of the webhook payload. |
-| proc_count            | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                  |
-| proc_conn_count       | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                       |
+| conn_count            | integer                                           | No       | Number of concurrent database connections. Default: `4`.                                                                                                     |
+| log_level             | string                                            | No       | Log verbosity of the pg_anon run: `info`, `debug` or `error`. Default: `info`.                                                                                |
+| proc_conn_count       | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                     |
+| proc_count            | integer                                           | No       | **Deprecated**. Still accepted, but has no effect.                                                                                                           |
 
 #### Example
 ```shell
@@ -129,7 +131,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
     "content": "{\"data_regex\": {\"rules\": [\".*@.*\"]}, \"funcs\": {\"text\": \"md5(%s)\"}}"
   }],
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "no_sens_dict_contents": [{
@@ -137,8 +139,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
     "content": "{\"no_sens_dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": [\"id\", \"created\"]}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": [\"id\", \"registered\"]}]}"
   }],
   "need_no_sens_dict": true,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 
@@ -168,7 +169,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/scan \
 
 ---
 
-### Display database fields with anonymization rules
+### Display database fields with masking rules
 ```http request
 POST /api/stateless/view-fields
 ```
@@ -176,17 +177,20 @@ POST /api/stateless/view-fields
 #### Description
 Runs pg_anon in [view-fields mode](operations/view-fields.md) and returns the result in the response.
 
+The `anon_funcs` schema must already exist in the source database — see [init mode](operations/init.md).
+Without it the endpoint answers `400` with the error code `SCHEMA_NOT_INITIALIZED`.
+
 #### 📦 View-fields request body schema
 | Field                      | Type                                              | Required | Description                                                                                        |                             
 |----------------------------|---------------------------------------------------|----------|----------------------------------------------------------------------------------------------------|
 | db_connection_params       | [db connection params](#dbconnectionparams)       | Yes      | Source database credentials.                                                                       |
-| sens_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | [Sensitive dictionary](dicts/sens-dict-schema.md) content that defines rules for sensitive fields. |
+| sens_dict_contents         | array of [dictionary content](#dictionarycontent) | Yes      | [Sensitive dictionary](dicts/sens-dict-schema.md) content that defines rules for sensitive fields. |
 | schema_name                | string                                            | No       | Filter by schema name.                                                                             |
 | schema_mask                | string                                            | No       | Filter by schema name using a regular expression.                                                  |
 | table_name                 | string                                            | No       | Filter by table name.                                                                              |
 | table_mask                 | string                                            | No       | Filter by table name using a regular expression.                                                   |
 | view_only_sensitive_fields | boolean                                           | No       | Displays only sensitive fields (default: `all fields`).                                           |
-| fields_limit_count         | integer                                           | No       | Maximum number of fields to include for output (default: `5000`).                                  |
+| fields_limit_count         | integer                                           | No       | Maximum number of fields to include for output (default: no limit).                                |
 | orm_dict_content           | string                                            | No       | JSON content of the [ORM structure file](operations/view-fields.md#orm-names-translation). When set, table and field names in the output are replaced with their ORM names. |
 
 #### Example
@@ -202,7 +206,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "schema_name": "public",
@@ -222,23 +226,26 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-fields \
 
 ---
 
-### Display table with anonymization data
+### Display table with masked data
 ```http request
 POST /api/stateless/view-data
 ```
 
 #### Description
-Displays table data in original and anonymized variants for comparison.
+Displays table data in original and masked variants for comparison.
 Runs pg_anon in [view-data mode](operations/view-data.md) and returns the result in the response.
+
+The `anon_funcs` schema must already exist in the source database — see [init mode](operations/init.md).
+Without it the endpoint answers `400` with the error code `SCHEMA_NOT_INITIALIZED`.
 
 #### 📦 View-data request body schema
 | Field                | Type                                              | Required | Description                                                                                    |
 |----------------------|---------------------------------------------------|----------|------------------------------------------------------------------------------------------------|
 | db_connection_params | [db connection params](#dbconnectionparams)       | Yes      | Source database credentials.                                                                   |
-| sens_dict_contents   | array of [dictionary content](#dictionarycontent) | No       | [Sensitive dictionary](dicts/sens-dict-schema.md) content defining rules for sensitive fields. |
+| sens_dict_contents   | array of [dictionary content](#dictionarycontent) | Yes      | [Sensitive dictionary](dicts/sens-dict-schema.md) content defining rules for sensitive fields. |
 | schema_name          | string                                            | Yes      | Schema name.                                                                                   |
 | table_name           | string                                            | Yes      | Table name.                                                                                    |
-| limit                | integer                                           | No       | Number of rows to display (default: `100`).                                                    |
+| limit                | integer                                           | No       | Number of rows to display (default: `10`).                                                     |
 | offset               | integer                                           | No       | Row offset for pagination (default: `0`).                                                      |
 
 #### Example
@@ -254,7 +261,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/view-data \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "schema_name": "public",
@@ -350,7 +357,7 @@ curl -X POST http://127.0.0.1:8000/api/stateless/preview/public \
      "user_password":  "postgres"
   },
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "limit": 20,
@@ -381,7 +388,7 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the dump operation has been successfully started.
+   - `201` — the dump operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [dump webhook request](#dump-webhook-request-schema) schema.
 4. The operation executes in the background.
@@ -399,16 +406,18 @@ Runs pg_anon in [dump mode](operations/dump.md) in the background.
 | webhook_verify_ssl                   | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                                                                                                                                                            |
 | web_debug                            | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                                                                                                                                                      |
 | save_dicts                           | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                                                                                                                                                                |
-| type                                 | string                                            | No       | Defines the dump type. Options: [`dump`](operations/dump.md#full-dump-dump-mode), [`sync-struct-dump`](operations/dump.md#structure-dump-sync-struct-dump-mode), [`sync-data-dump`](operations/dump.md#data-dump-sync-data-dump-mode). Default: [`dump`](operations/dump.md#full-dump-dump-mode). |
-| sens_dict_contents                   | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md), defining rules for data anonymization during the dump.                                                                                                                                                                         |
+| type                                 | string                                            | Yes      | Defines the dump type. Options: [`dump`](operations/dump.md#full-dump-dump-mode), [`sync-struct-dump`](operations/dump.md#structure-dump-sync-struct-dump-mode), [`sync-data-dump`](operations/dump.md#data-dump-sync-data-dump-mode). |
+| sens_dict_contents                   | array of [dictionary content](#dictionarycontent) | Yes      | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md), defining the masking rules applied during the dump.                                                                                                                                                                         |
 | partial_tables_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **include** in a [partial dump](operations/dump.md#create-partial-dump).                                                                                                                                     |
 | partial_tables_exclude_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **exclude** from a [partial dump](operations/dump.md#create-partial-dump).                                                                                                                                   |
-| output_path                          | string                                            | No       | Path where the dump will be created under `pg_anon_output/`. For example, `"my_dump"` will be located at `pg_anon_output/my_dump`.                                                                                                                                                                |
+| output_path                          | string                                            | Yes      | Path where the dump will be created under `pg_anon_output/`. For example, `"my_dump"` will be located at `pg_anon_output/my_dump`.                                                                                                                                                                |
 | pg_dump_path                         | string                                            | No       | Path to the `pg_dump` Postgres tool. Default: `/usr/bin/pg_dump`.                                                                                                                                                                                                                                 |
 | pg_dump_options                      | string                                            | No       | Additional options passed directly to `pg_dump` utility. Example: `"--no-comments --encoding=LATIN1"`.                                                                                                                                                                                            |
 | ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
-| proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
-| proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
+| conn_count                           | integer                                           | No       | Number of concurrent database connections. Default: `4`.                                                                                                                                                                                                                                          |
+| log_level                            | string                                            | No       | Log verbosity of the pg_anon run: `info`, `debug` or `error`. Default: `info`.                                                                                                                                                                                                                     |
+| proc_conn_count                      | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                                                                                                                                                          |
+| proc_count                           | integer                                           | No       | **Deprecated**. Still accepted, but has no effect.                                                                                                                                                                                                                                                |
  
 #### Example
 ```shell
@@ -430,22 +439,21 @@ curl -X POST http://127.0.0.1:8000/api/stateless/dump \
   "save_dicts": true,
   "type": "dump",
   "sens_dict_contents": [{
-    "name": "sens dict for email anonymization",
+    "name": "sens dict for email masking",
     "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
   }],
   "partial_tables_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to include",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table\": \"users\"}, {\"schema\": \"public\", \"table\": \"clients\"}]}"
   }],
   "partial_tables_exclude_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to exclude",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table_mask\": \"^tmp_\"}]}"
   }],
   "output_path": "my_dump",
   "pg_dump_path": "/usr/lib/postgresql/17/bin/pg_dump",
   "ignore_privileges": false,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 
@@ -485,7 +493,7 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 **Operation lifecycle:**
 1. The client calls this endpoint.
 2. The API returns one of the following status codes:
-   - `200` — the restore operation has been successfully started.
+   - `201` — the restore operation has been successfully started.
    - `400` or `422` — the request is invalid; the operation is not started.
 3. The service sends a webhook request with status `in_progress` to the `webhook_status_url`. The payload format is described in the [restore webhook request](#restore-webhook-request-schema) schema.
 4. The operation executes in the background.
@@ -503,7 +511,7 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 | webhook_verify_ssl                   | boolean                                           | No       | Enables or disables SSL certificate verification for webhook requests.                                                                                                                                                                                                                            |
 | web_debug                            | boolean                                           | No       | Enables writing webhook logs to the operation's log file in the `pg_anon_runs/` directory. Default: `false`.                                                                                                                                                                                      |
 | save_dicts                           | boolean                                           | No       | Saves all input and output dictionaries into the `pg_anon_runs/` directory. Useful for debugging or integration. Default: `false`.                                                                                                                                                                |
-| type                                 | string                                            | No       | Defines the restore type. Options: [`restore`](operations/restore.md#full-restore-restore-mode), [`sync-struct-restore`](operations/restore.md#structure-restore-sync-struct-restore-mode), [`sync-data-restore`](operations/restore.md#data-restore-sync-data-restore-mode). Default: `restore`. |
+| type                                 | string                                            | Yes      | Defines the restore type. Options: [`restore`](operations/restore.md#full-restore-restore-mode), [`sync-struct-restore`](operations/restore.md#structure-restore-sync-struct-restore-mode), [`sync-data-restore`](operations/restore.md#data-restore-sync-data-restore-mode). |
 | input_path                           | string                                            | Yes      | Path to the dump to restore, relative to `pg_anon_output/`. Example: `"my_dump"` will restore from `pg_anon_output/my_dump`.                                                                                                                                                                      |
 | partial_tables_dict_contents         | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **include** in a [partial restore](operations/restore.md#create-partial-restore)                                                                                                                             |
 | partial_tables_exclude_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [tables dictionary](dicts/tables-dictionary.md) specifying tables to **exclude** from a [partial restore](operations/restore.md#create-partial-restore)                                                                                                                           |
@@ -513,8 +521,9 @@ Runs pg_anon in [restore mode](operations/restore.md) in the background.
 | clean_db                             | boolean                                           | No       | Cleans existing database objects before restoring. Mutually exclusive with `drop_db`.                                                                                                                                                                                                             |
 | drop_db                              | boolean                                           | No       | Drops the target database before restoring. Mutually exclusive with `clean_db`.                                                                                                                                                                                                                   |
 | ignore_privileges                    | boolean                                           | No       | Ignore privileges from source db.                                                                                                                                                                                                                                                                 |
-| proc_count                           | integer                                           | No       | Number of processes used for multiprocessing. Default: `4`.                                                                                                                                                                                                                                       |
-| proc_conn_count                      | integer                                           | No       | Number of database connections allocated per process for I/O operations. Default: `4`.                                                                                                                                                                                                            |
+| conn_count                           | integer                                           | No       | Number of concurrent database connections, also passed to `pg_restore` as `-j`. Default: `4`.                                                                                                                                            |
+| log_level                            | string                                            | No       | Log verbosity of the pg_anon run: `info`, `debug` or `error`. Default: `info`.                                                                                                                                                                                                                     |
+| proc_conn_count                      | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                                                                                                                                                          |
 
 #### Example
 ```shell
@@ -537,20 +546,19 @@ curl -X POST http://127.0.0.1:8000/api/stateless/restore \
   "type": "restore",
   "input_path": "my_dump",
   "partial_tables_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to include",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table\": \"users\"}, {\"schema\": \"public\", \"table\": \"clients\"}]}"
   }],
   "partial_tables_exclude_dict_contents": [{
-    "name": "sens dict for email anonymization",
-    "content": "{\"dictionary\": [{\"schema\": \"public\", \"table\": \"users\", \"fields\": {\"email\": \"md5(email)\"}}, {\"schema\": \"public\", \"table\": \"clients\", \"fields\": {\"email\": \"md5(email)\"}}]}"
+    "name": "tables to exclude",
+    "content": "{\"tables\": [{\"schema\": \"public\", \"table_mask\": \"^tmp_\"}]}"
   }],
   "pg_restore_path": "/usr/lib/postgresql/17/bin/pg_restore",
   "drop_custom_check_constr": false,
   "clean_db": false,
   "drop_db": false,
   "ignore_privileges": false,
-  "proc_count": 4,
-  "proc_conn_count": 4
+  "conn_count": 4
 }'
 ```
 
@@ -670,7 +678,7 @@ GET /operation/{internal_operation_id}/logs
 ```
 
 #### Description
-Returns log output for a background operation (scan, dump, restore). Only operations executed with `save_dicts` enabled are included. Useful for integration purposes.
+Returns log output for a background operation (scan, dump, restore). Available for any operation whose `internal_operation_id` you know — unlike the two endpoints above, it does not require `save_dicts`. Useful for integration purposes.
 
 #### 📦 Operations logs request params
 | Name                  | Type    | Required | Description                                                           |
@@ -707,13 +715,13 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 |-----------------|--------|----------|-----------------------------------------------------------------------|
 | name            | string | Yes      | Dictionary name. For example can be used as dictionary filename       |
 | content         | string | Yes      | Dictionary content that using for operations processing               |
-| additional_info | Any    | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
+| additional_info | string | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
 
 ## DictionaryMetadata
 | Field           | Type   | Required | Description                                                           |
 |-----------------|--------|----------|-----------------------------------------------------------------------|
 | name            | string | Yes      | Dictionary name. For example can be used as dictionary filename       |
-| additional_info | Any    | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
+| additional_info | string | No       | Extra data for integration purposes. Will be sent on webhook "as is". |
 
 ## OperationDataResponse
 | Field        | Type                                  | Required | Description                                                                                               |
@@ -756,15 +764,15 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | table_name       | string       | Yes      | Table name                                                              |
 | field_names      | array        | Yes      | Table field names. It needs for rendering table header                  |
 | total_rows_count | integer      | Yes      | Total rows count in table. It useful for pagination                     |
-| rows_before      | array        | Yes      | Source rows data "as is" without anonymization                          |
-| rows_after       | array        | Yes      | Anonymized rows, for display how anonymization will work on source data |
+| rows_before      | array        | Yes      | Source rows data "as is", without masking                               |
+| rows_after       | array        | Yes      | Masked rows, showing how the rules will work on the source data         |
 
 ## ViewFieldsResponse
 | Field     | Type                                    | Required | Description                                                          |
 |-----------|-----------------------------------------|----------|----------------------------------------------------------------------|
 | status_id | integer                                 | Yes      | Integer code of operation status. Can be: `2` - success, `3` - error |
 | status    | string                                  | Yes      | Human readable operation status. Can be: `success`, `error`          |
-| content   | [ViewFieldsContent](#viewfieldscontent) | No       | Operation result data                                                |
+| content   | array of [ViewFieldsContent](#viewfieldscontent) | No | Operation result data                                                |
 
 ## ViewFieldsContent
 | Field       | Type                                      | Required | Description                                               |
@@ -773,8 +781,8 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 | table_name  | string                                    | Yes      | Table name                                                |
 | field_name  | string                                    | Yes      | Field name                                                |
 | type        | string                                    | Yes      | Field data type                                           |
-| dict_data   | [DictionaryMetadata](#dictionarymetadata) | No       | Matched dictionary metadata containing anonymization rule |
-| rule        | str                                       | No       | Matched anonymization rule if field is sensitive          |
+| dict_data   | [DictionaryMetadata](#dictionarymetadata) | No       | Matched dictionary metadata containing the masking rule   |
+| rule        | str                                       | No       | Matched masking rule if field is sensitive                |
 
 ## PreviewSchemasResponse
 | Field     | Type            | Required | Description                                                          |
@@ -803,8 +811,8 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 |--------------|---------|----------|-------------------------------------------------|
 | field_name   | string  | Yes      | Field name                                      |
 | type         | string  | Yes      | Field data type                                 |
-| is_sensitive | boolean | Yes      | Whether the field matches an anonymization rule  |
-| rule         | string  | No       | Matched anonymization rule if field is sensitive |
+| is_sensitive | boolean | Yes      | Whether the field matches a masking rule         |
+| rule         | string  | No       | Matched masking rule if field is sensitive       |
 
 ## ErrorResponse
 | Field      | Type   | Required | Description                                        |

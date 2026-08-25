@@ -14,7 +14,6 @@ class TestParams:
     test_scale = "10"
     keep_test_dbs = False
     db_connections_per_process = 4
-    test_processes = 4
 
     def __init__(self) -> None:  # noqa: C901
         config_path = str(Path(__file__).resolve().parent.parent / "config.yml")
@@ -39,6 +38,4 @@ class TestParams:
             self.keep_test_dbs = True
         if os.environ.get("TEST_DB_CONNECTIONS_PER_PROCESS") is not None:
             self.db_connections_per_process = int(os.environ["TEST_DB_CONNECTIONS_PER_PROCESS"])
-        if os.environ.get("TEST_PROCESSES") is not None:
-            self.test_processes = int(os.environ["TEST_PROCESSES"])
         self.test_config = os.environ.get("TEST_CONFIG", config_path)

@@ -10,7 +10,6 @@ async def test_stage1_validate_dict(source_db, db_params, pg_anon_runner):
         source_db,
         [
             f"--prepared-sens-dict-file={input_dict('validate.py')}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--output-dir={output_path('stage1')}",
             "--clear-output-dir",
@@ -33,7 +32,6 @@ async def test_stage2_validate_data_then_sync_data_restore(
         [
             f"--prepared-sens-dict-file={input_dict('validate.py')}",
             f"--output-dir={struct_out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -55,7 +53,6 @@ async def test_stage2_validate_data_then_sync_data_restore(
         source_db,
         [
             f"--prepared-sens-dict-file={input_dict('validate.py')}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--output-dir={out}",
             "--clear-output-dir",
@@ -87,7 +84,6 @@ async def test_stage3_validate_full_then_restore(
         source_db,
         [
             f"--prepared-sens-dict-file={input_dict('validate.py')}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--output-dir={out}",
             "--clear-output-dir",
@@ -118,7 +114,6 @@ async def test_sync_struct_with_stage3_flag(
         "sync-struct-dump",
         source_db,
         [
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--prepared-sens-dict-file={input_dict('validate.py')}",
             f"--output-dir={out}",

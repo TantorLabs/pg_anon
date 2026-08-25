@@ -1,4 +1,5 @@
 from pg_anon.cli import build_run_options
+from pg_anon.common.db_utils import require_anon_utils_db_schema
 from pg_anon.context import Context
 from pg_anon.modes.view_data import ViewDataMode
 from pg_anon.rest_api.constants import BASE_TEMP_DIR
@@ -54,14 +55,6 @@ class ViewDataRunner:
             "--json",
         )
 
-    def _prepare_verbosity_cli_params(self) -> None:
-        self.cli_params.extend(
-            [
-                "--verbose=debug",
-                "--debug",
-            ]
-        )
-
     def _prepare_cli_params(self) -> None:
         self.cli_params = ["view-data"]
         self._prepare_db_credentials_cli_params()
@@ -69,7 +62,6 @@ class ViewDataRunner:
         self._prepare_filters_cli_params()
         self._prepare_pagination_cli_params()
         self._prepare_json_cli_params()
-        self._prepare_verbosity_cli_params()
 
     def _init_context(self) -> None:
         options = build_run_options(self.cli_params)
@@ -96,6 +88,9 @@ class ViewDataRunner:
 
     async def run(self) -> ViewDataContent:
         """Execute the view-data operation and return formatted content."""
+        await require_anon_utils_db_schema(
+            connection_params=self.context.connection_params, server_settings=self.context.server_settings
+        )
         await self._executor.run()
         await self._executor.get_rows_count()
         return self._format_output()

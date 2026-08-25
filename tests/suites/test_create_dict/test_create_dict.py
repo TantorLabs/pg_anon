@@ -253,7 +253,6 @@ async def test_create_dict_then_dump_then_restore_pipeline(
         [
             f"--prepared-sens-dict-file={sens_out}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

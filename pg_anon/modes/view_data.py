@@ -1,6 +1,6 @@
 import json
 
-from prettytable import PrettyTable, SINGLE_BORDER
+from prettytable import PrettyTable, TableStyle
 
 from pg_anon.common.db_utils import create_connection, get_dump_query, get_fields_list, get_rows_count
 from pg_anon.common.errors import ErrorCode, PgAnonError
@@ -81,7 +81,7 @@ class ViewDataMode:
 
     def _prepare_table(self) -> None:
         self.table = PrettyTable(self.field_names)
-        self.table.set_style(SINGLE_BORDER)
+        self.table.set_style(TableStyle.SINGLE_BORDER)
         for row in self.data or []:
             self.table.add_row(row)
 

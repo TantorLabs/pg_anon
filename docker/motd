@@ -1,9 +1,0 @@
-=============================================
-# Documentation
-https://github.com/TantorLabs/pg_anon/blob/master/README.md
-=============================================
-python3 pg_anon.py --help
-
-# Run tests
-python3 tests/test_full.py -v
-=============================================

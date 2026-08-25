@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from prettytable import PrettyTable, SINGLE_BORDER
+from prettytable import PrettyTable, TableStyle
 
 from pg_anon.common.db_utils import get_scan_fields_list
 from pg_anon.common.dto import FieldInfo
@@ -233,7 +233,7 @@ class ViewFieldsMode:
             ],
             align="l",
         )
-        self.table.set_style(SINGLE_BORDER)
+        self.table.set_style(TableStyle.SINGLE_BORDER)
 
         for field in self.fields or []:
             self.table.add_row(

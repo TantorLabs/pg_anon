@@ -2,6 +2,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from pg_anon.common.enums import VerboseOptions
 from pg_anon.rest_api.enums import DumpMode, RestoreMode, ScanMode
 
 
@@ -50,6 +51,19 @@ class StatelessRunnerRequest(BaseModel):
     webhook_extra_headers: dict[str, str] | None = None
     webhook_verify_ssl: bool = True
     web_debug: bool = False
+    log_level: VerboseOptions | None = Field(
+        None, description="Log verbosity of the pg_anon run. Defaults to pg_anon's own default (info)."
+    )
+    conn_count: int | None = Field(None, description="Number of concurrent database connections.")
+    proc_conn_count: int | None = Field(None, description="Deprecated alias of conn_count.", deprecated=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_deprecated_aliases(cls, data: Any) -> Any:  # noqa: ANN401
+        """Accept the pre-1.11 field names, letting the current ones win when both are sent."""
+        if isinstance(data, dict) and data.get("conn_count") is None and data.get("proc_conn_count") is not None:
+            data["conn_count"] = data["proc_conn_count"]
+        return data
 
 
 class StatelessRunnerResponse(BaseModel):
@@ -87,8 +101,7 @@ class ScanRequest(StatelessRunnerRequest):
     need_no_sens_dict: bool = False
 
     depth: int | None = None
-    proc_count: int | None = None
-    proc_conn_count: int | None = None
+    proc_count: int | None = Field(None, description="Deprecated: has no effect.", deprecated=True)
     save_dicts: bool = False
 
 
@@ -111,8 +124,7 @@ class DumpRequest(StatelessRunnerRequest):
     pg_dump_path: str | None = None
     pg_dump_options: str | None = None
 
-    proc_count: int | None = None
-    proc_conn_count: int | None = None
+    proc_count: int | None = Field(None, description="Deprecated: has no effect.", deprecated=True)
     save_dicts: bool = False
     ignore_privileges: bool = False
 
@@ -155,7 +167,6 @@ class RestoreRequest(StatelessRunnerRequest):
     partial_tables_exclude_dict_contents: list[DictionaryContent] | None = None
     pg_restore_path: str | None = None
     pg_restore_options: str | None = None
-    proc_conn_count: int | None = None
     drop_custom_check_constr: bool = False
     clean_db: bool = False
     drop_db: bool = False

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SAVED_RUN_OPTIONS_FILE_NAME, SAVED_RUN_STATUS_FILE_NAME
-from pg_anon.common.db_utils import check_anon_utils_db_schema_exists, get_pg_version
+from pg_anon.common.constants import SAVED_RUN_OPTIONS_FILE_NAME, SAVED_RUN_STATUS_FILE_NAME
+from pg_anon.common.db_utils import get_pg_version, require_anon_utils_db_schema
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
@@ -80,15 +80,12 @@ class PgAnonApp:
             AnonMode.DUMP,
             AnonMode.SYNC_DATA_DUMP,
             AnonMode.SYNC_STRUCT_DUMP,
+            AnonMode.VIEW_FIELDS,
+            AnonMode.VIEW_DATA,
         ):
-            anon_utils_schema_exists = await check_anon_utils_db_schema_exists(
+            await require_anon_utils_db_schema(
                 connection_params=self.context.connection_params, server_settings=self.context.server_settings
             )
-            if not anon_utils_schema_exists:
-                raise PgAnonError(
-                    ErrorCode.SCHEMA_NOT_INITIALIZED,
-                    f"Schema '{ANON_UTILS_DB_SCHEMA_NAME}' does not exist. Please run init mode first.",
-                )
 
     def _get_mode(self) -> DumpMode | RestoreMode | InitMode | CreateDictMode | ViewFieldsMode | ViewDataMode:
         if self.context.options.mode in (AnonMode.DUMP, AnonMode.SYNC_DATA_DUMP, AnonMode.SYNC_STRUCT_DUMP):
@@ -112,7 +109,7 @@ class PgAnonApp:
         raise PgAnonError(ErrorCode.UNKNOWN_MODE, "Unknown mode: " + self.context.options.mode.value)
 
     async def run(self) -> PgAnonResult:
-        """Execute the anonymization pipeline and return the result."""
+        """Execute pipeline and return the result."""
         self._bootstrap()
         self.result.start(self.context.options)
         try:

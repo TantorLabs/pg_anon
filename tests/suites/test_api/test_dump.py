@@ -131,15 +131,114 @@ async def test_dump_ignore_privileges_pass_through(
         output_path=f"/dump_priv_{uuid_short()}",
         webhook_url=webhook_recorder.url,
         ignore_privileges=True,
-        proc_count=2,
         proc_conn_count=2,
     )
     resp = await api_client.post("/api/stateless/dump", json=body)
     assert resp.status == 201
     success = await _wait_success(webhook_recorder)
     assert success["run_options"]["ignore_privileges"] is True
-    assert success["run_options"]["processes"] == 2
     assert success["run_options"]["db_connections_per_process"] == 2
+
+
+async def test_dump_conn_count_replaces_proc_conn_count(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_conn_count_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+        conn_count=2,
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["db_connections_per_process"] == 2
+
+
+async def test_dump_deprecated_proc_conn_count_still_works(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_proc_conn_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+        proc_conn_count=3,
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["db_connections_per_process"] == 3
+
+
+async def test_dump_conn_count_wins_over_deprecated_name(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_conn_both_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+        conn_count=2,
+        proc_conn_count=5,
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["db_connections_per_process"] == 2
+
+
+async def test_dump_log_level_is_passed_through(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_loglevel_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+        log_level="error",
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["verbose"] == "error"
+
+
+async def test_dump_defaults_to_info_log_level(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_loglevel_default_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["verbose"] == "info"
+    assert success["run_options"]["debug"] is False
 
 
 async def test_dump_output_path_outside_storage_returns_400(

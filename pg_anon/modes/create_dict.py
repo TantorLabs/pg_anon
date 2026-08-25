@@ -806,11 +806,15 @@ class CreateDictMode:
             )
 
     async def _check_available_connections(self) -> None:
+        if self.context.options.disable_checks:
+            return
+
         connection = await create_connection(
             self.context.connection_params, server_settings=self.context.server_settings
         )
         try:
-            await check_required_connections(connection, self.context.options.db_connections_per_process)
+            # scan pool plus this connection
+            await check_required_connections(connection, self.context.options.db_connections_per_process + 1)
         finally:
             await connection.close()
 

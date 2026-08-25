@@ -113,7 +113,7 @@ class Context:
             },
             "data_func": (meta_dict_data or {}).get("data_func", {}),
             "data_sql_condition": (meta_dict_data or {}).get("data_sql_condition", []),
-            "sens_pg_types": (meta_dict_data or {}).get("sens_pg_types", SENS_PG_TYPES),
+            "sens_pg_types": (meta_dict_data or {}).get("sens_pg_types", []),
             "funcs": (meta_dict_data or {}).get("funcs", {}),
             "no_sens_dictionary": (meta_dict_data or {}).get("no_sens_dictionary", []),
         }
@@ -190,6 +190,9 @@ class Context:
             dict_data = read_dict_data_from_file(Path.cwd() / dict_file)
             if dict_data:
                 self._append_meta_dict(self._make_meta_dict(dict_data))
+
+        if not self.meta_dictionary_obj["sens_pg_types"]:
+            self.meta_dictionary_obj["sens_pg_types"] = list(SENS_PG_TYPES)
 
     def read_prepared_dict(self, save_dict_file_name_for_each_rule: bool = False) -> None:
         """Read prepared sensitive dictionary files into a merged object."""

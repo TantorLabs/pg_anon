@@ -13,7 +13,6 @@ async def test_dump_with_valid_pg_dump_options(source_db, db_params, pg_anon_run
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={output_path('valid_dump')}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--pg-dump-options=--no-comments --no-publications",
@@ -29,7 +28,6 @@ async def test_dump_with_invalid_pg_dump_options_fails(source_db, db_params, pg_
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={output_path('invalid_dump')}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--pg-dump-options=--non-existing-flag",
@@ -47,7 +45,6 @@ async def prepared_dump(source_db, db_params, pg_anon_runner):
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

@@ -1,12 +1,12 @@
-# 🛠️ Debug stages for anonymization process
+# 🛠️ Debug stages for the masking process
 
 > [🏠 Home](../README.md#-documentation-index) | [💾 Dump](operations/dump.md) | [📂 Restore](operations/restore.md) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
 
 ## Overview
 
-The debug stages allow you to test and troubleshoot the anonymization workflow without performing a full dump or restore, saving significant time and resources.
+The debug stages allow you to test and troubleshoot the masking workflow without performing a full dump or restore, saving significant time and resources.
 
-Each stage emulates a specific part of the anonymization pipeline:
+Each stage emulates a specific part of the masking pipeline:
 
 - **Stage 1 — Validate Dict**
 
@@ -14,13 +14,13 @@ Each stage emulates a specific part of the anonymization pipeline:
 
 - **Stage 2 — Validate Data**
 
-  Performs anonymization checks on real data with a limited sample (LIMIT 100) using a prepared database schema.
+  Performs masking checks on real data with a limited sample (LIMIT 100) using a prepared database schema.
 
 - **Stage 3 — Validate Full**:
   
-    Executes the full anonymization logic with data sampling (LIMIT 100), but without requiring a prepared database.
+    Executes the full masking logic with data sampling (LIMIT 100), but without requiring a prepared database.
 
-These stages help you quickly debug rules, anonymization functions, SQL conditions, and dictionary configuration before running a full anonymized dump/restore process.
+These stages help you quickly debug rules, masking functions, SQL conditions, and dictionary configuration before running a full dump/restore.
 
 ---
 
@@ -40,7 +40,6 @@ pg_anon dump \
     --output-dir=test_dbg_stages \
     --prepared-sens-dict-file=test_dbg_stages.py \
     --clear-output-dir \
-    --verbose=debug \
     --debug \
     --dbg-stage-1-validate-dict
 ```
@@ -49,11 +48,14 @@ pg_anon dump \
 ## Stage 2: Validate data
 
 Validate data, show the tables and run SQL queries with data export and limit 100 in prepared database.
-This stage requires database with all structure with only pre-data condition, which described in --prepared-sens-dict-file.
+This stage requires a target database that already holds the source structure, and only its
+pre-data part: tables without indexes, constraints and triggers. pg_anon loads data with
+`session_replication_role = 'replica'`, so a fully built target would accept the truncated
+sample without error and end up holding rows its own foreign keys do not allow.
 
-
-
-- If you want to create the database with required structure, just run:
+One way to prepare such a database quickly is a structure dump with
+`--dbg-stage-3-validate-full`: the flag drops the post-data section.
+[Stage 3](#stage-3-validate-full) below uses the same flag on its own.
 
 One-time structure dump:
 
@@ -66,7 +68,6 @@ pg_anon sync-struct-dump \
     --output-dir=test_stage_2 \
     --prepared-sens-dict-file=test_dbg_stages.py \
     --clear-output-dir \
-    --verbose=debug \
     --debug \
     --dbg-stage-3-validate-full
 ```
@@ -82,7 +83,6 @@ pg_anon sync-struct-restore \
     --db-user-password=postgres \
     --db-name=test_target_db_7 \
     --input-dir=test_stage_2 \
-    --verbose=debug \
     --debug
 ```
 
@@ -99,7 +99,6 @@ pg_anon dump \
     --output-dir=test_dbg_stages \
     --prepared-sens-dict-file=test_dbg_stages.py \
     --clear-output-dir \
-    --verbose=debug \
     --debug \
     --dbg-stage-2-validate-data
 ```
@@ -113,11 +112,10 @@ pg_anon sync-data-restore \
     --db-user-password=postgres \
     --db-name=test_target_db_7 \
     --input-dir=test_dbg_stages \
-    --verbose=debug \
     --debug
 
 # And for example view all data in every table:
-su - postgres -c "psql -U postgres -d test_target_db_7 -c \"SELECT * FROM public.contracts\""
+su - postgres -c "psql -U postgres -d test_target_db_7 -c \"SELECT * FROM <schema>.<table>\""
 ```
 ---
 
@@ -143,7 +141,6 @@ pg_anon dump \
     --output-dir=test_dbg_stages \
     --prepared-sens-dict-file=test_dbg_stages.py \
     --clear-output-dir \
-    --verbose=debug \
     --debug \
     --dbg-stage-3-validate-full
 ```
@@ -157,9 +154,8 @@ pg_anon restore \
     --db-user-password=postgres \
     --db-name=test_target_db_8 \
     --input-dir=test_dbg_stages \
-    --verbose=debug \
     --debug
 
 # And for example view all data in every table:
-su - postgres -c "psql -U postgres -d test_target_db_8 -c \"SELECT * FROM public.contracts\""
+su - postgres -c "psql -U postgres -d test_target_db_8 -c \"SELECT * FROM <schema>.<table>\""
 ```

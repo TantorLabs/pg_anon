@@ -1,12 +1,41 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pg_anon"
-version = "1.10.3"
-description = "PostgreSQL anonymization tool."
+version = "1.11.0"
+description = "Data masking tool for PostgreSQL."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name="Tantor Labs", email="tantor@tantorlabs.ru"}
 ]
-readme = "README.md"
 requires-python = ">=3.11"
+keywords = ["postgresql", "anonymization", "masking"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: SQL",
+    "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
 dependencies=[
     "aioprocessing>=2.0.1,<3.0",
     "asyncpg>=0.29,<1.0",
@@ -23,16 +52,21 @@ api = [
 ]
 dev = [
     "build>=1.0",
+    "twine>=5.0",
     "ruff>=0.15",
     "mypy>=1.19",
     "pydantic",
     "pytest>=9.0.2,<10.0",
     "pytest-asyncio>=1.3,<2.0",
+    # starlette.testclient warns when it falls back from httpx2 to httpx.
+    "httpx2>=2.11",
 ]
 
-[build-system]
-requires = ["setuptools>=78"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+Homepage = "https://github.com/TantorLabs/pg_anon"
+Changelog = "https://github.com/TantorLabs/pg_anon/releases"
+Issues = "https://github.com/TantorLabs/pg_anon/issues"
+
 
 [project.scripts]
 pg_anon = "pg_anon.__main__:main"
@@ -44,7 +78,7 @@ packages.find.include = ["pg_anon", "pg_anon.*"]
 packages.find.exclude = ["tests"]
 
 [tool.setuptools.package-data]
-pg_anon = ["init.sql"]
+pg_anon = ["init.sql", "py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -56,6 +90,7 @@ norecursedirs = ["input_dict", "expected", "output", "output_dict"]
 addopts = "-m 'not stress'"
 markers = [
     "stress: slow, resource-heavy stress tests; excluded by default, run with `-m stress`",
+    "packaging: distribution/metadata checks; need no PostgreSQL, run with `-m packaging`",
 ]
 
 [tool.ruff]
@@ -65,6 +100,9 @@ target-version = "py311"
 output-format = "full"
 extend-exclude = [
     ".idea",
+    # ruff 0.16+ formats Python blocks inside Markdown, reflowing the documentation examples
+    "*.md",
+    "demo/meta_dict.py",
     "tests/suites/*/expected/",
     "tests/suites/*/input_dict/",
     "tests/suites/*/output_dict/",

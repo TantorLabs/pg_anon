@@ -21,7 +21,6 @@ async def _dump(pg_anon_runner, db_params, source_db, out_dir):
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out_dir}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

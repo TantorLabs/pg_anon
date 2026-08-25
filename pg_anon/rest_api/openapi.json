@@ -187,6 +187,141 @@
         }
       }
     },
+    "/api/stateless/preview": {
+      "post": {
+        "tags": [
+          "Stateless | Preview"
+        ],
+        "summary": "Render preview rules by fields",
+        "description": "Rendering of preview rules by fields",
+        "operationId": "stateless_preview_schemas_api_stateless_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewSchemasRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewSchemasResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stateless/preview/{schema}": {
+      "post": {
+        "tags": [
+          "Stateless | Preview"
+        ],
+        "summary": "Preview rules by fields",
+        "description": "Rendering of preview rules by fields",
+        "operationId": "stateless_preview_schema_tables_api_stateless_preview__schema__post",
+        "parameters": [
+          {
+            "name": "schema",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Schema"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewSchemaTablesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewSchemaTablesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stateless/view-data": {
       "post": {
         "tags": [
@@ -307,59 +442,6 @@
             }
           }
         }
-      },
-      "delete": {
-        "tags": [
-          "Stateless"
-        ],
-        "summary": "[DEPRICATED] Delete dump",
-        "description": "Delete dump. Will be removed in pg_anon 1.9",
-        "operationId": "dump_operation_delete_api_stateless_dump_delete",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DumpDeleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/stateless/restore": {
@@ -428,6 +510,7 @@
           "Operations"
         ],
         "summary": "List of operations",
+        "description": "List saved operations, optionally filtered by date range.",
         "operationId": "stateless_operations_list_operation_get",
         "parameters": [
           {
@@ -503,6 +586,7 @@
           "Operations"
         ],
         "summary": "Operation details",
+        "description": "Return detailed information about a specific operation run.",
         "operationId": "stateless_operation_data_operation__internal_operation_id__get",
         "parameters": [
           {
@@ -521,7 +605,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationDataResponse"
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Stateless Operation Data Operation  Internal Operation Id  Get"
                 }
               }
             }
@@ -602,6 +688,7 @@
           "Operations"
         ],
         "summary": "Logs of operation",
+        "description": "Return the tail of log files for a specific operation.",
         "operationId": "stateless_operation_logs_operation__internal_operation_id__logs_get",
         "parameters": [
           {
@@ -661,6 +748,7 @@
           "Handbooks"
         ],
         "summary": "List of task statuses",
+        "description": "Return the list of available task statuses.",
         "operationId": "task_statuses_handbook_task_statuses_get",
         "responses": {
           "200": {
@@ -686,6 +774,7 @@
           "Handbooks"
         ],
         "summary": "List of dump types",
+        "description": "Return the list of available dump types.",
         "operationId": "dump_types_handbook_dump_types_get",
         "responses": {
           "200": {
@@ -711,6 +800,7 @@
           "Handbooks"
         ],
         "summary": "List of restore types",
+        "description": "Return the list of available restore types.",
         "operationId": "restore_types_handbook_restore_types_get",
         "responses": {
           "200": {
@@ -736,6 +826,7 @@
           "Handbooks"
         ],
         "summary": "List of scan types",
+        "description": "Return the list of available scan types.",
         "operationId": "scan_types_handbook_scan_types_get",
         "responses": {
           "200": {
@@ -844,30 +935,6 @@
         ],
         "title": "DictionaryMetadata"
       },
-      "DumpDeleteRequest": {
-        "properties": {
-          "path": {
-            "type": "string",
-            "title": "Path"
-          },
-          "validated_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Validated Path"
-          }
-        },
-        "type": "object",
-        "required": [
-          "path"
-        ],
-        "title": "DumpDeleteRequest"
-      },
       "DumpMode": {
         "type": "string",
         "enum": [
@@ -914,28 +981,50 @@
             "title": "Webhook Extra Headers"
           },
           "webhook_verify_ssl": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "boolean",
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "save_dicts": {
+          "web_debug": {
+            "type": "boolean",
+            "title": "Web Debug",
+            "default": false
+          },
+          "log_level": {
             "anyOf": [
               {
-                "type": "boolean"
+                "$ref": "#/components/schemas/VerboseOptions"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Save Dicts",
-            "default": false
+            "description": "Log verbosity of the pg_anon run. Defaults to pg_anon's own default (info)."
+          },
+          "conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conn Count",
+            "description": "Number of concurrent database connections."
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count",
+            "description": "Deprecated alias of conn_count.",
+            "deprecated": true
           },
           "type": {
             "$ref": "#/components/schemas/DumpMode"
@@ -1001,10 +1090,16 @@
             ],
             "title": "Pg Dump Path"
           },
-          "ignore_privileges": {
-            "type": "boolean",
-            "title": "Ignore Privileges",
-            "default": false
+          "pg_dump_options": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pg Dump Options"
           },
           "proc_count": {
             "anyOf": [
@@ -1015,18 +1110,19 @@
                 "type": "null"
               }
             ],
-            "title": "Proc Count"
+            "title": "Proc Count",
+            "description": "Deprecated: has no effect.",
+            "deprecated": true
           },
-          "proc_conn_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proc Conn Count"
+          "save_dicts": {
+            "type": "boolean",
+            "title": "Save Dicts",
+            "default": false
+          },
+          "ignore_privileges": {
+            "type": "boolean",
+            "title": "Ignore Privileges",
+            "default": false
           }
         },
         "type": "object",
@@ -1045,21 +1141,20 @@
           "title": {
             "type": "string",
             "title": "Title"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
           }
         },
         "type": "object",
         "required": [
-          "title",
-          "slug"
+          "title"
         ],
         "title": "DumpType"
       },
       "ErrorResponse": {
         "properties": {
+          "error_code": {
+            "type": "string",
+            "title": "Error Code"
+          },
           "message": {
             "type": "string",
             "title": "Message"
@@ -1067,6 +1162,7 @@
         },
         "type": "object",
         "required": [
+          "error_code",
           "message"
         ],
         "title": "ErrorResponse"
@@ -1084,43 +1180,209 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "OperationDataResponse": {
+      "PreviewFieldContent": {
         "properties": {
-          "run_status": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Run Status"
+          "field_name": {
+            "type": "string",
+            "title": "Field Name"
           },
-          "run_options": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Run Options"
+          "type": {
+            "type": "string",
+            "title": "Type"
           },
-          "dictionaries": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Dictionaries"
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive",
+            "default": false
           },
-          "extra_data": {
+          "rule": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Extra Data"
+            "title": "Rule"
           }
         },
         "type": "object",
         "required": [
-          "run_status",
-          "run_options",
-          "dictionaries"
+          "field_name",
+          "type"
         ],
-        "title": "OperationDataResponse"
+        "title": "PreviewFieldContent"
+      },
+      "PreviewSchemaTablesRequest": {
+        "properties": {
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "sens_dict_contents": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryContent"
+            },
+            "type": "array",
+            "title": "Sens Dict Contents"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 20
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset",
+            "default": 0
+          },
+          "table_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Filter"
+          },
+          "view_only_sensitive_tables": {
+            "type": "boolean",
+            "title": "View Only Sensitive Tables",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_connection_params",
+          "sens_dict_contents"
+        ],
+        "title": "PreviewSchemaTablesRequest"
+      },
+      "PreviewSchemaTablesResponse": {
+        "properties": {
+          "status_id": {
+            "type": "integer",
+            "title": "Status Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PreviewTableContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_id",
+          "status"
+        ],
+        "title": "PreviewSchemaTablesResponse"
+      },
+      "PreviewSchemasRequest": {
+        "properties": {
+          "db_connection_params": {
+            "$ref": "#/components/schemas/DbConnectionParams"
+          },
+          "schema_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Filter"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_connection_params"
+        ],
+        "title": "PreviewSchemasRequest"
+      },
+      "PreviewSchemasResponse": {
+        "properties": {
+          "status_id": {
+            "type": "integer",
+            "title": "Status Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_id",
+          "status"
+        ],
+        "title": "PreviewSchemasResponse"
+      },
+      "PreviewTableContent": {
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "title": "Table Name"
+          },
+          "is_sensitive": {
+            "type": "boolean",
+            "title": "Is Sensitive"
+          },
+          "is_excluded": {
+            "type": "boolean",
+            "title": "Is Excluded"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PreviewFieldContent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "table_name",
+          "is_sensitive",
+          "is_excluded"
+        ],
+        "title": "PreviewTableContent"
       },
       "RestoreMode": {
         "type": "string",
@@ -1168,28 +1430,50 @@
             "title": "Webhook Extra Headers"
           },
           "webhook_verify_ssl": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "boolean",
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "save_dicts": {
+          "web_debug": {
+            "type": "boolean",
+            "title": "Web Debug",
+            "default": false
+          },
+          "log_level": {
             "anyOf": [
               {
-                "type": "boolean"
+                "$ref": "#/components/schemas/VerboseOptions"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Save Dicts",
-            "default": false
+            "description": "Log verbosity of the pg_anon run. Defaults to pg_anon's own default (info)."
+          },
+          "conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conn Count",
+            "description": "Number of concurrent database connections."
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count",
+            "description": "Deprecated alias of conn_count.",
+            "deprecated": true
           },
           "type": {
             "$ref": "#/components/schemas/RestoreMode"
@@ -1248,16 +1532,16 @@
             ],
             "title": "Pg Restore Path"
           },
-          "proc_conn_count": {
+          "pg_restore_options": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Proc Conn Count"
+            "title": "Pg Restore Options"
           },
           "drop_custom_check_constr": {
             "type": "boolean",
@@ -1272,6 +1556,11 @@
           "drop_db": {
             "type": "boolean",
             "title": "Drop Db",
+            "default": false
+          },
+          "save_dicts": {
+            "type": "boolean",
+            "title": "Save Dicts",
             "default": false
           },
           "ignore_privileges": {
@@ -1295,16 +1584,11 @@
           "title": {
             "type": "string",
             "title": "Title"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
           }
         },
         "type": "object",
         "required": [
-          "title",
-          "slug"
+          "title"
         ],
         "title": "RestoreType"
       },
@@ -1353,28 +1637,50 @@
             "title": "Webhook Extra Headers"
           },
           "webhook_verify_ssl": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "boolean",
             "title": "Webhook Verify Ssl",
             "default": true
           },
-          "save_dicts": {
+          "web_debug": {
+            "type": "boolean",
+            "title": "Web Debug",
+            "default": false
+          },
+          "log_level": {
             "anyOf": [
               {
-                "type": "boolean"
+                "$ref": "#/components/schemas/VerboseOptions"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Save Dicts",
-            "default": false
+            "description": "Log verbosity of the pg_anon run. Defaults to pg_anon's own default (info)."
+          },
+          "conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conn Count",
+            "description": "Number of concurrent database connections."
+          },
+          "proc_conn_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proc Conn Count",
+            "description": "Deprecated alias of conn_count.",
+            "deprecated": true
           },
           "type": {
             "$ref": "#/components/schemas/ScanMode"
@@ -1425,18 +1731,14 @@
                 "type": "null"
               }
             ],
-            "title": "Proc Count"
+            "title": "Proc Count",
+            "description": "Deprecated: has no effect.",
+            "deprecated": true
           },
-          "proc_conn_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proc Conn Count"
+          "save_dicts": {
+            "type": "boolean",
+            "title": "Save Dicts",
+            "default": false
           }
         },
         "type": "object",
@@ -1454,16 +1756,11 @@
           "title": {
             "type": "string",
             "title": "Title"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
           }
         },
         "type": "object",
         "required": [
-          "title",
-          "slug"
+          "title"
         ],
         "title": "ScanType"
       },
@@ -1476,17 +1773,12 @@
           "title": {
             "type": "string",
             "title": "Title"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "title",
-          "slug"
+          "title"
         ],
         "title": "TaskStatus"
       },
@@ -1513,6 +1805,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -1522,6 +1821,15 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerboseOptions": {
+        "type": "string",
+        "enum": [
+          "info",
+          "debug",
+          "error"
+        ],
+        "title": "VerboseOptions"
       },
       "ViewDataContent": {
         "properties": {
@@ -1764,6 +2072,17 @@
               }
             ],
             "title": "Fields Limit Count"
+          },
+          "orm_dict_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orm Dict Content"
           }
         },
         "type": "object",

@@ -38,7 +38,6 @@ async def test_db_passfile_authenticates_dump(
         f"--db-passfile={passfile}",
         f"--prepared-sens-dict-file={input_dict('empty.py')}",
         f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
         f"--db-connections-per-process={db_params.db_connections_per_process}",
         "--clear-output-dir",
     ]
@@ -59,7 +58,6 @@ async def test_pgpassword_env_var_authenticates_dump(
     args = _common_args(db_params, source_db, mode="dump") + [
         f"--prepared-sens-dict-file={input_dict('empty.py')}",
         f"--output-dir={out}",
-        f"--processes={db_params.test_processes}",
         f"--db-connections-per-process={db_params.db_connections_per_process}",
         "--clear-output-dir",
     ]
@@ -85,7 +83,6 @@ async def test_ignore_privileges_strips_grants_on_target(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--ignore-privileges",
@@ -156,7 +153,6 @@ async def test_seq_init_by_max_value_resets_sequences(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

@@ -137,7 +137,7 @@ async def stateless_scan_start(request: ScanRequest, background_tasks: Backgroun
     },
 )
 async def stateless_view_fields(request: ViewFieldsRequest) -> ViewFieldsResponse:
-    """Render a preview of anonymization rules by database fields."""
+    """Render a preview of masking rules by database fields."""
     runner = ViewFieldsRunner(request)
     data = await runner.run()
 
@@ -197,7 +197,7 @@ async def stateless_preview_schema_tables(
     },
 )
 async def stateless_view_data(request: ViewDataRequest) -> ViewDataResponse:
-    """Render a preview of anonymized data for a given table."""
+    """Render a preview of masked data for a given table."""
     runner = ViewDataRunner(request)
     data = await runner.run()
 
@@ -308,7 +308,7 @@ async def stateless_operation_data(operation_run_dir: Annotated[Path, Depends(ge
 
     if not (saved_dicts_info_file_path.exists() and run_options_file_path.exists() and run_status_file_path.exists()):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Operation run directory have a wrong structure",
         )
 

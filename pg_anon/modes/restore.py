@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import json
-import os
 import re
 import shlex
 import shutil
@@ -20,15 +19,16 @@ from pg_anon.common.db_utils import (
     create_pool,
     get_available_extensions_map,
     get_available_schemas,
+    get_invalid_partitioned_indexes,
     run_query_in_pool,
 )
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
+    build_pg_util_env,
     get_major_version,
     get_pg_util_version,
-    pretty_size,
     resolve_dependencies,
     save_dicts_info_file,
 )
@@ -60,6 +60,10 @@ class RestoreMode:
     _toc_list_pre_data_file_path: Path | None = None
     _toc_list_post_data_file_name: str = "toc_post_data_filtered.list"
     _toc_list_post_data_file_path: Path | None = None
+    _toc_list_post_data_head_file_name: str = "toc_post_data_head.list"
+    _toc_list_post_data_head_file_path: Path | None = None
+    _toc_list_post_data_tail_file_name: str = "toc_post_data_tail.list"
+    _toc_list_post_data_tail_file_path: Path | None = None
 
     _db_must_be_empty: bool
     _skip_pre_data_restore: bool = False
@@ -181,30 +185,6 @@ class RestoreMode:
             f"Target DB has {len(sorted_extras)} table(s) not present in the dump: {preview}. "
             "--clean-db would leave them untouched — aborting to avoid silent data loss.",
         )
-
-    async def _check_free_disk_space(self, connection: Connection) -> None:
-        data_directory_location: str | None = await connection.fetchval(
-            """
-            SELECT setting
-            FROM pg_settings
-            WHERE name = 'data_directory'
-            """
-        )
-        if not data_directory_location:
-            raise PgAnonError(ErrorCode.INVALID_CONFIG, "Could not determine data_directory from pg_settings")
-        disk_size = shutil.disk_usage(data_directory_location)
-        total_tables_size = int(self.metadata.total_tables_size or 0)
-        free_disk_space = pretty_size(disk_size.free)
-        required_disk_space = pretty_size(int(total_tables_size * 1.5))
-
-        self.context.logger.info("Free disk space: %s", free_disk_space)
-        self.context.logger.info("Required disk space: %s", required_disk_space)
-
-        if disk_size.free < total_tables_size * 1.5:
-            raise PgAnonError(
-                ErrorCode.INSUFFICIENT_DISK_SPACE,
-                f"Not enough freed disk space! Free {free_disk_space}, Required {required_disk_space}",
-            )
 
     def _make_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
         whitelist: list[re.Pattern[str]] = []
@@ -396,15 +376,17 @@ class RestoreMode:
             self._toc_list_pre_data_file_path.unlink(missing_ok=True)
         if self._toc_list_post_data_file_path:
             self._toc_list_post_data_file_path.unlink(missing_ok=True)
+        if self._toc_list_post_data_head_file_path:
+            self._toc_list_post_data_head_file_path.unlink(missing_ok=True)
+        if self._toc_list_post_data_tail_file_path:
+            self._toc_list_post_data_tail_file_path.unlink(missing_ok=True)
 
     def _make_pg_restore_env(self) -> dict[str, str]:
         # LC_ALL=C is required so we can parse "from TOC entry NNN" markers from stderr
         # regardless of the system locale (default would localize pg_restore messages).
-        env = os.environ.copy()
+        env = build_pg_util_env(self.context.options)
         env["LC_ALL"] = "C"
         env["LC_MESSAGES"] = "C"
-        if self.context.options.db_user_password:
-            env["PGPASSWORD"] = self.context.options.db_user_password
         return env
 
     def _build_pg_restore_command(
@@ -496,12 +478,50 @@ class RestoreMode:
         retry_toc.write_text("\n".join(matching) + "\n", encoding="utf-8")
         return retry_toc
 
-    async def _run_pg_restore(self, section: str) -> None:
-        if self.context.options.db_user_password:
-            os.environ["PGPASSWORD"] = self.context.options.db_user_password
+    def _split_post_data_segments(self, section: str) -> list[tuple[Path | None, int]]:
+        """Split post-data into a parallel head and a serial tail starting at the first INDEX ATTACH.
 
+        Attaching partitioned indexes concurrently can leave the parent index invalid, so
+        everything from the first INDEX ATTACH onwards runs single-threaded.
+        """
         parallelism = self.context.options.db_connections_per_process
-        command = self._build_pg_restore_command(section, parallelism=parallelism)
+        if section != "post-data":
+            return [(None, parallelism)]
+
+        toc_path = self._toc_list_post_data_file_path
+        if toc_path is None or not Path(toc_path).exists():
+            return [(None, parallelism)]
+
+        lines = Path(toc_path).read_text(encoding="utf-8").splitlines()
+        first = next((i for i, line in enumerate(lines) if "INDEX ATTACH" in line), None)
+        if first is None or first == 0:
+            return [(None, parallelism)]
+
+        head_lines, tail_lines = lines[:first], lines[first:]
+        if len(head_lines) + len(tail_lines) != len(lines):
+            self.context.logger.warning("TOC split lost lines, falling back to a single pass")
+            return [(None, parallelism)]
+
+        self._toc_list_post_data_head_file_path = self.input_dir / self._toc_list_post_data_head_file_name
+        self._toc_list_post_data_head_file_path.write_text("\n".join(head_lines) + "\n", encoding="utf-8")
+
+        self._toc_list_post_data_tail_file_path = self.input_dir / self._toc_list_post_data_tail_file_name
+        self._toc_list_post_data_tail_file_path.write_text("\n".join(tail_lines) + "\n", encoding="utf-8")
+
+        self.context.logger.info(
+            "post-data split: head %d lines (-j %d), tail %d lines (-j 1)",
+            len(head_lines),
+            parallelism,
+            len(tail_lines),
+        )
+        return [(self._toc_list_post_data_head_file_path, parallelism), (self._toc_list_post_data_tail_file_path, 1)]
+
+    async def _run_pg_restore(self, section: str) -> None:
+        for toc_override, parallelism in self._split_post_data_segments(section):
+            await self._run_pg_restore_segment(section, parallelism, toc_override)
+
+    async def _run_pg_restore_segment(self, section: str, parallelism: int, toc_override: Path | None = None) -> None:
+        command = self._build_pg_restore_command(section, parallelism=parallelism, toc_override=toc_override)
 
         self.context.logger.debug(str(command))
         stderr_text, returncode = self._invoke_pg_restore(command)
@@ -775,11 +795,6 @@ class RestoreMode:
             query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
             await connection.execute(query)
 
-    @staticmethod
-    def _extract_file(src_path: Path, dst_path: Path) -> None:
-        with gzip.open(src_path, "rb") as src_file, dst_path.open("wb") as trg_file:
-            shutil.copyfileobj(src_file, trg_file, length=1024 * 1024)
-
     async def _restore_table_data(
         self,
         pool: asyncpg.Pool,
@@ -789,9 +804,6 @@ class RestoreMode:
         transaction_snapshot_id: str,
     ) -> None:
         self.context.logger.info("%s Started task copy_to_table %s.%s", ">" * 20, schema_name, table_name)
-        extracted_file = dump_file.with_suffix("")
-
-        await asyncio.to_thread(self._extract_file, dump_file, extracted_file)
 
         try:
             async with pool.acquire() as connection:
@@ -799,25 +811,38 @@ class RestoreMode:
                     await connection.execute(f"SET TRANSACTION SNAPSHOT '{transaction_snapshot_id}';")
                     await connection.execute("SET LOCAL session_replication_role = 'replica';")
 
-                    result = await connection.copy_to_table(
-                        schema_name=schema_name,
-                        table_name=table_name,
-                        source=extracted_file,
-                        format="binary",
-                    )
+                    with gzip.open(dump_file, "rb") as source_file:
+                        result = await connection.copy_to_table(
+                            schema_name=schema_name,
+                            table_name=table_name,
+                            source=source_file,
+                            format="binary",
+                        )
+
                     self.context.total_rows += int(re.findall(r"(\d+)", result)[0])
                     await connection.execute("COMMIT;")
-        except Exception:
+        except Exception as exc:
             self.context.logger.exception(
-                "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s extracted_file=%s",
+                "Exception in RestoreMode._restore_table_data: schema_name=%s table_name=%s dump_file=%s",
                 schema_name,
                 table_name,
-                extracted_file,
+                dump_file,
             )
-        finally:
-            extracted_file.unlink()
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, f"Can't restore data into {schema_name}.{table_name}") from exc
 
         self.context.logger.info("%s Finished task %s.%s", ">" * 20, schema_name, table_name)
+
+    @staticmethod
+    def _raise_first_task_exception(done: set[asyncio.Task], pending: set[asyncio.Task]) -> None:
+        """Re-raise the first task failure, cancelling the tasks still in flight."""
+        for task in done:
+            exception = task.exception()
+            if exception is None:
+                continue
+
+            for pending_task in pending:
+                pending_task.cancel()
+            raise exception
 
     async def _process_restore_data(self, transaction_snapshot_id: str) -> None:
         pool = await create_pool(
@@ -853,10 +878,7 @@ class RestoreMode:
                 if len(tasks) >= self.context.options.db_connections_per_process:
                     # Wait for some restore to finish before adding a new one
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                    exception = done.pop().exception()
-                    if exception is not None:
-                        await pool.close()
-                        raise exception
+                    self._raise_first_task_exception(done, pending=tasks)
                 tasks.add(
                     loop.create_task(
                         self._restore_table_data(
@@ -870,8 +892,9 @@ class RestoreMode:
                 )
 
             # Wait for the remaining restores to finish
-            if tasks:
-                await asyncio.wait(tasks)
+            while tasks:
+                done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                self._raise_first_task_exception(done, pending=tasks)
         finally:
             await pool.close()
 
@@ -927,6 +950,20 @@ class RestoreMode:
         self.context.logger.info("-------------> Started restore post-data (pg_restore)")
         await self._run_pg_restore("post-data")
         self.context.logger.info("<------------- Finished restore post-data (pg_restore)")
+
+    async def _check_partitioned_indexes(self, connection: Connection) -> None:
+        """Fail when the restore left a partitioned index invalid."""
+        invalid_indexes = await get_invalid_partitioned_indexes(connection)
+        if not invalid_indexes:
+            return
+
+        msg = (
+            f"restore left {len(invalid_indexes)} invalid partitioned index(es): "
+            f"{', '.join(invalid_indexes)}. They are ignored by the planner and cannot be "
+            f"referenced by foreign keys."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.RESTORE_FAILED, msg)
 
     async def _drop_database(self) -> None:
         if not self.context.options.drop_db:
@@ -1003,19 +1040,22 @@ class RestoreMode:
         queries = self._generate_analyze_queries()
         loop = asyncio.get_event_loop()
         tasks: set[asyncio.Task[None]] = set()
-        for query in queries:
-            if len(tasks) >= self.context.options.db_connections_per_process:
+
+        try:
+            for query in queries:
+                if len(tasks) >= self.context.options.db_connections_per_process:
+                    done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    self._raise_first_task_exception(done, pending=tasks)
+
+                tasks.add(loop.create_task(run_query_in_pool(pool, query)))
+
+            # Wait for the remaining queries to finish
+            while tasks:
                 done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                exception = done.pop().exception()
-                if exception is not None:
-                    await pool.close()
-                    raise exception
+                self._raise_first_task_exception(done, pending=tasks)
+        finally:
+            await pool.close()
 
-            tasks.add(loop.create_task(run_query_in_pool(pool, query)))
-
-        # Wait for the remaining queries to finish
-        await asyncio.wait(tasks)
-        await pool.close()
         self.context.logger.info("<------------- Finished analyze")
 
     @staticmethod
@@ -1023,11 +1063,7 @@ class RestoreMode:
         """Validate the restored data against the source database."""
         context.logger.info("-------------> Started validate_restore")
 
-        try:
-            context.read_prepared_dict()
-        except Exception:
-            context.logger.exception("Failed to read prepared dict")
-            return
+        context.read_prepared_dict()
 
         if "validate_tables" in context.prepared_dictionary_obj:
             connection = await create_connection(context.connection_params, server_settings=context.server_settings)
@@ -1085,7 +1121,9 @@ class RestoreMode:
                 self.context.connection_params, server_settings=self.context.server_settings
             )
 
-            await check_required_connections(connection, self.context.options.db_connections_per_process)
+            if not self.context.options.disable_checks:
+                # pg_restore -j N uses N workers and a control connection, alongside this one
+                await check_required_connections(connection, self.context.options.db_connections_per_process + 2)
 
             await self._check_db_is_empty(connection)
             await self._check_no_extra_tables_in_target(connection)
@@ -1105,6 +1143,7 @@ class RestoreMode:
             await self._restore_data(connection)
 
             await self._restore_post_data()
+            await self._check_partitioned_indexes(connection)
             await self._sequences_init(connection)
 
             await self.run_analyze()

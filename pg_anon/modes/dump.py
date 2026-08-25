@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import hashlib
-import os
 import re
 import shlex
 import shutil
@@ -13,7 +12,7 @@ from typing import Any
 
 from asyncpg import Connection, Pool
 
-from pg_anon.common.db_queries import get_relation_size_query, get_sequences_query
+from pg_anon.common.db_queries import get_sequences_query
 from pg_anon.common.db_utils import (
     check_required_connections,
     create_connection,
@@ -42,7 +41,13 @@ from pg_anon.common.db_utils import (
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import get_dict_rule_for_table, get_pg_util_version, safe_compile, save_dicts_info_file
+from pg_anon.common.utils import (
+    build_pg_util_env,
+    get_dict_rule_for_table,
+    get_pg_util_version,
+    safe_compile,
+    save_dicts_info_file,
+)
 from pg_anon.context import Context
 
 
@@ -57,7 +62,6 @@ class DumpMode:
         self._data_dump_files: dict[str, dict[str, Any]] = {}
         self._data_dump_tasks_results: dict[str, int] = {}
 
-        self._total_tables_size: int = 0
         self._total_rows: int = 0
 
         self._schemas: list[str] = []
@@ -73,9 +77,6 @@ class DumpMode:
         self._all_db_schemas: list[str] = []
         self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
         self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
-
-        if self.context.options.db_user_password:
-            os.environ["PGPASSWORD"] = self.context.options.db_user_password
 
         if not self.context.options.output_dir:
             if not self.context.options.prepared_sens_dict_files:
@@ -141,17 +142,13 @@ class DumpMode:
         """Check whether the output directory is empty."""
         return not any(self.output_dir.iterdir())
 
-    async def _count_totals(self, connection: Connection) -> None:
+    def _count_totals(self) -> None:
         for query, file_key in zip(self._data_dump_queries, self._data_dump_files, strict=True):
             file = self._data_dump_files[file_key]
 
             result_key = hashlib.sha256(query.encode()).hexdigest()
             file.update({"rows": self._data_dump_tasks_results[result_key]})
 
-            schema = file["schema"].replace("'", "''")
-            table = file["table"].replace("'", "''")
-
-            self._total_tables_size += await connection.fetchval(get_relation_size_query(schema=schema, table=table))
             self._total_rows += int(file["rows"])
 
     async def _prepare_sequences_last_values(self, connection: Connection) -> None:
@@ -270,7 +267,6 @@ class DumpMode:
             self.metadata.indexes = self._indexes
             self.metadata.constraints = self._constraints
 
-            self.metadata.total_tables_size = self._total_tables_size
             self.metadata.total_rows = self._total_rows
 
             self.metadata.db_size = await get_db_size(
@@ -349,7 +345,12 @@ class DumpMode:
 
         command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=build_pg_util_env(self.context.options),
+        )
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
         # pg_dump put logs into stderr
         _, pg_dump_logs_bytes = proc.communicate()
@@ -363,42 +364,20 @@ class DumpMode:
             self.context.logger.error(msg)
             raise PgAnonError(ErrorCode.DUMP_FAILED, msg)
 
-    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_name: str | Path) -> str:
+    async def _dump_data_into_file(self, db_conn: Connection, query: str, file_path: Path) -> str:
         try:
             if self.context.options.dbg_stage_1_validate_dict:
                 return await db_conn.execute(query)
 
-            return await db_conn.copy_from_query(
-                query=query,
-                output=file_name,
-                format="binary",
-            )
+            with gzip.open(file_path, "wb", compresslevel=1) as output_file:
+                return await db_conn.copy_from_query(
+                    query=query,
+                    output=output_file,
+                    format="binary",
+                )
         except Exception:
             self.context.logger.exception("Exception in _dump_data_into_file")
             raise
-
-    async def compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
-        """Compress the specified file asynchronously."""
-        await asyncio.to_thread(
-            self._compress_file,
-            file_path,
-            remove_origin_file_after_compress=remove_origin_file_after_compress,
-        )
-
-    def _compress_file(self, file_path: Path, remove_origin_file_after_compress: bool = True) -> None:
-        gzipped_file_path = file_path.with_name(file_path.name + ".gz")
-
-        self.context.logger.debug("Start compressing file: %s", file_path)
-        with (
-            file_path.open("rb") as f_in,
-            gzip.open(gzipped_file_path, "wb", compresslevel=1) as f_out,
-        ):
-            shutil.copyfileobj(f_in, f_out, length=1024 * 1024)
-        self.context.logger.debug("Compressing has done. Output file: %s", gzipped_file_path)
-
-        if remove_origin_file_after_compress:
-            self.context.logger.debug("Removing origin file: %s", file_path)
-            file_path.unlink()
 
     async def _dump_data_by_query(
         self,
@@ -406,15 +385,15 @@ class DumpMode:
         query: str,
         transaction_snapshot_id: str,
         file_name: str,
-    ) -> tuple[dict[str, str], Path]:
-        binary_output_file_path = self.output_dir / Path(file_name).stem
+    ) -> dict[str, str]:
+        output_file_path = self.output_dir / file_name
 
         task_id = uuid.uuid4()
         self.context.logger.info(
             "================> Task [%s] Started task %s to file %s",
             task_id,
             query,
-            binary_output_file_path,
+            output_file_path,
         )
 
         try:
@@ -427,7 +406,7 @@ class DumpMode:
                     result = await self._dump_data_into_file(
                         db_conn=db_conn,
                         query=query,
-                        file_name=binary_output_file_path,
+                        file_path=output_file_path,
                     )
                     self.context.logger.debug(
                         "Task [%s] Transaction setup to snapshot %s", task_id, transaction_snapshot_id
@@ -443,15 +422,7 @@ class DumpMode:
         self.context.logger.info("<================ Task [%s] Finished task %s", task_id, query)
 
         result_hash = hashlib.sha256(query.encode()).hexdigest()
-        return {result_hash: count_rows}, binary_output_file_path
-
-    async def _compress_with_semaphore(self, file_path: Path, semaphore: asyncio.Semaphore) -> None:
-        try:
-            async with semaphore:
-                await self.compress_file(file_path)
-        except Exception as exc:
-            self.context.logger.exception("Can't compress file: %s", file_path)
-            raise PgAnonError(ErrorCode.DUMP_FAILED, f"Can't compress file: {file_path}") from exc
+        return {result_hash: count_rows}
 
     def _resolve_table_rule(self, table_schema: str, table_name: str) -> dict | None:
         dictionary_rules = self.context.prepared_dictionary_obj["dictionary"]
@@ -508,11 +479,20 @@ class DumpMode:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
-    async def _run_dump_tasks(  # noqa: C901
+    @staticmethod
+    def _collect_completed(done: set[asyncio.Task], pending: set[asyncio.Task], results: dict[str, str]) -> None:
+        """Merge finished task results, re-raising the first failure and cancelling the rest."""
+        for done_task in done:
+            if exc := done_task.exception():
+                for pending_task in pending:
+                    pending_task.cancel()
+                raise exc
+            results.update(done_task.result())
+
+    async def _run_dump_tasks(
         self,
         query_tasks: list[tuple[str, str]],
         transaction_snapshot_id: str,
-        compression_semaphore: asyncio.Semaphore,
     ) -> dict:
         pool = await create_pool(
             connection_params=self.context.connection_params,
@@ -523,7 +503,6 @@ class DumpMode:
 
         results: dict[str, str] = {}
         dump_tasks: set[asyncio.Task] = set()
-        compress_tasks: set[asyncio.Task] = set()
 
         status_ratio = 10
         if len(query_tasks) > 1000:  # noqa: PLR2004
@@ -531,23 +510,12 @@ class DumpMode:
         if len(query_tasks) > 50000:  # noqa: PLR2004
             status_ratio = 1000
 
-        def _collect_dump_result(done_task: asyncio.Task) -> None:
-            result_dict, file_path = done_task.result()
-            results.update(result_dict)
-            if not self.context.options.dbg_stage_1_validate_dict:
-                compress_tasks.add(asyncio.create_task(self._compress_with_semaphore(file_path, compression_semaphore)))
-
         try:
             query_tasks_count = len(query_tasks)
             for idx, (file_name, query) in enumerate(query_tasks):
                 while len(dump_tasks) >= self.context.options.db_connections_per_process:
                     done, dump_tasks = await asyncio.wait(dump_tasks, return_when=asyncio.FIRST_COMPLETED)
-                    for done_task in done:
-                        if exc := done_task.exception():
-                            for t in dump_tasks:
-                                t.cancel()
-                            raise exc
-                        _collect_dump_result(done_task)
+                    self._collect_completed(done, dump_tasks, results)
 
                 self.context.logger.debug("Adding new task [%s/%s]", idx + 1, query_tasks_count)
                 task = asyncio.create_task(
@@ -573,19 +541,7 @@ class DumpMode:
             # Wait remaining dump tasks
             while dump_tasks:
                 done, dump_tasks = await asyncio.wait(dump_tasks, return_when=asyncio.FIRST_COMPLETED)
-                for done_task in done:
-                    if exc := done_task.exception():
-                        for t in dump_tasks:
-                            t.cancel()
-                        raise exc
-                    _collect_dump_result(done_task)
-
-            # Wait remaining compress tasks
-            if compress_tasks:
-                done, _ = await asyncio.wait(compress_tasks)
-                for done_task in done:
-                    if exc := done_task.exception():
-                        raise exc
+                self._collect_completed(done, dump_tasks, results)
         finally:
             await pool.close()
 
@@ -612,14 +568,12 @@ class DumpMode:
                     self.context.options.db_connections_per_process,
                 )
 
-                compression_semaphore = asyncio.Semaphore(self.context.options.processes)
                 all_query_tasks = list(zip(self._data_dump_files.keys(), self._data_dump_queries, strict=False))
 
                 dump_task = asyncio.create_task(
                     self._run_dump_tasks(
                         query_tasks=all_query_tasks,
                         transaction_snapshot_id=transaction_snapshot_id,
-                        compression_semaphore=compression_semaphore,
                     )
                 )
 
@@ -636,7 +590,7 @@ class DumpMode:
                 self._data_dump_tasks_results = dump_task.result()
 
                 # Prepare data for metadata
-                await self._count_totals(connection=connection)
+                self._count_totals()
                 await self._prepare_sequences_last_values(connection=connection)
                 await self._prepare_views(connection=connection)
                 await self._prepare_indexes(connection=connection)
@@ -765,7 +719,9 @@ class DumpMode:
                 self.context.connection_params, server_settings=self.context.server_settings
             )
 
-            await check_required_connections(connection, self.context.options.db_connections_per_process)
+            if not self.context.options.disable_checks:
+                # dump pool plus this connection, which holds the snapshot transaction
+                await check_required_connections(connection, self.context.options.db_connections_per_process + 1)
 
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()

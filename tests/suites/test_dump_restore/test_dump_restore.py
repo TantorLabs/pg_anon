@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import filecmp
+import gzip
+import json
 from pathlib import Path
 
 from tests.infrastructure.assertions import check_list_tables, check_rows_count, list_tables
@@ -16,7 +18,6 @@ async def _dump(pg_anon_runner, db_params, source_db, *, out_dir, dict_file, ext
     args = [
         f"--prepared-sens-dict-file={dict_file}",
         f"--output-dir={out_dir}",
-        f"--processes={db_params.test_processes}",
         f"--db-connections-per-process={db_params.db_connections_per_process}",
         "--clear-output-dir",
     ]
@@ -34,6 +35,33 @@ async def _restore(pg_anon_runner, db_params, target_db, *, in_dir, extra=None):
     if extra:
         args.extend(extra)
     return await pg_anon_runner.run("restore", target_db, args)
+
+
+async def test_restore_fails_on_corrupted_data_file(
+    source_db,
+    target_db,
+    db_params,
+    pg_anon_runner,
+):
+    out = output_path("restore_corrupted")
+    res = await _dump(pg_anon_runner, db_params, source_db, out_dir=out, dict_file=input_dict("full_sens.py"))
+    assert res.result_code == ResultCode.DONE
+
+    metadata = json.loads((Path(out) / "metadata.json").read_text())
+    corrupted_name, corrupted_entry = max(metadata["files"].items(), key=lambda item: int(item[1]["rows"]))
+    corrupted_table = f"{corrupted_entry['schema']}.{corrupted_entry['table']}"
+
+    # valid gzip, invalid binary-COPY payload: the failure lands inside copy_to_table
+    with gzip.open(Path(out) / corrupted_name, "wb") as file:
+        file.write(b"not a binary COPY payload")
+
+    res = await _restore(pg_anon_runner, db_params, target_db, in_dir=out)
+
+    assert res.result_code == ResultCode.FAIL, "restore reported success even though a table's data could not be loaded"
+    assert corrupted_table in (res.error_message or ""), (
+        f"the failure does not mention {corrupted_table}, so the operator cannot tell "
+        f"which table broke: {res.error_message!r}"
+    )
 
 
 async def test_dump_then_restore_preserves_all_tables(
@@ -102,7 +130,6 @@ async def test_sync_struct_restores_empty_tables(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -141,7 +168,6 @@ async def test_sync_data_after_sync_struct(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={struct_out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -163,7 +189,6 @@ async def test_sync_data_after_sync_struct(
         [
             f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
             f"--output-dir={data_out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],
@@ -205,7 +230,6 @@ async def test_sync_struct_restore_with_clean_db(
             [
                 f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
                 f"--output-dir={out}",
-                f"--processes={db_params.test_processes}",
                 f"--db-connections-per-process={db_params.db_connections_per_process}",
                 "--clear-output-dir",
             ],
@@ -324,7 +348,6 @@ async def test_dump_with_save_dicts_snapshots_inputs(
             f"--partial-tables-dict-file={partial}",
             f"--partial-tables-exclude-dict-file={partial_exclude}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
             "--save-dicts",
@@ -368,7 +391,6 @@ async def test_restore_with_save_dicts_snapshots_inputs(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

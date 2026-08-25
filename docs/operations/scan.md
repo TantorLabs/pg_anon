@@ -28,8 +28,7 @@ pg_anon create-dict \
     --prepared-sens-dict-file=test_sens_dict_output_previous_use.py \
     --prepared-no-sens-dict-file=test_no_sens_dict_output_previous_use.py \
     --output-sens-dict-file=test_sens_dict_output.py \
-    --output-no-sens-dict-file=test_no_sens_dict_output.py \
-    --processes=2
+    --output-no-sens-dict-file=test_no_sens_dict_output.py
 ```
 
 ---
@@ -41,8 +40,7 @@ pg_anon create-dict \
 | Option                         | Required | Description                                                                                      |
 |--------------------------------|----------|--------------------------------------------------------------------------------------------------|
 | `--config`                     | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
-| `--processes`                  | No       | Number of processes used for multiprocessing operations. (default: 4)                            |
-| `--db-connections-per-process` | No       | Number of database connections per process for I/O operations. (default: 4)                      |
+| `--db-connections`             | No       | Number of concurrent database connections. (default: 4)                                          |
 | `--verbose`                    | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
 | `--debug`                      | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
 | `--application-name-suffix`    | No       | Appends a suffix to the database connection name. Useful for automation. (default: none)         |
@@ -76,4 +74,5 @@ pg_anon create-dict \
 | `--output-no-sens-dict-file`   | No       | Output file path for saving not sensitive dictionary.                                                                                                                                                                                                                  |
 | `--scan-mode`                  | No       | Defines whether to scan all data or only part of it ["full", "partial"] (default "partial").                                                                                                                                                                           |
 | `--scan-partial-rows`          | No       | In `--scan-mode partial` defines amount of rows to scan (default 10000). Actual rows count can be smaller after getting unique values.                                                                                                                                 |
-| `--save-dicts`                 | No       | Duplicate all input and output dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                                                                                                                                     |
+| `--disable-checks`             | No       | Disable the pre-flight check for available database connections. (default: false)                                                                                 |
+| `--save-dicts`                 | No       | Duplicate all input and output dictionaries into the operation's run directory under `pg_anon_runs`. Useful for debugging or integration purposes.                                                                                                                                                     |

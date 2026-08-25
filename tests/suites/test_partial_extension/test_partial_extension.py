@@ -19,7 +19,6 @@ async def test_partial_restore_creates_extension_home_schema(
         [
             f"--prepared-sens-dict-file={input_dict('empty.py')}",
             f"--output-dir={out}",
-            f"--processes={db_params.test_processes}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
         ],

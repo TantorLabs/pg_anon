@@ -3,7 +3,7 @@
 
 ## Overview
 
-This mode restores an anonymized backup created using pg_anon in the [dump mode](dump.md). 
+This mode restores a masked backup created using pg_anon in the [dump mode](dump.md). 
 
 > ⚠️ **Note**
 > 
@@ -95,32 +95,32 @@ pg_anon restore \
     --db-host=127.0.0.1 \
     --db-user=postgres \
     --db-user-password=postgres \
-    --db-name=source_db \
+    --db-name=target_db \
     --input-dir=partial_dump_white_list \
     --partial-tables-dict-file=include_tables.py
 ```
 
-#### Dump all tables without some specified tables (blacklist)
+#### Restore all tables without some specified tables (blacklist)
 ```commandline
 pg_anon restore \
     --db-host=127.0.0.1 \
     --db-user=postgres \
     --db-user-password=postgres \
-    --db-name=source_db \
+    --db-name=target_db \
     --input-dir=partial_dump_black_list \
     --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
 
-#### Dump only specified tables with excluding some of them  (whitelist + blacklist)
+#### Restore only specified tables with excluding some of them (whitelist + blacklist)
 ```commandline
 pg_anon restore \
     --db-host=127.0.0.1 \
     --db-user=postgres \
     --db-user-password=postgres \
-    --db-name=source_db \
+    --db-name=target_db \
     --input-dir=partial_dump_white_list_and_black_list \
-    --partial-tables-dict-file=include_tables.py
+    --partial-tables-dict-file=include_tables.py \
     --partial-tables-exclude-dict-file=exclude_tables.py
 ```
 
@@ -133,7 +133,7 @@ pg_anon restore \
 | Option                          | Required | Description                                                                                      |
 |---------------------------------|----------|--------------------------------------------------------------------------------------------------|
 | `--config`                      | No       | Path to the config file that can specify `pg_dump` and `pg_restore` utilities. (default: none)   |
-| `--db-connections-per-process`  | No       | Number of database connections per process for I/O operations. (default: 4)                      |
+| `--db-connections`              | No       | Number of concurrent database connections, also passed to `pg_restore` as `-j`. (default: 4)     |
 | `--verbose`                     | No       | Sets the log verbosity level: `info`, `debug`, `error`. (default: info)                          |
 | `--debug`                       | No       | Enables debug mode (equivalent to `--verbose=debug`) and adds extra debug logs. (default: false) |
 | `--application-name-suffix`     | No       | Appends a suffix to the database connection name. Useful for automation. (default: none)         |
@@ -163,12 +163,12 @@ pg_anon restore \
 | `--input-dir`                        | Yes      | Path to the directory containing dump files created in dump mode.                                                                                                                                                                                    |
 | `--partial-tables-dict-file`         | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for include specific tables in the dump. All tables **not listed** in these files will be excluded. These files must be prepared manually (acts as a whitelist). |
 | `--partial-tables-exclude-dict-file` | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for exclude specific tables from the dump. All tables **listed** in these files will be excluded. These files must be prepared manually (acts as a blacklist).   |
-| `--disable-checks`                   | No       | Disable checks of disk space and PostgreSQL version. (default false)                                                                                                                                                                                 |
+| `--disable-checks`                   | No       | Disable pre-flight checks: PostgreSQL version compatibility and available database connections. Does **not** disable the empty-target and extra-tables safety checks. (default: false)                                                                                                                                                                                 |
 | `--seq-init-by-max-value`            | No       | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database.                                                                                                               |
 | `--drop-custom-check-constr`         | No       | Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading.                                                                                                                               |
-| `--pg-restore`                       | No       | Path to the `pg_restore` Postgres tool.                                                                                                                                                                                                              |
+| `--pg-restore`                       | No       | Path to the `pg_restore` Postgres tool (default `/usr/bin/pg_restore`).                                                                                                                                                                                                              |
 | `--pg-restore-options`               | No       | Additional options passed directly to `pg_restore` utility. Example: `"--no-comments --no-table-access-method"`.                                                                                                                                     |
 | `--clean-db`                         | No       | Cleans the database objects before restoring (if they exist in the dump). Mutually exclusive with `--drop-db`.                                                                                                                                       |
 | `--drop-db`                          | No       | Drop target database before restore. Mutually exclusive with `--clean-db`.                                                                                                                                                                           |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |
-| `--save-dicts`                       | No       | Duplicate all input dictionaries to dir `runs`. It can be useful for debugging or integration purposes.                                                                                                                                              |
+| `--save-dicts`                       | No       | Duplicate all input dictionaries into the operation's run directory under `pg_anon_runs`. Useful for debugging or integration purposes.                                                                                                                                              |

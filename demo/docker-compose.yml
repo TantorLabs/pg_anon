@@ -1,0 +1,21 @@
+services:
+  pg_anon_demo:
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    image: pg_anon_demo
+    container_name: pg_anon_demo
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: postgres
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - .:/pg_anon/demo:ro
+    working_dir: /pg_anon

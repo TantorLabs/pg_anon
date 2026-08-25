@@ -112,6 +112,7 @@ def build_scan_request(
     depth: int | None = None,
     proc_count: int | None = None,
     proc_conn_count: int | None = None,
+    conn_count: int | None = None,
     save_dicts: bool = False,
     web_debug: bool = False,
     webhook_metadata: object | None = None,
@@ -141,6 +142,8 @@ def build_scan_request(
         body["proc_count"] = proc_count
     if proc_conn_count is not None:
         body["proc_conn_count"] = proc_conn_count
+    if conn_count is not None:
+        body["conn_count"] = conn_count
     return body
 
 
@@ -159,12 +162,14 @@ def build_dump_request(
     pg_dump_options: str | None = None,
     proc_count: int | None = None,
     proc_conn_count: int | None = None,
+    conn_count: int | None = None,
     save_dicts: bool = False,
     ignore_privileges: bool = False,
     web_debug: bool = False,
     webhook_metadata: object | None = None,
     webhook_extra_headers: dict[str, str] | None = None,
     webhook_verify_ssl: bool = True,
+    log_level: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "operation_id": operation_id or f"dump-{uuid_short()}",
@@ -186,14 +191,15 @@ def build_dump_request(
         body["partial_tables_dict_contents"] = [dict_entry("partial.py", partial_tables_dict)]
     if partial_tables_exclude_dict is not None:
         body["partial_tables_exclude_dict_contents"] = [dict_entry("partial_excl.py", partial_tables_exclude_dict)]
-    if pg_dump_path is not None:
-        body["pg_dump_path"] = pg_dump_path
-    if pg_dump_options is not None:
-        body["pg_dump_options"] = pg_dump_options
-    if proc_count is not None:
-        body["proc_count"] = proc_count
-    if proc_conn_count is not None:
-        body["proc_conn_count"] = proc_conn_count
+    optional = {
+        "pg_dump_path": pg_dump_path,
+        "pg_dump_options": pg_dump_options,
+        "proc_count": proc_count,
+        "proc_conn_count": proc_conn_count,
+        "conn_count": conn_count,
+        "log_level": log_level,
+    }
+    body.update({key: value for key, value in optional.items() if value is not None})
     return body
 
 
@@ -210,6 +216,7 @@ def build_restore_request(
     pg_restore_path: str | None = None,
     pg_restore_options: str | None = None,
     proc_conn_count: int | None = None,
+    conn_count: int | None = None,
     drop_custom_check_constr: bool = False,
     clean_db: bool = False,
     drop_db: bool = False,
@@ -248,6 +255,8 @@ def build_restore_request(
         body["pg_restore_options"] = pg_restore_options
     if proc_conn_count is not None:
         body["proc_conn_count"] = proc_conn_count
+    if conn_count is not None:
+        body["conn_count"] = conn_count
     return body
 
 

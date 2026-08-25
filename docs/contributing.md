@@ -53,6 +53,7 @@ The root `Makefile` provides shortcuts for common development tasks. Run `make h
 | `make check`       | Run linters over `pg_anon/`.             |
 | `make fix`         | Auto-fix lint issues and reformat code.  |
 | `make test`        | Run the pytest suite.                    |
+| `make openapi`     | Regenerate the OpenAPI schema file.      |
 | `make clean`       | Remove build artifacts and tool caches.  |
 
 ---
@@ -61,11 +62,13 @@ The root `Makefile` provides shortcuts for common development tasks. Run `make h
 
 
 Main directories:
-- `docker/`: Dir with docker.
 - `docs/`: Documentation.
+- `demo/`: Demo database, meta-dictionary and a Docker Compose environment for the [Quick Start](../README.md#-quick-start).
 - `pg_anon/`: Main python modules.
 - `pg_anon/rest_api/`: Additional python modules for starting rest service.
-- `tests/`: Contains tests and data for test.
+- `tests/`: Test suites and the infrastructure they share.
+  - `tests/infrastructure/`: Fixtures and helpers — `data.py` builds test databases through Python builders (there is no SQL dump to load), `db.py` wraps database access, `pg_anon.py` runs pg_anon itself, `assertions.py` compares source and target.
+  - `tests/suites/<suite>/`: One directory per suite, each with its own `conftest.py` and, where needed, `input_dict/` (dictionaries fed to pg_anon), `expected/` (reference results) and the gitignored `output/` and `output_dict/`.
 
 
 The main logic of pg_anon is contained within the following Python modules:
@@ -116,28 +119,21 @@ Project file tree:
 
 ```commandline
 pg_anon/
-├── Makefile
-├── README.md
-├── pyproject.toml
-├── docker
+├── .github
+│   └── workflows
+│       ├── ci.yml
+│       └── release.yml
+├── demo
+│   ├── data.sql
+│   ├── docker-compose.yml
 │   ├── Dockerfile
-│   ├── Makefile
-│   ├── README.md
-│   ├── entrypoint.sh
-│   ├── entrypoint_dbg.sh
-│   └── motd
+│   └── meta_dict.py
 ├── docs
-│   ├── api.md
-│   ├── contributing.md
-│   ├── debugging.md
 │   ├── dicts
 │   │   ├── meta-dict-schema.md
 │   │   ├── non-sens-dict-schema.md
 │   │   ├── sens-dict-schema.md
 │   │   └── tables-dictionary.md
-│   ├── faq.md
-│   ├── how-it-works.md
-│   ├── installation-and-configuring.md
 │   ├── operations
 │   │   ├── dump.md
 │   │   ├── init.md
@@ -145,19 +141,21 @@ pg_anon/
 │   │   ├── scan.md
 │   │   ├── view-data.md
 │   │   └── view-fields.md
+│   ├── api.md
+│   ├── contributing.md
+│   ├── debugging.md
+│   ├── faq.md
+│   ├── how-it-works.md
+│   ├── installation-and-configuring.md
 │   └── sql-functions-library.md
 ├── images
 │   ├── Create-dict-Terms.drawio.png
-│   ├── Dump-Resore-Terms.drawio.png
 │   ├── dbg-stage-1.png
 │   ├── dbg-stage-2.png
 │   ├── dbg-stage-3.png
+│   ├── Dump-Resore-Terms.drawio.png
 │   └── scan_workflow.png
 ├── pg_anon
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── app.py
-│   ├── cli.py
 │   ├── common
 │   │   ├── __init__.py
 │   │   ├── constants.py
@@ -167,9 +165,6 @@ pg_anon/
 │   │   ├── enums.py
 │   │   ├── errors.py
 │   │   └── utils.py
-│   ├── context.py
-│   ├── init.sql
-│   ├── logger.py
 │   ├── modes
 │   │   ├── __init__.py
 │   │   ├── create_dict.py
@@ -179,6 +174,20 @@ pg_anon/
 │   │   ├── view_data.py
 │   │   └── view_fields.py
 │   ├── rest_api
+│   │   ├── runners
+│   │   │   ├── background
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── base.py
+│   │   │   │   ├── dump.py
+│   │   │   │   ├── init.py
+│   │   │   │   ├── restore.py
+│   │   │   │   └── scan.py
+│   │   │   ├── direct
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── preview.py
+│   │   │   │   ├── view_data.py
+│   │   │   │   └── view_fields.py
+│   │   │   └── __init__.py
 │   │   ├── __init__.py
 │   │   ├── __main__.py
 │   │   ├── api.py
@@ -189,51 +198,57 @@ pg_anon/
 │   │   ├── logging_context.py
 │   │   ├── openapi.json
 │   │   ├── pydantic_models.py
-│   │   ├── runners
-│   │   │   ├── __init__.py
-│   │   │   ├── background
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── base.py
-│   │   │   │   ├── dump.py
-│   │   │   │   ├── init.py
-│   │   │   │   ├── restore.py
-│   │   │   │   └── scan.py
-│   │   │   └── direct
-│   │   │       ├── __init__.py
-│   │   │       ├── preview.py
-│   │   │       ├── view_data.py
-│   │   │       └── view_fields.py
 │   │   └── utils.py
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── app.py
+│   ├── cli.py
+│   ├── context.py
+│   ├── init.sql
+│   ├── logger.py
+│   ├── py.typed
 │   └── version.py
-└── tests
-    ├── __init__.py
-    ├── config.yml
-    ├── conftest.py
-    ├── infrastructure
-    │   ├── __init__.py
-    │   ├── assertions.py
-    │   ├── data.py
-    │   ├── db.py
-    │   ├── params.py
-    │   ├── pg_anon.py
-    │   └── sizes.py
-    └── suites
-        ├── __init__.py
-        ├── test_api
-        ├── test_cli_options
-        ├── test_create_dict
-        ├── test_dump_restore
-        ├── test_full_clone
-        ├── test_mask
-        ├── test_partial
-        ├── test_partial_extension
-        ├── test_partial_partitioned_fk
-        ├── test_pg_utils_options
-        ├── test_restore_clean
-        ├── test_stress
-        ├── test_validate
-        ├── test_view_data
-        └── test_view_fields
+├── tests
+│   ├── infrastructure
+│   │   ├── __init__.py
+│   │   ├── assertions.py
+│   │   ├── data.py
+│   │   ├── db.py
+│   │   ├── params.py
+│   │   ├── pg_anon.py
+│   │   └── sizes.py
+│   ├── suites
+│   │   ├── __init__.py
+│   │   ├── test_api
+│   │   ├── test_cli_options
+│   │   ├── test_create_dict
+│   │   ├── test_db_utils_param_limit
+│   │   ├── test_demo
+│   │   ├── test_dict_merge
+│   │   ├── test_dump_restore
+│   │   ├── test_full_clone
+│   │   ├── test_mask
+│   │   ├── test_normalize_data_type
+│   │   ├── test_packaging
+│   │   ├── test_partial
+│   │   ├── test_partial_ddl
+│   │   ├── test_partial_extension
+│   │   ├── test_partial_partitioned_fk
+│   │   ├── test_pg_utils_options
+│   │   ├── test_restore_clean
+│   │   ├── test_scan_fields_query
+│   │   ├── test_stress
+│   │   ├── test_validate
+│   │   ├── test_view_data
+│   │   └── test_view_fields
+│   ├── __init__.py
+│   ├── config.yml
+│   └── conftest.py
+├── LICENSE
+├── Makefile
+├── pyproject.toml
+├── README.md
+└── tox.ini
 ```
 
 ---
@@ -290,6 +305,15 @@ To run a specific test file:
 ```bash
 pytest tests/suites/test_validate/test_validate.py -v
 ```
+
+The suite is split by markers: `stress` (slow, timing-based, excluded by default) and
+`packaging` (distribution checks, need no PostgreSQL). Run them explicitly with
+`pytest -m stress` and `pytest -m packaging`.
+
+To check several Python versions locally, use [tox](https://tox.wiki) — it is installed
+standalone (`uv tool install tox` or `pipx install tox`): `tox` runs the packaging suite on
+3.11–3.14, `tox -e db-py311` the full suite against a live server, `tox -e stress` the stress
+one. CI does not use tox; it installs the dev extra and calls pytest directly.
 
 ### Test Database Configuration
 

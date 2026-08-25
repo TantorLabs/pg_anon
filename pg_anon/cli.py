@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import sys
 import uuid
+from typing import Any
 
 from pg_anon import PgAnonApp
 from pg_anon.common.constants import (
@@ -112,20 +113,62 @@ def common_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def multiprocessing_common_parser() -> argparse.ArgumentParser:
-    """Create the argument parser with multiprocessing options."""
+class DeprecatedOption(argparse.Action):
+    """Store a value, warning when the option is invoked by a deprecated name."""
+
+    def __init__(
+        self,
+        option_strings: list[str],
+        dest: str,
+        deprecated: tuple[str, ...] = (),
+        hint: str = "",
+        **kwargs: Any,  # noqa: ANN401
+    ) -> None:
+        self._deprecated = set(deprecated) or set(option_strings)
+        self._hint = hint
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # noqa: ARG002
+        namespace: argparse.Namespace,
+        values: Any,  # noqa: ANN401
+        option_string: str | None = None,
+    ) -> None:
+        """Warn on a deprecated option name, then store the value as usual."""
+        if option_string in self._deprecated:
+            print(f"WARNING: {option_string} is deprecated{self._hint}", file=sys.stderr)
+        setattr(namespace, self.dest, values)
+
+
+def parallelism_common_parser() -> argparse.ArgumentParser:
+    """Create the argument parser with parallelism options."""
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument(
+        "--db-connections",
         "--db-connections-per-process",
+        dest="db_connections_per_process",
+        action=DeprecatedOption,
+        deprecated=("--db-connections-per-process",),
+        hint=", use --db-connections instead",
+        metavar="N",
         type=int,
         default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
-        help="""Number of concurrent database connections for I/O operations. (default: %(default)s)""",
+        help="""Number of concurrent database connections. (default: %(default)s)""",
     )
     p.add_argument(
         "--processes",
+        action=DeprecatedOption,
+        hint=" and has no effect",
+        metavar="N",
         type=int,
         default=DEFAULT_PROCESSES,
-        help="""Number of concurrent compression workers for dump mode. (default: %(default)s)""",
+        help=argparse.SUPPRESS,
+    )
+    p.add_argument(
+        "--disable-checks",
+        action="store_true",
+        help="""Disable the pre-flight check for available database connections.""",
     )
 
     return p
@@ -184,7 +227,7 @@ def scan_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input and output dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
+        help="""Duplicate all input and output dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
 
     return p
@@ -247,7 +290,7 @@ def dump_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes.""",
+        help="""Duplicate all input dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
     p.add_argument(
         "--ignore-privileges",
@@ -288,15 +331,21 @@ def restore_parser() -> argparse.ArgumentParser:
         help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
     )
     p.add_argument(
+        "--db-connections",
         "--db-connections-per-process",
+        dest="db_connections_per_process",
+        action=DeprecatedOption,
+        deprecated=("--db-connections-per-process",),
+        hint=", use --db-connections instead",
+        metavar="N",
         type=int,
         default=DEFAULT_DB_CONNECTIONS_PER_PROCESS,
-        help="""Number of database connections. (default: %(default)s)""",
+        help="""Number of concurrent database connections, also passed to pg_restore as -j. (default: %(default)s)""",
     )
     p.add_argument(
         "--disable-checks",
         action="store_true",
-        help="""Disable checks of disk space and PostgreSQL version.""",
+        help="""Disable pre-flight checks: PostgreSQL version compatibility and available database connections.""",
     )
     p.add_argument(
         "--seq-init-by-max-value",
@@ -312,7 +361,7 @@ def restore_parser() -> argparse.ArgumentParser:
         "--pg-restore",
         type=str,
         default=DEFAULT_PG_RESTORE_PATH,
-        help="""Path to the pg_restore Postgres tool. """,
+        help="""Path to the pg_restore Postgres tool (default: %(default)s).""",
     )
     group = p.add_mutually_exclusive_group()
     group.add_argument(
@@ -328,7 +377,7 @@ def restore_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--save-dicts",
         action="store_true",
-        help="""Duplicate all input dictionaries to dir "runs". It can be useful for debugging or integration purposes. """,
+        help="""Duplicate all input dictionaries into the operation's run directory under "pg_anon_runs". It can be useful for debugging or integration purposes.""",
     )
     p.add_argument(
         "--ignore-privileges",
@@ -464,7 +513,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     """Build the top-level argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="pg_anon",
-        description="PostgreSQL database anonymization tool",
+        description="Data masking tool for PostgreSQL.",
     )
 
     sub = parser.add_subparsers(dest="mode", help="Work mode", required=True)
@@ -477,27 +526,27 @@ def get_arg_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "create-dict",
-        parents=[common_parser(), multiprocessing_common_parser(), scan_parser()],
+        parents=[common_parser(), parallelism_common_parser(), scan_parser()],
         help="""Analyzes PostgreSQL database to detect potentially sensitive data and generate dictionaries files""",
     )
 
     # Dump modes
     for mode_name, help_text in [
-        ("dump", "Creates an anonymized backup using rules from the sensitive dictionary."),
-        ("sync-struct-dump", "Creates a backup containing only the database structure without anonymized data."),
-        ("sync-data-dump", "Create backup contains only anonymized data without database structure."),
+        ("dump", "Creates a masked backup using rules from the sensitive dictionary."),
+        ("sync-struct-dump", "Creates a backup containing only the database structure, without data."),
+        ("sync-data-dump", "Creates a backup containing only masked data, without the database structure."),
     ]:
         sub.add_parser(
             mode_name,
-            parents=[common_parser(), multiprocessing_common_parser(), dump_parser()],
+            parents=[common_parser(), parallelism_common_parser(), dump_parser()],
             help=help_text,
         )
 
     # Restore modes
     for mode_name, help_text in [
-        ("restore", "Restores an anonymized backup created using pg_anon in the dump mode."),
+        ("restore", "Restores a masked backup created by pg_anon in the dump mode."),
         ("sync-struct-restore", "Restores only the database structure."),
-        ("sync-data-restore", "Restores data only from anonymized backup."),
+        ("sync-data-restore", "Restores data only, from a masked backup."),
     ]:
         sub.add_parser(
             mode_name,
@@ -508,13 +557,13 @@ def get_arg_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "view-fields",
         parents=[common_parser(), view_fields_parser()],
-        help="""Displays how database fields match the anonymization rules.""",
+        help="""Displays how database fields match the masking rules.""",
     )
 
     sub.add_parser(
         "view-data",
         parents=[common_parser(), view_data_parser()],
-        help="""Displays anonymized table data without creating a dump.""",
+        help="""Displays masked table data without creating a dump.""",
     )
 
     # backward compatibility

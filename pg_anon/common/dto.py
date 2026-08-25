@@ -265,7 +265,6 @@ class Metadata:
         self.indexes: dict | None = None
         self.constraints: dict | None = None
         self.files: dict[str, dict[str, Any]] | None = None
-        self.total_tables_size: int | None = None
         self.total_rows: int | None = None
         self.db_size: int | None = None
         # only in black and white lists cases
@@ -294,7 +293,6 @@ class Metadata:
             "indexes": self.indexes,
             "constraints": self.constraints,
             "files": self.files,
-            "total_tables_size": self.total_tables_size,
             "total_rows": self.total_rows,
             "db_size": self.db_size,
             "partial_dump_schemas": self.partial_dump_schemas,
@@ -320,8 +318,6 @@ class Metadata:
 
         if self.files is None:
             del data["files"]
-        if self.total_tables_size is None:
-            del data["total_tables_size"]
         if self.total_rows is None:
             del data["total_rows"]
         if self.db_size is None:
@@ -372,7 +368,6 @@ class Metadata:
         self.constraints = data.get("constraints")
 
         self.files = data.get("files")
-        self.total_tables_size = data.get("total_tables_size")
         self.total_rows = data.get("total_rows")
 
         self.extensions = data.get("extensions")

@@ -344,4 +344,4 @@ SELECT decode('cSMq9gb1vOw=', 'base64')
 ---
 
 ## How to add your own functions
-Also, adding new anonymization functions can be performed by adding [init.sql](../pg_anon/init.sql) to the file and then run pg_anon in `init` mode.
+Also, adding new masking functions can be performed by adding [init.sql](../pg_anon/init.sql) to the file and then run pg_anon in `init` mode.

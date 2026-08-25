@@ -17,6 +17,6 @@
     "field": {"rules": []},
     "data_regex": {"rules": []},
     "data_const": {"constants": []},
-    "sens_pg_types": ["text", "varchar", "citext"],
+    "sens_pg_types": ["text", "varchar", "citext", "char"],
     "funcs": {}
 }

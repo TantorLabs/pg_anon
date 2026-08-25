@@ -140,7 +140,7 @@ def test_fields_count_defaults_to_no_limit(db_params, source_db):
     options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py")))
     assert options.fields_count is None
     executor = ViewFieldsMode(PgAnonApp(options).context)
-    assert executor._output_fields_limit is None
+    assert executor._output_fields_limit is None  # noqa: SLF001
 
 
 async def test_view_fields_respects_fields_count_limit(source_db, db_params):

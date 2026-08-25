@@ -14,7 +14,7 @@ def date_range_filter(
     """Validate and return date range query parameters."""
     if date_before and date_after and date_after > date_before:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="`date_after` must be less than or equal to `date_before`",
         )
     return {"date_before": date_before, "date_after": date_after}
