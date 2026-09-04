@@ -10,8 +10,11 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, DEFAULT_EXCLUDED
 from pg_anon.common.db_queries import (
     get_count_query,
     get_database_size_query,
+    get_foreign_servers_count_query,
     get_scan_fields_query,
     get_tables_with_fields_query,
+    get_user_routines_and_triggers_count_query,
+    get_visible_user_mappings_query,
 )
 from pg_anon.common.dto import ConnectionParams, FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
@@ -392,6 +395,23 @@ async def get_extensions(connection: Connection) -> list:
     """
 
     return await connection.fetch(query)
+
+
+async def get_visible_user_mappings(connection: Connection) -> list:
+    """FDW user mappings whose OPTIONS are visible to the current role (credentials leak)."""
+    return await connection.fetch(get_visible_user_mappings_query())
+
+
+async def get_foreign_servers_count(connection: Connection) -> int:
+    """Number of foreign servers defined in the database (FDW presence check)."""
+    return await connection.fetchval(get_foreign_servers_count_query())
+
+
+async def get_user_routines_and_triggers_count(
+    connection: Connection, excluded_schemas: list[str] | None = None
+) -> int:
+    """Number of user-defined functions/procedures and non-internal triggers."""
+    return await connection.fetchval(get_user_routines_and_triggers_count_query(excluded_schemas))
 
 
 async def get_available_extensions_map(connection: Connection) -> dict[str, list[dict[str, Any]]]:

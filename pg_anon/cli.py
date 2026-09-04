@@ -304,6 +304,12 @@ def dump_parser() -> argparse.ArgumentParser:
         default=None,
         help="Additional options passed directly to pg_dump utility.",
     )
+    p.add_argument(
+        "--allow-fdw-credentials",
+        action="store_true",
+        default=False,
+        help="Allow FDW user-mapping credentials into the dump (blocked by default).",
+    )
 
     return p
 
@@ -391,6 +397,12 @@ def restore_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Additional options passed directly to pg_restore utility.",
+    )
+    p.add_argument(
+        "--keep-fdw-user-mappings",
+        action="store_true",
+        default=False,
+        help="Restore FDW user mappings instead of stripping them (stripped by default).",
     )
 
     # Hidden param for validate_target_tables() in tests

@@ -1,5 +1,5 @@
 # Restore
-> [🏠 Home](../../README.md#-operations) | [💾 Dump](dump.md) | [🛠️ Debugging](../debugging.md) | [📑 Tables dictionary](../dicts/tables-dictionary.md) 
+> [🏠 Home](../../README.md#-operations) | [💾 Dump](dump.md) | [🛠️ Debugging](../debugging.md) | [🛡️ Security](../security.md) | [📑 Tables dictionary](../dicts/tables-dictionary.md) 
 
 ## Overview
 
@@ -168,6 +168,7 @@ pg_anon restore \
 | `--drop-custom-check-constr`         | No       | Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading.                                                                                                                               |
 | `--pg-restore`                       | No       | Path to the `pg_restore` Postgres tool (default `/usr/bin/pg_restore`).                                                                                                                                                                                                              |
 | `--pg-restore-options`               | No       | Additional options passed directly to `pg_restore` utility. Example: `"--no-comments --no-table-access-method"`.                                                                                                                                     |
+| `--keep-fdw-user-mappings`           | No       | Restore FDW `USER MAPPING` entries instead of stripping them; stripped by default. See [Security](../security.md#foreign-data-wrappers-fdw). (default: false)                                                                                         |
 | `--clean-db`                         | No       | Cleans the database objects before restoring (if they exist in the dump). Mutually exclusive with `--drop-db`.                                                                                                                                       |
 | `--drop-db`                          | No       | Drop target database before restore. Mutually exclusive with `--clean-db`.                                                                                                                                                                           |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |

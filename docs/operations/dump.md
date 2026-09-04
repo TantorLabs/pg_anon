@@ -1,5 +1,5 @@
 # Dump
-> [🏠 Home](../../README.md#-operations) | [🔍 Scan](scan.md) | [📂 Restore](restore.md) | [📚 SQL Functions Library](../sql-functions-library.md) | [🛠️ Debugging](../debugging.md) | [🔐 Sensitive Dictionary](../dicts/sens-dict-schema.md) | [📑 Tables Dictionary](../dicts/tables-dictionary.md)
+> [🏠 Home](../../README.md#-operations) | [🔍 Scan](scan.md) | [📂 Restore](restore.md) | [🛠️ Debugging](../debugging.md) | [🛡️ Security](../security.md) | [🔐 Sensitive Dictionary](../dicts/sens-dict-schema.md) | [📑 Tables Dictionary](../dicts/tables-dictionary.md)
 
 ## Overview
 
@@ -176,6 +176,25 @@ pg_anon dump \
 | `--clear-output-dir`                 | No       | Clears the output directory from previous dumps or other files. (default: false)                                                                                                                                                                     |
 | `--pg-dump`                          | No       | Path to the `pg_dump` Postgres tool (default `/usr/bin/pg_dump`).                                                                                                                                                                                    |
 | `--pg-dump-options`                  | No       | Additional options passed directly to `pg_dump` utility. Example: `"--no-comments --encoding=LATIN1"`.                                                                                                                                               |
+| `--allow-fdw-credentials`            | No       | Allow FDW user-mapping credentials (`OPTIONS`) into the dump; blocked by default. (default: false)                                                                                                                                                   |
 | `--output-dir`                       | No       | Output directory for dump files. (default: `./<sens-dict-file-name>`)                                                                                                                                                                                                        |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |
 | `--save-dicts`                       | No       | Duplicate all input dictionaries into the operation's run directory under `pg_anon_runs`. Useful for debugging or integration purposes.                                                                                                                                              |
+
+### Security defaults
+
+In dump mode, pg_anon passes a few extra flags to `pg_dump` to leave out data that a
+masked backup does not need:
+
+- `--no-subscriptions` is always added (`pg_dump` ≥ 10). A subscription can store a
+  password in its `CONNECTION` string.
+- `--no-statistics` is added when the `pg_dump` binary is version 18 or newer. Statistics
+  can hold real column values.
+
+pg_anon also **stops** the dump when the current user can see FDW user-mapping
+credentials (`OPTIONS`), because they would go into the backup. Use
+`--allow-fdw-credentials` to dump anyway.
+
+This lowers common leaks but does not make the backup fully clean. Some objects, such as
+function or trigger bodies, are still dumped as they are. See the
+[Security](../security.md) page for the full list.

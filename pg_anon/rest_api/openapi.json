@@ -1101,6 +1101,11 @@
             ],
             "title": "Pg Dump Options"
           },
+          "allow_fdw_credentials": {
+            "type": "boolean",
+            "title": "Allow Fdw Credentials",
+            "default": false
+          },
           "proc_count": {
             "anyOf": [
               {
@@ -1542,6 +1547,11 @@
               }
             ],
             "title": "Pg Restore Options"
+          },
+          "keep_fdw_user_mappings": {
+            "type": "boolean",
+            "title": "Keep Fdw User Mappings",
+            "default": false
           },
           "drop_custom_check_constr": {
             "type": "boolean",

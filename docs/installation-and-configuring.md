@@ -1,5 +1,5 @@
 # 💽 Installation & Configuration
-> [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md) | [💬 FAQ](faq.md) 
+> [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md) | [🏗️ Init](operations/init.md) | [🔍 Scan](operations/scan.md) | [💬 FAQ](faq.md) 
 
 ## Before you install
 

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import uuid
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -31,12 +32,15 @@ from pg_anon.common.db_utils import (
     get_dump_query,
     get_event_triggers_in_schemas,
     get_extensions,
+    get_foreign_servers_count,
     get_indexes_data,
     get_legacy_inheritance_parents,
     get_partition_ancestors_map,
     get_partitioned_ancestors,
     get_schemas,
+    get_user_routines_and_triggers_count,
     get_views_related_to_tables,
+    get_visible_user_mappings,
 )
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
@@ -44,11 +48,47 @@ from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
     build_pg_util_env,
     get_dict_rule_for_table,
+    get_major_version,
     get_pg_util_version,
     safe_compile,
     save_dicts_info_file,
 )
 from pg_anon.context import Context
+
+
+class _DumpFlagPos(Enum):
+    NORMAL = "normal"  # before user --pg-dump-options
+    LAST = "last"  # after them, before positional db_name
+
+
+# pg_dump hardening flags applied by default, gated by the pg_dump binary major version.
+_HARDENING_DUMP_FLAGS: list[tuple[str, int, int | None, _DumpFlagPos, str]] = [
+    (
+        "--no-subscriptions",
+        10,
+        None,
+        _DumpFlagPos.NORMAL,
+        "excludes replication subscriptions, whose connection string may contain a password",
+    ),
+    (
+        "--no-statistics",
+        18,
+        None,
+        _DumpFlagPos.LAST,
+        "excludes planner statistics, which may contain real column values",
+    ),
+]
+
+
+def _applicable_hardening_dump_flags(pg_dump_major: int) -> list[tuple[str, _DumpFlagPos, str]]:
+    result: list[tuple[str, _DumpFlagPos, str]] = []
+    for flag, min_major, max_major, position, reason in _HARDENING_DUMP_FLAGS:
+        if pg_dump_major < min_major:
+            continue
+        if max_major is not None and pg_dump_major > max_major:
+            continue
+        result.append((flag, position, reason))
+    return result
 
 
 class DumpMode:
@@ -77,6 +117,7 @@ class DumpMode:
         self._all_db_schemas: list[str] = []
         self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
         self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        self._pg_dump_major: int | None = None
 
         if not self.context.options.output_dir:
             if not self.context.options.prepared_sens_dict_files:
@@ -282,6 +323,11 @@ class DumpMode:
         if self._need_dump_data:
             self.metadata.save_dumped_tables_into_file(self.dumped_tables_file_path)
 
+    def _get_pg_dump_major(self) -> int:
+        if self._pg_dump_major is None:
+            self._pg_dump_major = int(get_major_version(get_pg_util_version(self.context.pg_dump)))
+        return self._pg_dump_major
+
     async def _run_pg_dump(self, section: str) -> None:
         specific_tables: list[str] = []
 
@@ -340,9 +386,18 @@ class DumpMode:
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
+        normal_flags: list[str] = []
+        last_flags: list[str] = []
+        for flag, position, reason in _applicable_hardening_dump_flags(self._get_pg_dump_major()):
+            self.context.logger.info("Passing %s to pg_dump (%s)", flag, reason)
+            (last_flags if position is _DumpFlagPos.LAST else normal_flags).append(flag)
+
+        command.extend(normal_flags)
         if self.context.options.pg_dump_options:
             command.extend(shlex.split(self.context.options.pg_dump_options))
 
+        # LAST flags go after user --pg-dump-options so --no-statistics wins over a user --with-statistics.
+        command.extend(last_flags)
         command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(
@@ -601,6 +656,48 @@ class DumpMode:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
 
+    async def _check_fdw_credentials_leak(self, connection: Connection) -> None:
+        """Block the dump when FDW user-mapping credentials are visible; --allow-fdw-credentials downgrades to a warning."""
+        visible_mappings = await get_visible_user_mappings(connection)
+        if not visible_mappings:
+            return
+
+        if self.context.options.allow_fdw_credentials:
+            self.context.logger.warning(
+                "FDW credentials will be written to the dump: %d user mapping(s) with visible "
+                "OPTIONS. This was allowed explicitly via --allow-fdw-credentials.",
+                len(visible_mappings),
+            )
+            return
+
+        msg = (
+            f"Refusing to dump: {len(visible_mappings)} FDW user mapping(s) expose credentials "
+            "(OPTIONS) visible to the current role, which pg_dump would leak into the dump. "
+            "Either dump with a less-privileged role that cannot see the mapping OPTIONS, "
+            "or pass --allow-fdw-credentials to include them intentionally."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.CREDENTIALS_LEAK, msg)
+
+    async def _warn_infra_leaks(self, connection: Connection) -> None:
+        """Warn about leaks that can't be auto-sanitized without breaking structure (FDW servers, routine/trigger bodies)."""
+        foreign_servers_count = await get_foreign_servers_count(connection)
+        if foreign_servers_count:
+            self.context.logger.warning(
+                "FDW is in use: %d foreign server(s) will be dumped, exposing remote host/port (SERVER OPTIONS)",
+                foreign_servers_count,
+            )
+
+        routines_and_triggers_count = await get_user_routines_and_triggers_count(
+            connection, self.context.exclude_schemas
+        )
+        if routines_and_triggers_count:
+            self.context.logger.warning(
+                "%d user-defined function(s)/procedure(s)/trigger(s) will be dumped as-is; their "
+                "bodies may embed secrets or personal data.",
+                routines_and_triggers_count,
+            )
+
     async def _dump_pre_data(self) -> None:
         if self._skip_pre_data_dump:
             self.context.logger.info("-------------> Skipped dump pre-data (pg_dump)")
@@ -622,7 +719,6 @@ class DumpMode:
     async def _fetch_sequences_data(self, connection: Connection) -> None:
         """Fetch sequences data and cache for reuse in pg_dump and metadata."""
         query = get_sequences_query(self.context.exclude_schemas)
-        self.context.logger.debug(str(query))
         self._sequences_data = [tuple(row) for row in await connection.fetch(query)]
 
     async def _prepare_tables_lists(self, connection: Connection) -> None:
@@ -723,6 +819,8 @@ class DumpMode:
                 # dump pool plus this connection, which holds the snapshot transaction
                 await check_required_connections(connection, self.context.options.db_connections_per_process + 1)
 
+            await self._check_fdw_credentials_leak(connection)
+
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()
             self._prepare_output_dir()
@@ -730,6 +828,7 @@ class DumpMode:
             await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
             await self._fetch_sequences_data(connection)
+            await self._warn_infra_leaks(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
             await self._dump_data(connection)

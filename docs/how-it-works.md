@@ -1,5 +1,5 @@
 # How it works
-> [🏠 Home](../README.md#-documentation-index) | [💬 FAQ](faq.md)
+> [🏠 Home](../README.md#-documentation-index) | [💾 Dump](operations/dump.md) | [📂 Restore](operations/restore.md) | [🛡️ Security](security.md) | [💬 FAQ](faq.md)
 
 ## Masking (pseudonymization)
 

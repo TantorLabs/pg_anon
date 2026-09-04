@@ -58,6 +58,7 @@ class RunOptions:
     prepared_sens_dict_files: list[str] | None = None
     pg_dump: str = DEFAULT_PG_DUMP_PATH
     pg_dump_options: str | None = None
+    allow_fdw_credentials: bool = False
     output_dir: str = ""
     clear_output_dir: bool = False
     dbg_stage_1_validate_dict: bool = False
@@ -70,6 +71,7 @@ class RunOptions:
     input_dir: str = ""
     pg_restore: str = DEFAULT_PG_RESTORE_PATH
     pg_restore_options: str | None = None
+    keep_fdw_user_mappings: bool = False
     drop_custom_check_constr: bool = False
     seq_init_by_max_value: bool = False
     disable_checks: bool = False

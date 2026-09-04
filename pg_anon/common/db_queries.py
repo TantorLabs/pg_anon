@@ -261,3 +261,49 @@ def get_db_params(db_name: str) -> str:
         JOIN pg_roles r ON r.oid = d.datdba
         WHERE d.datname = '{db_name}';
     """
+
+
+def get_visible_user_mappings_query() -> str:
+    """FDW user mappings whose OPTIONS the dumping role can see (credentials pg_dump would leak)."""
+    return """
+        SELECT srvname, usename
+        FROM pg_user_mappings
+        WHERE umoptions IS NOT NULL
+    """
+
+
+def get_foreign_servers_count_query() -> str:
+    """Count foreign servers (FDW presence check)."""
+    return "SELECT count(*) FROM pg_foreign_server"
+
+
+def get_user_routines_and_triggers_count_query(excluded_schemas: list[str] | None = None) -> str:
+    """Count user-defined functions/procedures and non-internal triggers, excluding system/anon_funcs schemas and extension-owned objects."""
+    always_excluded = ["information_schema", ANON_UTILS_DB_SCHEMA_NAME]
+    excluded = always_excluded + (excluded_schemas or [])
+    excluded_str = ", ".join("'" + v.replace("'", "''") + "'" for v in excluded)
+
+    # deptype='e' excludes extension-owned objects: they are recreated by CREATE EXTENSION,
+    # not dumped as-is, and carry no user data.
+    return f"""
+        SELECT
+            (
+                SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname NOT LIKE 'pg\\_%'
+                  AND n.nspname NOT IN ({excluded_str})
+                  AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+            )
+            +
+            (
+                SELECT count(*)
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE NOT t.tgisinternal
+                  AND n.nspname NOT LIKE 'pg\\_%'
+                  AND n.nspname NOT IN ({excluded_str})
+                  AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')
+            ) AS total
+    """

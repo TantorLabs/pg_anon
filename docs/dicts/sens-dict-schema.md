@@ -1,5 +1,5 @@
 # 📋 Sensitive Dictionary
-> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [💾 Dump](../operations/dump.md) | [🔬 View Fields](../operations/view-fields.md) | [📊 View Data](../operations/view-data.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [📋 Non-sensitive Dictionary](non-sens-dict-schema.md)  
+> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [💾 Dump](../operations/dump.md) | [🔬 View Fields](../operations/view-fields.md) | [📊 View Data](../operations/view-data.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [📋 Non-sensitive Dictionary](non-sens-dict-schema.md)
 
 ## Overview
 The sensitive dictionary defines explicit masking rules for fields.

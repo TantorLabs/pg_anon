@@ -77,6 +77,9 @@ class DumpRunner(BaseRunner):
         if self.request.pg_dump_options:
             self.cli_params.append(f"--pg-dump-options={self.request.pg_dump_options}")
 
+        if self.request.allow_fdw_credentials:
+            self.cli_params.append("--allow-fdw-credentials")
+
     def _prepare_cli_params(self) -> None:
         super()._prepare_cli_params()
         self._prepare_dictionaries_cli_params()

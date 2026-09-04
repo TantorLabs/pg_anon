@@ -1,6 +1,6 @@
 # 📚 SQL Functions Library
 
-> [🏠 Home](../README.md#-documentation-index) | [🏗️ Init](operations/init.md) | [🔍 Scan](operations/scan.md) | [💾 Dump](operations/dump.md) | [🔬 View Fields](operations/view-fields.md) | [📊 View Data](operations/view-data.md) | [🗂️ Meta Dictionary](dicts/meta-dict-schema.md) | [🔐 Sensitive Dictionary](dicts/sens-dict-schema.md)  
+> [🏠 Home](../README.md#-documentation-index) | [🏗️ Init](operations/init.md) | [🔍 Scan](operations/scan.md) | [🗂️ Meta Dictionary](dicts/meta-dict-schema.md) | [🔐 Sensitive Dictionary](dicts/sens-dict-schema.md)
 
 ## Overview
 

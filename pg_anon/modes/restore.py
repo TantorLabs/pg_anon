@@ -39,6 +39,8 @@ _CUSTOM_OBJECTS_TOC_RE = re.compile(
     r"(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR|AGGREGATE)\b"
 )
 
+_USER_MAPPING_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+USER MAPPING\b")
+
 _EXTENSION_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
 
 _PUBLICATION_TABLE_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+PUBLICATION TABLE(?:S IN SCHEMA)?\s+(?P<schema>\S+)")
@@ -323,6 +325,15 @@ class RestoreMode:
         # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
         if self.metadata.extensions:
             blacklist.append(_EXTENSION_TOC_RE)
+
+        if self.context.options.keep_fdw_user_mappings:
+            self.context.logger.info("Keeping USER MAPPING in restore (--keep-fdw-user-mappings set)")
+        else:
+            blacklist.append(_USER_MAPPING_TOC_RE)
+            self.context.logger.info(
+                "Removing USER MAPPING from restore by default "
+                "(FDW remote-server credentials; restore also fails without OPTIONS)"
+            )
 
         available_schemas = set(self._restored_schemas)
 
@@ -1115,6 +1126,7 @@ class RestoreMode:
 
         try:
             self._save_input_dicts_to_run_dir()
+            self._check_utils_version_for_dump()
 
             await self._drop_database()
             connection = await create_connection(
@@ -1127,7 +1139,6 @@ class RestoreMode:
 
             await self._check_db_is_empty(connection)
             await self._check_no_extra_tables_in_target(connection)
-            self._check_utils_version_for_dump()
 
             self.context.read_partial_tables_dicts()
             self._prepare_tables_lists()
