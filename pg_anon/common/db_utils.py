@@ -1,6 +1,5 @@
 import hashlib
 import re
-from collections import defaultdict
 from typing import Any
 
 import asyncpg
@@ -382,16 +381,26 @@ async def get_schemas(connection: Connection, schema_filter: str | None = None) 
 
 
 async def get_extensions(connection: Connection) -> list:
-    """Get the list of installed extensions in the database."""
+    """Get installed extensions with their dependencies from pg_depend."""
     query = """
     SELECT
         n.nspname as "schema"
         , e.extname as "name"
         , e.extversion "version"
         , e.extrelocatable as "relocatable"
+        , COALESCE(
+            array_agg(r.extname ORDER BY r.extname) FILTER (WHERE r.extname IS NOT NULL)
+            , '{}'::name[]
+          ) as "requires"
     FROM pg_extension e
     JOIN pg_namespace n ON n.oid = e.extnamespace
-    ORDER BY extname;
+    LEFT JOIN pg_depend d
+        ON d.classid = 'pg_extension'::regclass
+        AND d.objid = e.oid
+        AND d.refclassid = 'pg_extension'::regclass
+    LEFT JOIN pg_extension r ON r.oid = d.refobjid
+    GROUP BY n.nspname, e.extname, e.extversion, e.extrelocatable
+    ORDER BY e.extname;
     """
 
     return await connection.fetch(query)
@@ -414,29 +423,21 @@ async def get_user_routines_and_triggers_count(
     return await connection.fetchval(get_user_routines_and_triggers_count_query(excluded_schemas))
 
 
-async def get_available_extensions_map(connection: Connection) -> dict[str, list[dict[str, Any]]]:
-    """Get a map of available extensions with their version details."""
+async def get_available_extensions_map(connection: Connection) -> dict[str, dict[str, Any]]:
+    """Get extensions available on the server: default version and requires of every version."""
     query = """
-    SELECT ev.name, ev.version, ev.installed, ev.requires, e.default_version
+    SELECT ev.name, ev.version, ev.requires, e.default_version
     FROM pg_available_extension_versions as ev
-    LEFT JOIN pg_available_extensions as e on e."name" = ev."name"
-    ORDER BY name, installed DESC, version DESC;
+    LEFT JOIN pg_available_extensions as e on e."name" = ev."name";
     """
-    rows = await connection.fetch(query)
 
-    extensions_map = defaultdict(list)
+    extensions_map: dict[str, dict[str, Any]] = {}
 
-    for row in rows:
-        extensions_map[row["name"]].append(
-            {
-                "version": row["version"],
-                "installed": row["installed"],
-                "requires": row["requires"],
-                "default_version": row["default_version"],
-            }
-        )
+    for row in await connection.fetch(query):
+        extension = extensions_map.setdefault(row["name"], {"default_version": row["default_version"], "versions": {}})
+        extension["versions"][row["version"]] = list(row["requires"] or [])
 
-    return dict(extensions_map)
+    return extensions_map
 
 
 async def get_available_schemas(connection: Connection) -> list[str]:

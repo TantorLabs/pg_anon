@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import hashlib
+import logging
 import re
 import shlex
 import shutil
@@ -8,6 +9,7 @@ import subprocess
 import uuid
 from datetime import datetime
 from enum import Enum
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +91,16 @@ def _applicable_hardening_dump_flags(pg_dump_major: int) -> list[tuple[str, _Dum
             continue
         result.append((flag, position, reason))
     return result
+
+
+def _dependency_order(dependencies: dict[str, set[str]], logger: logging.Logger) -> list[str]:
+    """Sort extension names so that every extension follows the ones it depends on."""
+    try:
+        return list(TopologicalSorter(dependencies).static_order())
+    except CycleError:
+        # Not reachable through PostgreSQL, which rejects circular extension dependencies
+        logger.warning("Circular dependency between extensions, falling back to alphabetical order")
+        return sorted(dependencies)
 
 
 class DumpMode:
@@ -269,16 +281,22 @@ class DumpMode:
             }
 
     async def _prepare_extensions(self, connection: Connection) -> None:
-        self._extensions = {}
-        extensions_data = await get_extensions(connection)
-        for schema, name, version, relocatable in extensions_data:
-            self._extensions[name] = {
-                "schema": schema,
+        extensions = {}
+        dependencies = {}
+
+        for row in await get_extensions(connection):
+            name = row["name"]
+            extensions[name] = {
+                "schema": row["schema"],
                 "name": name,
-                "version": version,
-                "relocatable": relocatable,
-                "is_excluded_by_schema": schema in self.context.exclude_schemas,
+                "version": row["version"],
+                "relocatable": row["relocatable"],
+                "is_excluded_by_schema": row["schema"] in self.context.exclude_schemas,
             }
+            dependencies[name] = set(row["requires"] or [])
+
+        # sorted for correct extension installation order
+        self._extensions = {name: extensions[name] for name in _dependency_order(dependencies, self.context.logger)}
 
     async def _prepare_and_save_metadata(self) -> None:
         if self.context.options.dbg_stage_1_validate_dict:

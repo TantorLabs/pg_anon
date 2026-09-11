@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from copy import copy
 from pathlib import Path
+from typing import Any
 
 import asyncpg
 from asyncpg import Connection
@@ -19,19 +20,14 @@ from pg_anon.common.db_utils import (
     create_pool,
     get_available_extensions_map,
     get_available_schemas,
+    get_extensions,
     get_invalid_partitioned_indexes,
     run_query_in_pool,
 )
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import (
-    build_pg_util_env,
-    get_major_version,
-    get_pg_util_version,
-    resolve_dependencies,
-    save_dicts_info_file,
-)
+from pg_anon.common.utils import build_pg_util_env, get_major_version, get_pg_util_version, save_dicts_info_file
 from pg_anon.context import Context
 
 _CUSTOM_OBJECTS_TOC_RE = re.compile(
@@ -72,6 +68,12 @@ class RestoreMode:
     _skip_post_data_restore: bool = False
 
     _restored_schemas: list[str]
+
+    _metadata_extensions: dict[str, dict[str, Any]]
+    _available_extensions: dict[str, dict[str, Any]]
+    _available_schemas: list[str]
+    _installed_extensions: dict[str, str]
+    _created_extensions: set[str]
 
     @property
     def _whitelist_active(self) -> bool:
@@ -321,7 +323,7 @@ class RestoreMode:
             blacklist.append(_CUSTOM_OBJECTS_TOC_RE)
 
         # Extensions are always saved in metadata (even for full dumps)
-        # and created separately by _create_extensions_for_partial_mode.
+        # and created separately by _create_extensions.
         # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
         if self.metadata.extensions:
             blacklist.append(_EXTENSION_TOC_RE)
@@ -356,7 +358,7 @@ class RestoreMode:
 
                     is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
                     if is_blacklisted:
-                        self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by blacklist - "%s" ', toc_line)
+                        self.context.logger.debug('TOC: Skip by blacklist - "%s" ', toc_line)
                         continue
 
                     schema_match = _SCHEMA_TOC_RE.match(toc_line)
@@ -637,7 +639,7 @@ class RestoreMode:
                 schemas.add(match.group(1))
         return schemas
 
-    async def _create_schemas_for_partial_mode(self, connection: Connection) -> None:
+    async def _create_schemas(self, connection: Connection) -> None:
         self._restored_schemas = []
 
         if self.metadata.partial_dump_schemas:
@@ -652,95 +654,122 @@ class RestoreMode:
 
         for schema in self._restored_schemas:
             query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
-            self.context.logger.info("PARTIAL RESTORE MODE: %s", query)
+            self.context.logger.info(query)
             await connection.execute(query)
 
-    async def _create_extensions_for_partial_mode(self, connection: Connection) -> None:  # noqa: C901, PLR0912
+    async def _create_extensions(self, connection: Connection) -> None:
+        """Create extensions from metadata, each in the schema it had in the source."""
         if not self.metadata.extensions:
             return
 
-        available_extensions = await get_available_extensions_map(connection)
-        available_schemas = await get_available_schemas(connection)
+        self._metadata_extensions = self.metadata.extensions
+        self._available_extensions = await get_available_extensions_map(connection)
+        self._available_schemas = await get_available_schemas(connection)
+        self._installed_extensions = {row["name"]: row["schema"] for row in await get_extensions(connection)}
+        self._created_extensions = set()
 
-        for extension_name, extension_data in self.metadata.extensions.items():
-            query_parts = [f'CREATE EXTENSION IF NOT EXISTS "{extension_name}"']
-            extension_schema = extension_data["schema"]
+        for extension_name in self._metadata_extensions:
+            await self._create_extension(connection, extension_name)
 
-            # If user explicitly excluded the extension's schema, try to relocate the extension
-            # into the default schema; fail only if the extension is not relocatable.
-            if extension_data["is_excluded_by_schema"]:
-                if not extension_data["relocatable"]:
-                    raise PgAnonError(
-                        ErrorCode.EXTENSION_ERROR,
-                        f'Can not restore EXTENSION "{extension_name}", cause SCHEMA "{extension_schema}" is excluded',
-                    )
+    async def _create_extension(  # noqa: C901
+        self, connection: Connection, extension_name: str, chain: tuple[str, ...] = ()
+    ) -> None:
+        if extension_name in self._created_extensions:
+            return
+
+        if extension_name in chain:
+            raise PgAnonError(
+                ErrorCode.EXTENSION_ERROR,
+                f"Circular dependency between extensions: {' -> '.join([*chain, extension_name])}",
+            )
+
+        available_extension = self._available_extensions.get(extension_name)
+        if not available_extension:
+            raise PgAnonError(
+                ErrorCode.EXTENSION_ERROR, f'Required EXTENSION "{extension_name}" is not available for creating'
+            )
+
+        # a dependency of a newer target version may be missing from the source metadata
+        extension_data = self._metadata_extensions.get(extension_name, {})
+        extension_schema = extension_data.get("schema")
+        source_version = extension_data.get("version")
+
+        installed_schema = self._installed_extensions.get(extension_name)
+        if installed_schema is not None:
+            if extension_schema and installed_schema != extension_schema:
                 self.context.logger.warning(
-                    'EXTENSION "%s" will restored into default schema, cause SCHEMA "%s" is excluded',
+                    'EXTENSION "%s" is already installed in SCHEMA "%s", but in the source it lived in SCHEMA "%s". '
+                    "Objects referencing it by the source schema will fail to restore",
                     extension_name,
+                    installed_schema,
                     extension_schema,
                 )
-            else:
-                # Extensions like pg_partman or postgis live in their own schema.
-                # Native pg_restore creates that schema from TOC before CREATE EXTENSION;
-                # pg_anon strips EXTENSION entries from TOC and runs CREATE EXTENSION before
-                # pre_data is restored, so we must ensure the schema exists here.
-                if extension_schema not in available_schemas:
-                    create_schema_query = f'CREATE SCHEMA IF NOT EXISTS "{extension_schema}"'
-                    self.context.logger.info("PARTIAL RESTORE MODE: %s", create_schema_query)
-                    await connection.execute(create_schema_query)
-                    available_schemas.append(extension_schema)
-                    if extension_schema not in self._restored_schemas:
-                        self._restored_schemas.append(extension_schema)
-                query_parts.append(f'SCHEMA "{extension_schema}"')
+            self._created_extensions.add(extension_name)
+            return
 
-            # Check extension exists in system
-            available_extension_versions = available_extensions.get(extension_name)
-            if not available_extension_versions:
-                raise PgAnonError(
-                    ErrorCode.EXTENSION_ERROR, f'Required EXTENSION "{extension_name}" is not available for creating'
-                )
+        available_versions = available_extension["versions"]
+        target_version = source_version if source_version in available_versions else None
 
-            extension_already_installed = False
-            version_specified = None
-            for available_extension_version in available_extension_versions:
-                if available_extension_version["installed"]:
-                    extension_already_installed = True
-                    break
+        if target_version is None and source_version:
+            self.context.logger.warning(
+                'EXTENSION "%s" will be restored with the version defaulted by the target server, '
+                'cause source version "%s" is not available there',
+                extension_name,
+                source_version,
+            )
 
-                if available_extension_version["version"] == extension_data["version"]:
-                    version_specified = available_extension_version
-                    break
+        requires_version = target_version or available_extension["default_version"]
+        for required_extension in available_versions.get(requires_version, []):
+            await self._create_extension(connection, required_extension, (*chain, extension_name))
 
-            if extension_already_installed:
-                continue
+        query_parts = [f'CREATE EXTENSION IF NOT EXISTS "{extension_name}"']
 
-            if not version_specified:
-                version_specified = available_extension_versions[0]
+        if extension_schema:
+            if extension_data.get("is_excluded_by_schema"):
                 self.context.logger.warning(
-                    'EXTENSION "%s" will restored by default version "%s", cause target version "%s" is not exists',
+                    'SCHEMA "%s" is excluded from the dump, but EXTENSION "%s" lives in it. The schema is created '
+                    "on the target to install the extension. User objects and data of that schema are not restored, "
+                    "they were never dumped. Drop the extension and the schema manually if they are not needed",
+                    extension_schema,
                     extension_name,
-                    version_specified["default_version"],
-                    extension_data["version"],
                 )
+            await self._create_extension_schema(connection, extension_schema)
+            query_parts.append(f'SCHEMA "{extension_schema}"')
 
-            query_parts.append(f"VERSION '{version_specified['default_version']}'")
+        if target_version:
+            query_parts.append(f"VERSION '{target_version}'")
 
-            queries = []
-            if version_specified["requires"]:
-                for dependencies_extension in version_specified["requires"]:
-                    queries.extend(
-                        [
-                            f'CREATE EXTENSION IF NOT EXISTS "{extension}"'
-                            for extension in resolve_dependencies(dependencies_extension, available_extensions)
-                        ]
-                    )
+        query = " ".join(query_parts)
+        self.context.logger.info(query)
+        try:
+            await connection.execute(query)
+        except asyncpg.exceptions.InsufficientPrivilegeError as ex:
+            raise PgAnonError(
+                ErrorCode.EXTENSION_ERROR,
+                f'Not enough privileges to create EXTENSION "{extension_name}" in SCHEMA "{extension_schema}". '
+                f"Before PostgreSQL 13 every extension requires a superuser, since 13 only trusted ones "
+                f"can be created by the database owner: {ex}",
+            ) from ex
 
-            queries.append(" ".join(query_parts))
-            for extension_dependency_query in queries:
-                self.context.logger.info("PARTIAL RESTORE MODE: %s", extension_dependency_query)
-                await connection.execute(extension_dependency_query)
+        self._created_extensions.add(extension_name)
 
-    async def _create_objects_from_ddl_for_partial_mode(self, connection: Connection) -> None:  # noqa: C901
+    async def _create_extension_schema(self, connection: Connection, schema: str) -> None:
+        if schema in self._available_schemas:
+            return
+
+        # pg_ prefix is reserved: CREATE SCHEMA fails and such schemas always exist
+        if schema.startswith("pg_"):
+            return
+
+        query = f'CREATE SCHEMA IF NOT EXISTS "{schema}"'
+        self.context.logger.info(query)
+        await connection.execute(query)
+        self._available_schemas.append(schema)
+
+        if schema not in self._restored_schemas:
+            self._restored_schemas.append(schema)
+
+    async def _create_objects_from_ddl(self, connection: Connection) -> None:  # noqa: C901
         ddl_list = []
 
         if self.metadata.partial_dump_types:
@@ -1143,9 +1172,9 @@ class RestoreMode:
             self.context.read_partial_tables_dicts()
             self._prepare_tables_lists()
 
-            await self._create_schemas_for_partial_mode(connection)
-            await self._create_extensions_for_partial_mode(connection)
-            await self._create_objects_from_ddl_for_partial_mode(connection)
+            await self._create_schemas(connection)
+            await self._create_extensions(connection)
+            await self._create_objects_from_ddl(connection)
             self._make_filtered_toc_list()
 
             await self._restore_pre_data()

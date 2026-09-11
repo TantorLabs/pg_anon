@@ -351,28 +351,6 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def resolve_dependencies(
-    extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None
-) -> set:
-    """Recursively resolve all dependencies for a PostgreSQL extension."""
-    if seen is None:
-        seen = set()
-
-    if extension_name in seen:
-        return seen
-
-    seen.add(extension_name)
-
-    for extension_data in extensions_map.get(extension_name, []):
-        if not extension_data["requires"]:
-            continue
-
-        for dependency in extension_data["requires"]:
-            resolve_dependencies(dependency, extensions_map, seen)
-
-    return seen
-
-
 def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
     """Compile a regex pattern, returning a never-matching pattern on error."""
     try:
