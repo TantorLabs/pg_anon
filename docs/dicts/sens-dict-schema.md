@@ -65,6 +65,9 @@ This dictionary can be created manually or generated automatically using [create
 > - `dictionary_exclude` is optional section.  If a table appears in both the "dictionary_exclude" and "dictionary" sections, then table will be dumped. It can be used for particular dump and debugging of the masking process.
 > - In `dictionary_exclude`, you must use either `schema` or `schema_mask` → not both.
 > - In `dictionary_exclude`, you must use either `table` or `table_mask` → not both.
+> - A rule with `table_mask: "*"` excludes the **whole schema**: `pg_anon` passes it to `pg_dump --exclude-schema`, so the dump gets no structure and no data of that schema. A rule with table names works in another way: `pg_anon` dumps the structure but not the data. On the target such tables exist, but stay empty.
+> - Naming any table of a schema in `dictionary` cancels the whole-schema exclusion. Masking wins: the schema goes into the dump, the masked table keeps its data, and the other tables stay empty. Foreign keys to those empty tables cannot be restored. Do not mix the two rules for a schema where tables reference each other.
+> - If an extension lives in an excluded schema, `pg_anon` still creates the schema on the target — see [Extensions](../how-it-works.md#extensions).
 
 ---
 

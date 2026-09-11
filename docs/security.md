@@ -30,6 +30,11 @@ secrets, review them yourself: exclude suspicious schemas with a
 [tables dictionary](dicts/tables-dictionary.md) or `--exclude-schema`, and restore the dump
 structure onto a throwaway instance to check what it contains before you share it.
 
+> ⚠️ **An excluded schema can still appear on the target**
+>
+> If an extension lives in that schema, `pg_anon` creates the schema on the target to install the
+> extension. It stays empty, so nothing leaks — see [Extensions](how-it-works.md#extensions).
+
 ---
 
 ## Foreign Data Wrappers (FDW)

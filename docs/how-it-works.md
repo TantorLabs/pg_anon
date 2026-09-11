@@ -169,3 +169,18 @@ select * from users_anonymized;
 - `pg_anon` uses `.bin.gz` files to save data (not csv)
 - Masking rules are provided to `pg_anon` via a `prepared sens dict file`
 
+---
+
+## Extensions
+
+`pg_anon` creates extensions itself, before it restores the structure. An extension goes into the same
+schema it had in the source, and `pg_anon` creates that schema if it is missing. You cannot move an
+extension to another schema: objects in the dump use the source schema name.
+
+- **An excluded schema still appears on the target if an extension lives in it.** It holds only the
+  extension and stays empty. The log shows a warning. Drop both by hand if you do not need them.
+- **Data of extension tables is not dumped** — an extension fills them itself. The exception is
+  configuration tables (`pg_extension_config_dump`): their rows are dumped.
+- **You need enough rights.** Before PostgreSQL 13 every extension needs a superuser. Since 13 the
+  database owner can create trusted ones. If your role cannot, create the extensions on the target
+  first — `pg_anon` skips existing ones.

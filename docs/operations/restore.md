@@ -9,6 +9,8 @@ This mode restores a masked backup created using pg_anon in the [dump mode](dump
 > 
 > Only backups created with `pg_anon` can be restored. Backups created with `pg_dump` **cannot** be restored.
 
+Extensions are created before the structure — see [Extensions](../how-it-works.md#extensions).
+
 ---
 
 ## Full restore (`restore`) mode
