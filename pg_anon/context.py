@@ -48,6 +48,7 @@ class Context:
         self.tables: list[tuple[str, str]] = []
         self.black_listed_tables: set[tuple[str, str]] = set()
         self.white_listed_tables: set[tuple[str, str]] = set()
+        self.extension_table_conditions: dict[tuple[str, str], str] = {}
         self.data_const_constants_min_length: int | None = None
         self.setup_logger()
 

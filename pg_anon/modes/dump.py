@@ -33,6 +33,7 @@ from pg_anon.common.db_utils import (
     get_db_tables,
     get_dump_query,
     get_event_triggers_in_schemas,
+    get_extension_tables,
     get_extensions,
     get_foreign_servers_count,
     get_indexes_data,
@@ -734,6 +735,28 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
+    async def _exclude_extension_tables(
+        self, connection: Connection, tables: list[tuple[str, str]]
+    ) -> list[tuple[str, str]]:
+        """Drop tables owned by extensions, keeping the configuration ones as pg_dump does."""
+        conditions: dict[tuple[str, str], str] = {}
+        internal_tables: set[tuple[str, str]] = set()
+
+        for table, condition in (await get_extension_tables(connection)).items():
+            if condition is None:
+                internal_tables.add(table)
+            elif condition:
+                conditions[table] = condition
+
+        self.context.extension_table_conditions = conditions
+        kept_tables = [table for table in tables if table not in internal_tables]
+
+        skipped_count = len(tables) - len(kept_tables)
+        if skipped_count:
+            self.context.logger.info("Skipping data of %d table(s) owned by extensions", skipped_count)
+
+        return kept_tables
+
     async def _fetch_sequences_data(self, connection: Connection) -> None:
         """Fetch sequences data and cache for reuse in pg_dump and metadata."""
         query = get_sequences_query(self.context.exclude_schemas)
@@ -741,6 +764,7 @@ class DumpMode:
 
     async def _prepare_tables_lists(self, connection: Connection) -> None:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
+        tables = await self._exclude_extension_tables(connection, tables)
         self.context.set_tables_lists(tables)
 
         self._partition_ancestors_map = await get_partition_ancestors_map(connection, self.context.tables)

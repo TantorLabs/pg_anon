@@ -423,6 +423,30 @@ async def get_user_routines_and_triggers_count(
     return await connection.fetchval(get_user_routines_and_triggers_count_query(excluded_schemas))
 
 
+async def get_extension_tables(connection: Connection) -> dict[tuple[str, str], str | None]:
+    """Get tables owned by extensions: config tables have a dump condition, the others have None."""
+    query = """
+    SELECT
+        n.nspname AS schema_name
+        , c.relname AS table_name
+        , cfg.condition
+    FROM pg_depend d
+    JOIN pg_class c ON c.oid = d.objid AND d.classid = 'pg_class'::regclass
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN LATERAL (
+        SELECT cond AS condition
+        FROM pg_extension e, unnest(e.extconfig, e.extcondition) AS u(objid, cond)
+        WHERE u.objid = c.oid
+    ) cfg ON true
+    WHERE
+        d.refclassid = 'pg_extension'::regclass
+        AND d.deptype = 'e'
+        AND c.relkind IN ('r', 'p');
+    """
+
+    return {(row["schema_name"], row["table_name"]): row["condition"] for row in await connection.fetch(query)}
+
+
 async def get_available_extensions_map(connection: Connection) -> dict[str, dict[str, Any]]:
     """Get extensions available on the server: default version and requires of every version."""
     query = """
@@ -1060,6 +1084,10 @@ async def check_required_connections(
         )
 
 
+def _strip_leading_where(condition: str) -> str:
+    return re.sub(r"^\s*where\b\s*", "", condition, flags=re.IGNORECASE)
+
+
 async def get_dump_query(  # noqa: C901, PLR0912
     ctx: Context,
     table_schema: str,
@@ -1152,9 +1180,18 @@ async def get_dump_query(  # noqa: C901, PLR0912
 
     fields_expr = ",\n".join(fields)
     query = f"SELECT {fields_expr}\nFROM {from_clause_target}"
+
+    conditions = []
     if sql_condition := table_rule and table_rule.get("sql_condition"):
-        condition = re.sub(r"^\s*where\b\s*", "", sql_condition, flags=re.IGNORECASE)
-        query += f"\nWHERE {condition}"
+        conditions.append(_strip_leading_where(sql_condition))
+    # extension config table: only the rows its condition selects
+    if extension_condition := ctx.extension_table_conditions.get((table_schema, table_name)):
+        conditions.append(_strip_leading_where(extension_condition))
+
+    if len(conditions) == 1:
+        query += f"\nWHERE {conditions[0]}"
+    elif conditions:
+        query += "\nWHERE " + " AND ".join(f"({condition})" for condition in conditions)
 
     if (
         ctx.options.dbg_stage_1_validate_dict
