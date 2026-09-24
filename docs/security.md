@@ -26,8 +26,8 @@ restore, warns about the rest, and leaves the final call to you.
 
 pg_anon does not inspect other objects — security labels, GUC settings (`ALTER
 ROLE/DATABASE ... SET`), comments, or extension table data. If any of them may hold
-secrets, review them yourself: exclude suspicious schemas with a
-[tables dictionary](dicts/tables-dictionary.md) or `--exclude-schema`, and restore the dump
+secrets, review them yourself: exclude suspicious schemas with
+[`--exclude-schema-name`](operations/dump.md#exclude-schemas), and restore the dump
 structure onto a throwaway instance to check what it contains before you share it.
 
 > ⚠️ **An excluded schema can still appear on the target**

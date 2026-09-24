@@ -118,6 +118,10 @@ class DumpRequest(StatelessRunnerRequest):
     sens_dict_contents: list[DictionaryContent]
     partial_tables_dict_contents: list[DictionaryContent] | None = None
     partial_tables_exclude_dict_contents: list[DictionaryContent] | None = None
+    schema_names: list[str] | None = None
+    schema_masks: list[str] | None = None
+    exclude_schema_names: list[str] | None = None
+    exclude_schema_masks: list[str] | None = None
     output_path: str
     validated_output_path: str | None = Field(default=None, exclude=True)
 
@@ -166,6 +170,10 @@ class RestoreRequest(StatelessRunnerRequest):
     validated_input_path: str | None = Field(default=None, exclude=True)
     partial_tables_dict_contents: list[DictionaryContent] | None = None
     partial_tables_exclude_dict_contents: list[DictionaryContent] | None = None
+    schema_names: list[str] | None = None
+    schema_masks: list[str] | None = None
+    exclude_schema_names: list[str] | None = None
+    exclude_schema_masks: list[str] | None = None
     pg_restore_path: str | None = None
     pg_restore_options: str | None = None
     keep_fdw_user_mappings: bool = False

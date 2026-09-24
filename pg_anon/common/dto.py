@@ -80,6 +80,10 @@ class RunOptions:
 
     # dump, restore options
     ignore_privileges: bool = False
+    schema_names: list[str] | None = None
+    schema_masks: list[str] | None = None
+    exclude_schema_names: list[str] | None = None
+    exclude_schema_masks: list[str] | None = None
 
     # view-fields options
     view_only_sensitive_fields: bool = False
@@ -267,6 +271,7 @@ class Metadata:
         self.indexes: dict | None = None
         self.constraints: dict | None = None
         self.files: dict[str, dict[str, Any]] | None = None
+        self.schemas: list[str] | None = None
         self.total_rows: int | None = None
         self.db_size: int | None = None
         # only in black and white lists cases
@@ -279,6 +284,7 @@ class Metadata:
         self.partial_dump_casts: list[str] | None = None
         self.partial_dump_operators: list[str] | None = None
         self.partial_dump_aggregates: list[str] | None = None
+        self.event_triggers: dict[str, dict[str, Any]] | None = None
         self.excluded_event_triggers: list[str] | None = None
 
     def _serialize_data(self) -> dict:  # noqa: C901, PLR0912
@@ -295,6 +301,7 @@ class Metadata:
             "indexes": self.indexes,
             "constraints": self.constraints,
             "files": self.files,
+            "schemas": self.schemas,
             "total_rows": self.total_rows,
             "db_size": self.db_size,
             "partial_dump_schemas": self.partial_dump_schemas,
@@ -306,6 +313,7 @@ class Metadata:
             "partial_dump_casts": self.partial_dump_casts,
             "partial_dump_operators": self.partial_dump_operators,
             "partial_dump_aggregates": self.partial_dump_aggregates,
+            "event_triggers": self.event_triggers,
             "excluded_event_triggers": self.excluded_event_triggers,
         }
 
@@ -320,6 +328,8 @@ class Metadata:
 
         if self.files is None:
             del data["files"]
+        if self.schemas is None:
+            del data["schemas"]
         if self.total_rows is None:
             del data["total_rows"]
         if self.db_size is None:
@@ -343,6 +353,8 @@ class Metadata:
             del data["partial_dump_operators"]
         if self.partial_dump_aggregates is None:
             del data["partial_dump_aggregates"]
+        if self.event_triggers is None:
+            del data["event_triggers"]
         if self.excluded_event_triggers is None:
             del data["excluded_event_triggers"]
 
@@ -370,6 +382,7 @@ class Metadata:
         self.constraints = data.get("constraints")
 
         self.files = data.get("files")
+        self.schemas = data.get("schemas")
         self.total_rows = data.get("total_rows")
 
         self.extensions = data.get("extensions")
@@ -381,6 +394,7 @@ class Metadata:
         self.partial_dump_casts = data.get("partial_dump_casts")
         self.partial_dump_operators = data.get("partial_dump_operators")
         self.partial_dump_aggregates = data.get("partial_dump_aggregates")
+        self.event_triggers = data.get("event_triggers")
         self.excluded_event_triggers = data.get("excluded_event_triggers")
 
     def save_into_file(self, file_path: Path) -> None:

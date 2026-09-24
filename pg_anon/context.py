@@ -42,7 +42,7 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches: dict = {}  # for create-dict mode
         self.create_dict_no_sens_matches: dict = {}  # for create-dict mode
-        self.exclude_schemas = ["columnar_internal"]
+        self.exclude_schemas: list[str] = []
         self.included_tables_rules: list[dict] = []
         self.excluded_tables_rules: list[dict] = []
         self.tables: list[tuple[str, str]] = []

@@ -5,6 +5,7 @@ import re
 import shlex
 import shutil
 import subprocess
+from collections import defaultdict
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,12 @@ from typing import Any
 import asyncpg
 from asyncpg import Connection
 
-from pg_anon.common.db_queries import get_check_constraint_query, get_db_params, get_sequences_max_value_init_query
+from pg_anon.common.db_queries import (
+    get_check_constraint_query,
+    get_db_params,
+    get_sequences_max_value_init_query,
+    schemas_filter,
+)
 from pg_anon.common.db_utils import (
     check_db_is_empty,
     check_required_connections,
@@ -27,23 +33,30 @@ from pg_anon.common.db_utils import (
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import build_pg_util_env, get_major_version, get_pg_util_version, save_dicts_info_file
-from pg_anon.context import Context
-
-_CUSTOM_OBJECTS_TOC_RE = re.compile(
-    r"^\d+;\s+\d+\s+\d+\s+"
-    r"(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR|AGGREGATE)\b"
+from pg_anon.common.toc import (
+    CUSTOM_OBJECTS_ENTRY_RE,
+    entry_id,
+    entry_ids,
+    EXTENSION_ENTRY_RE,
+    failed_entry_ids,
+    PUBLICATION_TABLE_ENTRY_RE,
+    read_toc_lines,
+    schema_entry_patterns,
+    schema_name_from_entry,
+    schemas_in_toc,
+    table_entry_matches,
+    USER_MAPPING_ENTRY_RE,
+    write_toc_list,
 )
-
-_USER_MAPPING_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+USER MAPPING\b")
-
-_EXTENSION_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
-
-_PUBLICATION_TABLE_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+PUBLICATION TABLE(?:S IN SCHEMA)?\s+(?P<schema>\S+)")
-_SCHEMA_TOC_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA - (?P<schema>\S+)")
-
-_TOC_FAILED_ENTRY_RE = re.compile(r"from TOC entry (\d+)")
-_TOC_LIST_LINE_RE = re.compile(r"^(\d+);\s")
+from pg_anon.common.utils import (
+    build_pg_util_env,
+    format_names_summary,
+    get_major_version,
+    get_pg_util_version,
+    resolve_schemas,
+    save_dicts_info_file,
+)
+from pg_anon.context import Context
 
 
 class RestoreMode:
@@ -101,6 +114,17 @@ class RestoreMode:
             or self.metadata.dbg_stage_2_validate_data
             or self.metadata.dbg_stage_3_validate_full
         )
+        self._not_valid_fk: list[dict] = []
+        self._excluded_schemas: set[str] = set()
+        self._dumped_rows: dict[tuple[str, str], int] = {
+            (info["schema"], info["table"]): int(info.get("rows") or 0) for info in (self.metadata.files or {}).values()
+        }
+
+        if self.context.options.mode == AnonMode.SYNC_DATA_RESTORE and self.context.options.pg_restore_options:
+            self.context.logger.warning(
+                "--pg-restore-options is ignored in sync-data-restore: pg_restore is not used in this mode. "
+                "To limit what is restored, use partial dictionaries."
+            )
 
     def _load_metadata(self) -> None:
         self.metadata_file_path = self.input_dir / self.metadata_file_name
@@ -112,10 +136,7 @@ class RestoreMode:
         for target in (self.metadata.files or {}).values():
             schema = target["schema"]
             table = target["table"]
-            if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
-                continue
-
-            if self._whitelist_active and (schema, table) not in self.context.white_listed_tables:
+            if not self._is_table_restored(schema, table):
                 continue
 
             analyze_queries.append(f'analyze "{schema}"."{table}"')
@@ -152,6 +173,120 @@ class RestoreMode:
                 ErrorCode.DB_NOT_EMPTY, f"Target DB {self.context.connection_params.database} is not empty!"
             )
 
+    @staticmethod
+    async def _fetch_target_tables(connection: Connection, only_roots: bool = False) -> set[tuple[str, str]]:
+        """Read tables from the catalog, partitioned parents included, without the privilege filter of get_db_tables."""
+        roots_only_clause = "AND p.oid IS NULL" if only_roots else ""
+        rows = await connection.fetch(
+            f"""
+            SELECT n.nspname, c.relname
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_inherits inh ON inh.inhrelid = c.oid
+            LEFT JOIN pg_class p ON p.oid = inh.inhparent AND p.relkind = 'p'
+            WHERE c.relkind IN ('r', 'p')
+              AND {schemas_filter("n.nspname")}
+              {roots_only_clause}
+            """  # noqa: S608
+        )
+        return {(row[0], row[1]) for row in rows}
+
+    def _resolve_schemas(self) -> None:
+        """Apply the schema name and mask options to the schemas of the dump."""
+        options = self.context.options
+        schema_filters = (
+            options.schema_names,
+            options.schema_masks,
+            options.exclude_schema_names,
+            options.exclude_schema_masks,
+        )
+        if not any(schema_filters):
+            return
+
+        dump_schemas = self.metadata.schemas
+        if dump_schemas is None:
+            # backward compatibility: old dumps have no "schemas" key, so the schemas are collected by hand
+            table_schemas = {info["schema"] for info in (self.metadata.files or {}).values()}
+            dump_schemas = sorted(table_schemas | self._extract_schemas_from_toc())
+
+        kept_schemas = resolve_schemas(dump_schemas, *schema_filters)
+        self._excluded_schemas = set(dump_schemas) - set(kept_schemas)
+        self.context.logger.info("Restore includes %s of %s schemas", len(kept_schemas), len(dump_schemas))
+
+    def _ddl_is_excluded_by_schema(self, ddl: str) -> bool:
+        """Check if a DDL statement of a partial dump creates its object in an excluded schema."""
+        for schema in self._excluded_schemas:
+            # the dump quotes a name only when it has to, so both forms are matched
+            quoted = '"' + schema.replace('"', '""') + '"'
+            names = f"(?:{re.escape(schema)}|{re.escape(quoted)})"
+            if re.search(rf"CREATE\s+(?:OR\s+REPLACE\s+)?\w+\s+{names}\.", ddl):
+                return True
+        return False
+
+    def _excluded_event_triggers(self) -> list[str]:
+        """Return the event triggers whose function is in a schema excluded on dump or on restore."""
+        if self.metadata.event_triggers is None:
+            # dumps of older versions have only the triggers excluded on dump
+            return self.metadata.excluded_event_triggers or []
+
+        return [
+            name
+            for name, trigger in self.metadata.event_triggers.items()
+            if trigger["is_excluded"] or trigger["function_schema"] in self._excluded_schemas
+        ]
+
+    def _is_table_restored(self, schema: str, table: str) -> bool:
+        """Check the table against the excluded schemas and the partial restore lists, black list first."""
+        if schema in self._excluded_schemas:
+            return False
+
+        if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
+            return False
+
+        return not (self._whitelist_active and (schema, table) not in self.context.white_listed_tables)
+
+    async def _check_target_tables(self, connection: Connection) -> None:
+        """Stop before loading data when the target database has no table to load it into."""
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE or not self.metadata.files:
+            return
+
+        expected_tables = {
+            (info["schema"], info["table"])
+            for info in self.metadata.files.values()
+            if self._is_table_restored(info["schema"], info["table"])
+        }
+        missing_tables = expected_tables - await self._fetch_target_tables(connection)
+        if not missing_tables:
+            return
+
+        raise PgAnonError(
+            ErrorCode.TARGET_MISSING_TABLES,
+            f"Target database is missing "
+            f"{format_names_summary([f'{schema}.{table}' for schema, table in missing_tables], 'table')} "
+            f"from the dump. The dump and the target structure do not match. "
+            f"Use partial dictionaries to restore a subset.",
+        )
+
+    def _tables_in_structure(self, tables: set[tuple[str, str]]) -> set[tuple[str, str]]:
+        """Return the given tables that the dump creates."""
+        tables_by_schema: dict[str, list[str]] = defaultdict(list)
+        for schema, table in tables:
+            tables_by_schema[schema].append(table)
+
+        found = set()
+        for schema, names in tables_by_schema.items():
+            toc_lines = read_toc_lines(
+                self.context.pg_restore,
+                self.input_dir / "pre_data.backup",
+                env=self._make_pg_restore_env(),
+                schemas=[schema],
+                tables=names,
+            )
+            found |= {
+                (schema, name) for name in names if any(table_entry_matches(line, schema, name) for line in toc_lines)
+            }
+        return found
+
     async def _check_no_extra_tables_in_target(self, connection: Connection) -> None:
         if not self.context.options.clean_db:
             return
@@ -162,21 +297,11 @@ class RestoreMode:
 
         dumped_tables = {(info["schema"], info["table"]) for info in (self.metadata.files or {}).values()}
 
-        rows = await connection.fetch(
-            """
-            SELECT n.nspname, c.relname
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            LEFT JOIN pg_inherits inh ON inh.inhrelid = c.oid
-            LEFT JOIN pg_class p ON p.oid = inh.inhparent AND p.relkind = 'p'
-            WHERE c.relkind IN ('r', 'p')
-              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-              AND n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
-              AND p.oid IS NULL
-            """
-        )
-        target_tables = {(r[0], r[1]) for r in rows}
+        target_tables = await self._fetch_target_tables(connection, only_roots=True)
         extras = target_tables - dumped_tables
+        if extras:
+            # partitioned roots and tables with excluded data have no data file, but the dump creates them
+            extras -= self._tables_in_structure(extras)
         if not extras:
             return
 
@@ -260,6 +385,7 @@ class RestoreMode:
                 if (
                     view["is_excluded"]
                     or (view["table_schema"], view["table_name"]) in self.context.black_listed_tables
+                    or view["table_schema"] in self._excluded_schemas
                 ):
                     blacklist.append(
                         re.compile(rf".*VIEW {re.escape(view['view_schema'])} {re.escape(view['view_name'])}")
@@ -295,20 +421,31 @@ class RestoreMode:
                     rf"{re.escape(constraint['constraint_name'])}"
                 )
 
-                if not fully_dumped or in_black:
+                in_excluded_schema = any(schema in self._excluded_schemas for schema, _ in all_leaves)
+                if not fully_dumped or in_black or in_excluded_schema:
                     blacklist.append(fk_regex)
-                elif self._whitelist_active:
-                    if all_in_white:
-                        whitelist.append(fk_regex)
-                    else:
-                        blacklist.append(fk_regex)
+                    continue
+
+                if self._whitelist_active and not all_in_white:
+                    blacklist.append(fk_regex)
+                    continue
+
+                # created later as NOT VALID, so pg_restore must not create it
+                if self._fk_needs_not_valid(constraint, ref_leaves, from_leaves):
+                    blacklist.append(fk_regex)
+                    self._not_valid_fk.append(constraint)
+                    continue
+
+                if self._whitelist_active:
+                    whitelist.append(fk_regex)
+
+        blacklist.extend(schema_entry_patterns(self._excluded_schemas))
 
         if self._restored_schemas:
             blacklist.extend([re.compile(rf".*SCHEMA - {re.escape(schema)}") for schema in self._restored_schemas])
 
-        if self.metadata.excluded_event_triggers:
-            for trigger_name in self.metadata.excluded_event_triggers:
-                blacklist.append(re.compile(rf".*EVENT TRIGGER - {re.escape(trigger_name)}\b"))
+        for trigger_name in self._excluded_event_triggers():
+            blacklist.append(re.compile(rf".*EVENT TRIGGER - {re.escape(trigger_name)}\b"))
 
         has_custom_ddl = bool(
             self.metadata.partial_dump_types
@@ -320,18 +457,18 @@ class RestoreMode:
             or self.metadata.partial_dump_aggregates
         )
         if has_custom_ddl:
-            blacklist.append(_CUSTOM_OBJECTS_TOC_RE)
+            blacklist.append(CUSTOM_OBJECTS_ENTRY_RE)
 
         # Extensions are always saved in metadata (even for full dumps)
         # and created separately by _create_extensions.
         # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
         if self.metadata.extensions:
-            blacklist.append(_EXTENSION_TOC_RE)
+            blacklist.append(EXTENSION_ENTRY_RE)
 
         if self.context.options.keep_fdw_user_mappings:
             self.context.logger.info("Keeping USER MAPPING in restore (--keep-fdw-user-mappings set)")
         else:
-            blacklist.append(_USER_MAPPING_TOC_RE)
+            blacklist.append(USER_MAPPING_ENTRY_RE)
             self.context.logger.info(
                 "Removing USER MAPPING from restore by default "
                 "(FDW remote-server credentials; restore also fails without OPTIONS)"
@@ -340,7 +477,7 @@ class RestoreMode:
         available_schemas = set(self._restored_schemas)
 
         for section in ["pre_data", "post_data"]:
-            command = [self.context.pg_restore, "-l", str(self.input_dir / f"{section}.backup")]
+            backup_path = self.input_dir / f"{section}.backup"
             if section == "pre_data":
                 self._toc_list_pre_data_file_path = self.input_dir / self._toc_list_pre_data_file_name
                 toc_file_path = self._toc_list_pre_data_file_path
@@ -348,38 +485,44 @@ class RestoreMode:
                 self._toc_list_post_data_file_path = self.input_dir / self._toc_list_post_data_file_name
                 toc_file_path = self._toc_list_post_data_file_path
 
-            proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-            toc_bytes, _ = proc.communicate()
-            toc_lines = toc_bytes.decode("utf-8", errors="replace")
-            with toc_file_path.open("w", encoding="utf-8") as f:
-                for toc_line in toc_lines.split("\n"):
-                    if toc_line.startswith(";"):
-                        continue
+            # names in the TOC text are not quoted, so the schema of an entry is asked from pg_restore
+            excluded_entry_ids = (
+                entry_ids(read_toc_lines(self.context.pg_restore, backup_path, schemas=sorted(self._excluded_schemas)))
+                if self._excluded_schemas
+                else set()
+            )
 
-                    is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
-                    if is_blacklisted:
-                        self.context.logger.debug('TOC: Skip by blacklist - "%s" ', toc_line)
-                        continue
+            kept_lines: list[str] = []
+            for toc_line in read_toc_lines(self.context.pg_restore, backup_path):
+                if entry_id(toc_line) in excluded_entry_ids:
+                    self.context.logger.debug('TOC: Skip entry of excluded schema - "%s" ', toc_line)
+                    continue
 
-                    schema_match = _SCHEMA_TOC_RE.match(toc_line)
-                    if schema_match:
-                        available_schemas.add(schema_match.group("schema"))
+                is_blacklisted = blacklist and any(p.search(toc_line) for p in blacklist)
+                if is_blacklisted:
+                    self.context.logger.debug('TOC: Skip by blacklist - "%s" ', toc_line)
+                    continue
 
-                    pub_match = _PUBLICATION_TABLE_TOC_RE.match(toc_line)
-                    if pub_match and pub_match.group("schema") not in available_schemas:
-                        self.context.logger.debug(
-                            'TOC: Skip orphaned publication membership (schema not restored) - "%s" ',
-                            toc_line,
-                        )
-                        continue
+                if entry_schema := schema_name_from_entry(toc_line):
+                    available_schemas.add(entry_schema)
 
-                    is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)
-                    is_allowed_custom_object = not has_custom_ddl and _CUSTOM_OBJECTS_TOC_RE.match(toc_line)
-                    if is_skipped_by_whitelist and not is_allowed_custom_object:
-                        self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by whitelist - "%s" ', toc_line)
-                        continue
+                pub_match = PUBLICATION_TABLE_ENTRY_RE.match(toc_line)
+                if pub_match and pub_match.group("schema") not in available_schemas:
+                    self.context.logger.debug(
+                        'TOC: Skip orphaned publication membership (schema not restored) - "%s" ',
+                        toc_line,
+                    )
+                    continue
 
-                    f.write(f"{toc_line}\n")
+                is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)
+                is_allowed_custom_object = not has_custom_ddl and CUSTOM_OBJECTS_ENTRY_RE.match(toc_line)
+                if is_skipped_by_whitelist and not is_allowed_custom_object:
+                    self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by whitelist - "%s" ', toc_line)
+                    continue
+
+                kept_lines.append(toc_line)
+
+            write_toc_list(toc_file_path, kept_lines)
 
     def _remove_toc_lists(self) -> None:
         if self.context.options.debug:
@@ -458,38 +601,15 @@ class RestoreMode:
         _, stderr_bytes = proc.communicate()
         return stderr_bytes.decode("utf-8", errors="replace"), proc.returncode
 
-    @staticmethod
-    def _parse_failed_toc_ids(stderr_text: str) -> set[int]:
-        return {int(m) for m in _TOC_FAILED_ENTRY_RE.findall(stderr_text)}
-
     def _build_retry_toc(self, section: str, failed_ids: set[int]) -> Path | None:
-        # Materialize a -L file containing only the lines for failed TOC ids.
-        # We get the canonical formatting by running `pg_restore -l` on the archive
-        # and filtering its output rather than hand-crafting line content.
+        # lines come from pg_restore -l, so the -L file keeps the canonical form
         backup_path = (self.input_dir / section.replace("-", "_")).with_suffix(".backup")
-        if not backup_path.exists():
+        toc_lines = read_toc_lines(self.context.pg_restore, backup_path, env=self._make_pg_restore_env())
+        failed_lines = [line for line in toc_lines if entry_id(line) in failed_ids]
+        if not failed_lines:
             return None
 
-        cmd = [self.context.pg_restore, "-l", str(backup_path)]
-        env = self._make_pg_restore_env()
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-        stdout_bytes, _ = proc.communicate()
-        if proc.returncode != 0:
-            return None
-
-        wanted = {str(i) for i in failed_ids}
-        matching: list[str] = []
-        for line in stdout_bytes.decode("utf-8", errors="replace").split("\n"):
-            match = _TOC_LIST_LINE_RE.match(line)
-            if match and match.group(1) in wanted:
-                matching.append(line)
-
-        if not matching:
-            return None
-
-        retry_toc = self.input_dir / f"toc_{section.replace('-', '_')}_retry.list"
-        retry_toc.write_text("\n".join(matching) + "\n", encoding="utf-8")
-        return retry_toc
+        return write_toc_list(self.input_dir / f"toc_{section.replace('-', '_')}_retry.list", failed_lines)
 
     def _split_post_data_segments(self, section: str) -> list[tuple[Path | None, int]]:
         """Split post-data into a parallel head and a serial tail starting at the first INDEX ATTACH.
@@ -515,11 +635,12 @@ class RestoreMode:
             self.context.logger.warning("TOC split lost lines, falling back to a single pass")
             return [(None, parallelism)]
 
-        self._toc_list_post_data_head_file_path = self.input_dir / self._toc_list_post_data_head_file_name
-        self._toc_list_post_data_head_file_path.write_text("\n".join(head_lines) + "\n", encoding="utf-8")
-
-        self._toc_list_post_data_tail_file_path = self.input_dir / self._toc_list_post_data_tail_file_name
-        self._toc_list_post_data_tail_file_path.write_text("\n".join(tail_lines) + "\n", encoding="utf-8")
+        self._toc_list_post_data_head_file_path = write_toc_list(
+            self.input_dir / self._toc_list_post_data_head_file_name, head_lines
+        )
+        self._toc_list_post_data_tail_file_path = write_toc_list(
+            self.input_dir / self._toc_list_post_data_tail_file_name, tail_lines
+        )
 
         self.context.logger.info(
             "post-data split: head %d lines (-j %d), tail %d lines (-j 1)",
@@ -545,7 +666,7 @@ class RestoreMode:
         if returncode == 0:
             return
 
-        failed_ids = self._parse_failed_toc_ids(stderr_text)
+        failed_ids = failed_entry_ids(stderr_text)
         if not failed_ids:
             msg = "ERROR: database restore has failed!"
             self.context.logger.error(msg)
@@ -576,7 +697,7 @@ class RestoreMode:
             self.context.logger.info(log_line)
 
         if returncode != 0:
-            retry_failed_ids = self._parse_failed_toc_ids(stderr_text)
+            retry_failed_ids = failed_entry_ids(stderr_text)
             msg = (
                 "ERROR: database restore has failed! Serial retry could not recover "
                 f"{len(retry_failed_ids)} TOC entries: {sorted(retry_failed_ids)}"
@@ -603,12 +724,7 @@ class RestoreMode:
                 if sequence_data["is_excluded"]:
                     continue
 
-                sequence_relation = (sequence_data["schema"], sequence_data["table"])
-
-                if self.context.black_listed_tables and sequence_relation in self.context.black_listed_tables:
-                    continue
-
-                if self._whitelist_active and sequence_relation not in self.context.white_listed_tables:
+                if not self._is_table_restored(sequence_data["schema"], sequence_data["table"]):
                     continue
 
                 schema = sequence_data["schema"].replace("'", "''")
@@ -619,25 +735,8 @@ class RestoreMode:
                 await connection.execute(query)
 
     def _extract_schemas_from_toc(self) -> set[str]:
-        """Extract schema names from pre_data backup TOC.
-
-        Used when partial_dump_schemas is not available in metadata (e.g. full dump + partial restore).
-        """
-        pre_data_backup = self.input_dir / "pre_data.backup"
-        if not pre_data_backup.exists():
-            return set()
-
-        command = [self.context.pg_restore, "-l", str(pre_data_backup)]
-        proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-        toc_bytes, _ = proc.communicate()
-
-        schemas: set[str] = set()
-        schema_re = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+(\S+)")
-        for line in toc_bytes.decode("utf-8", errors="replace").split("\n"):
-            match = schema_re.match(line)
-            if match:
-                schemas.add(match.group(1))
-        return schemas
+        """Read the schemas the dump creates from the TOC of pre_data, for dumps that have no schemas in metadata."""
+        return schemas_in_toc(read_toc_lines(self.context.pg_restore, self.input_dir / "pre_data.backup"))
 
     async def _create_schemas(self, connection: Connection) -> None:
         self._restored_schemas = []
@@ -649,6 +748,7 @@ class RestoreMode:
             toc_schemas = self._extract_schemas_from_toc()
             self._restored_schemas = list(table_schemas | toc_schemas)
 
+        self._restored_schemas = [schema for schema in self._restored_schemas if schema not in self._excluded_schemas]
         if not self._restored_schemas:
             return
 
@@ -793,7 +893,8 @@ class RestoreMode:
         if self.metadata.partial_dump_aggregates:
             ddl_list.extend(self.metadata.partial_dump_aggregates)
 
-        remaining = list(ddl_list)
+        remaining = [query for query in ddl_list if not self._ddl_is_excluded_by_schema(query)]
+
         while remaining:
             failed = []
             for query in remaining:
@@ -815,6 +916,60 @@ class RestoreMode:
 
             remaining = [query for query, _ in failed]
             self.context.logger.info("PARTIAL RESTORE MODE: Retrying %s failed DDL(s)", len(remaining))
+
+    def _fk_needs_not_valid(
+        self,
+        constraint: dict,
+        ref_leaves: list[tuple[str, str]],
+        from_leaves: list[tuple[str, str]],
+    ) -> bool:
+        """Check that the key cannot be validated: the dump has no data for the referenced table."""
+        # a table with excluded data has no entry in "files", a table dumped with zero rows has one
+        if self._skip_post_data_restore or constraint.get("contype") != "f" or not constraint.get("definition"):
+            return False
+
+        if not self._dumped_rows:
+            return False
+
+        referenced_without_data = any(leaf not in self._dumped_rows for leaf in ref_leaves)
+        referrer_with_rows = any(self._dumped_rows.get(leaf, 0) > 0 for leaf in from_leaves)
+
+        return referenced_without_data and referrer_with_rows
+
+    async def _create_not_valid_fk(self, connection: Connection) -> None:
+        """Create the collected foreign keys as NOT VALID, so the restore keeps them without checking old rows."""
+        if not self._not_valid_fk:
+            return
+
+        target_tables = await self._fetch_target_tables(connection)
+        created: list[str] = []
+
+        for constraint in self._not_valid_fk:
+            schema_from, table_from = constraint["table_schema_from"], constraint["table_name_from"]
+            schema_to, table_to = constraint["table_schema_to"], constraint["table_name_to"]
+            if (schema_from, table_from) not in target_tables or (schema_to, table_to) not in target_tables:
+                continue
+
+            name = constraint["constraint_name"]
+            query = (
+                f'ALTER TABLE "{schema_from}"."{table_from}" '
+                f'ADD CONSTRAINT "{name}" {constraint["definition"]} NOT VALID'
+            )
+            try:
+                self.context.logger.info(query)
+                await connection.execute(query)
+            except Exception as exc:  # noqa: BLE001
+                self.context.logger.warning("Can't create foreign key %s.%s: %s", schema_from, name, exc)
+                continue
+
+            created.append(f"{schema_from}.{name}")
+
+        if created:
+            self.context.logger.warning(
+                "%s created as NOT VALID because the dump has no data for the referenced tables. "
+                "Load the missing data, then run: ALTER TABLE ... VALIDATE CONSTRAINT ...",
+                format_names_summary(created, "foreign key"),
+            )
 
     async def _drop_constraints(self, connection: Connection) -> None:
         """Drop all CHECK constraints containing user-defined procedures."""
@@ -896,22 +1051,10 @@ class RestoreMode:
             loop = asyncio.get_event_loop()
             tasks: set[asyncio.Task[None]] = set()
             for file_name, target in (self.metadata.files or {}).items():
-                table_name_full = f'"{target["schema"]}"."{target["table"]}"'
-
-                # black list has the highest priority for pg_dump / pg_restore
-                if (
-                    self.context.black_listed_tables
-                    and (target["schema"], target["table"]) in self.context.black_listed_tables
-                ):
-                    self.context.logger.info("Skipping restore data of table: %s", table_name_full)
-                    continue
-
-                # white list has the second priority for pg_dump / pg_restore
-                if (
-                    self._whitelist_active
-                    and (target["schema"], target["table"]) not in self.context.white_listed_tables
-                ):
-                    self.context.logger.info("Skipping restore data of table: %s", table_name_full)
+                if not self._is_table_restored(target["schema"], target["table"]):
+                    self.context.logger.info(
+                        "Skipping restore data of table: %s", f'"{target["schema"]}"."{target["table"]}"'
+                    )
                     continue
 
                 full_path = self.input_dir / file_name
@@ -950,19 +1093,12 @@ class RestoreMode:
         self._compare_rows_count()
 
     def _compare_rows_count(self) -> None:
-        if self.context.black_listed_tables or self._whitelist_active:
-            dumped_rows = 0
-
-            for table_data in (self.metadata.files or {}).values():
-                table_name = (table_data["schema"], table_data["table"])
-
-                if self.context.black_listed_tables and table_name in self.context.black_listed_tables:
-                    continue
-
-                if self._whitelist_active and table_name not in self.context.white_listed_tables:
-                    continue
-
-                dumped_rows += int(table_data["rows"])
+        if self.context.black_listed_tables or self._whitelist_active or self._excluded_schemas:
+            dumped_rows = sum(
+                int(table_data["rows"])
+                for table_data in (self.metadata.files or {}).values()
+                if self._is_table_restored(table_data["schema"], table_data["table"])
+            )
         else:
             dumped_rows = int(self.metadata.total_rows or 0)
 
@@ -1108,13 +1244,13 @@ class RestoreMode:
         if "validate_tables" in context.prepared_dictionary_obj:
             connection = await create_connection(context.connection_params, server_settings=context.server_settings)
             db_objs = await connection.fetch(
-                """
+                f"""
                 select n.nspname, c.relname --, c.reltuples
                 from pg_class c
                 join pg_namespace n on c.relnamespace = n.oid
                 where
                     c.relkind = 'r' and
-                    n.nspname not in ('pg_catalog', 'information_schema') and
+                    {schemas_filter("n.nspname")} and
                     c.reltuples > 0
             """
             )
@@ -1171,6 +1307,7 @@ class RestoreMode:
 
             self.context.read_partial_tables_dicts()
             self._prepare_tables_lists()
+            self._resolve_schemas()
 
             await self._create_schemas(connection)
             await self._create_extensions(connection)
@@ -1180,9 +1317,11 @@ class RestoreMode:
             await self._restore_pre_data()
             await self._drop_constraints(connection)
 
+            await self._check_target_tables(connection)
             await self._restore_data(connection)
 
             await self._restore_post_data()
+            await self._create_not_valid_fk(connection)
             await self._check_partitioned_indexes(connection)
             await self._sequences_init(connection)
 

@@ -205,3 +205,29 @@ async def test_restore_missing_input_dir_returns_error_webhook(
     assert terminal["status"] == "error", terminal
     assert terminal["error"]
     assert terminal["error_code"]
+
+
+async def test_restore_keeps_only_selected_schema(
+    api_client,
+    api_source_db,
+    api_target_db,
+    db_params,
+    webhook_recorder,
+    db_manager,
+):
+    input_path = await _dump_for_restore(api_client, api_source_db, db_params)
+    body = build_restore_request(
+        db_params=db_params,
+        db_name=api_target_db,
+        input_path=input_path,
+        webhook_url=webhook_recorder.url,
+        schema_names=["hr"],
+    )
+    resp = await api_client.post("/api/stateless/restore", json=body)
+    assert resp.status == 201
+    terminal = await _wait_terminal(webhook_recorder)
+    assert terminal["status"] == "success", terminal
+    assert terminal["run_options"]["schema_names"] == ["hr"]
+
+    rows = await db_manager.fetch(api_target_db, "SELECT nspname FROM pg_namespace WHERE nspname IN ('hr', 'billing')")
+    assert {row["nspname"] for row in rows} == {"hr"}

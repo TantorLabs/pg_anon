@@ -70,7 +70,9 @@ async def _extension_available(db_manager, db_name: str, extension: str) -> bool
     return bool(rows)
 
 
-async def _dump(pg_anon_runner, db_params, source_db: str, dict_name: str, out_name: str) -> str:
+async def _dump(
+    pg_anon_runner, db_params, source_db: str, dict_name: str, out_name: str, extra: list[str] | None = None
+) -> str:
     out = output_path(out_name)
     res = await pg_anon_runner.run(
         "dump",
@@ -80,6 +82,7 @@ async def _dump(pg_anon_runner, db_params, source_db: str, dict_name: str, out_n
             f"--output-dir={out}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
+            *(extra or []),
         ],
     )
     assert res.result_code == ResultCode.DONE, "dump must succeed"
@@ -114,7 +117,14 @@ async def test_extension_from_excluded_schema_is_restored_into_its_schema(
     ext_source_db, target_db, db_manager, db_params, pg_anon_runner, caplog
 ):
     """A non-relocatable extension in an excluded schema used to abort the restore."""
-    out = await _dump(pg_anon_runner, db_params, ext_source_db, "exclude_ext_home.py", "excluded_ext_home")
+    out = await _dump(
+        pg_anon_runner,
+        db_params,
+        ext_source_db,
+        "mask_email.py",
+        "excluded_ext_home",
+        ["--exclude-schema-name=ext_home"],
+    )
 
     with caplog.at_level(logging.WARNING, logger="pg_anon.logger"):
         await _restore(pg_anon_runner, db_params, target_db, out)
@@ -129,7 +139,14 @@ async def test_extension_from_excluded_schema_is_restored_into_its_schema(
 
 async def test_excluded_schema_holds_no_user_data(ext_source_db, target_db, db_manager, db_params, pg_anon_runner):
     """The excluded schema is created for the extension only, its user content is not restored."""
-    out = await _dump(pg_anon_runner, db_params, ext_source_db, "exclude_ext_home.py", "excluded_ext_home_data")
+    out = await _dump(
+        pg_anon_runner,
+        db_params,
+        ext_source_db,
+        "mask_email.py",
+        "excluded_ext_home_data",
+        ["--exclude-schema-name=ext_home"],
+    )
     await _restore(pg_anon_runner, db_params, target_db, out)
 
     rows = await db_manager.fetch(
@@ -150,7 +167,14 @@ async def test_extension_type_of_excluded_schema_stays_resolvable(
     ext_source_db, target_db, db_manager, db_params, pg_anon_runner
 ):
     """User columns typed by an extension type break unless the extension keeps its schema."""
-    out = await _dump(pg_anon_runner, db_params, ext_source_db, "exclude_types_home.py", "excluded_types_home")
+    out = await _dump(
+        pg_anon_runner,
+        db_params,
+        ext_source_db,
+        "mask_email.py",
+        "excluded_types_home",
+        ["--exclude-schema-name=types_home"],
+    )
     await _restore(pg_anon_runner, db_params, target_db, out)
 
     assert await _extension_schema(db_manager, target_db, "hstore") == "types_home", (

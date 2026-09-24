@@ -32,7 +32,8 @@ from pg_anon.common.db_utils import (
     get_db_size,
     get_db_tables,
     get_dump_query,
-    get_event_triggers_in_schemas,
+    get_event_triggers,
+    get_extension_schemas,
     get_extension_tables,
     get_extensions,
     get_foreign_servers_count,
@@ -41,6 +42,7 @@ from pg_anon.common.db_utils import (
     get_partition_ancestors_map,
     get_partitioned_ancestors,
     get_schemas,
+    get_tables_depending_on_schemas,
     get_user_routines_and_triggers_count,
     get_views_related_to_tables,
     get_visible_user_mappings,
@@ -50,10 +52,11 @@ from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
     build_pg_util_env,
+    format_names_summary,
     get_dict_rule_for_table,
     get_major_version,
     get_pg_util_version,
-    safe_compile,
+    resolve_schemas,
     save_dicts_info_file,
 )
 from pg_anon.context import Context
@@ -272,6 +275,8 @@ class DumpMode:
                 "table_schema_from": row["table_schema_from"],
                 "table_name_from": row["table_name_from"],
                 "constraint_name": row["constraint_name"],
+                "contype": row["contype"],
+                "definition": row["definition"],
                 "table_schema_to": row["table_schema_to"],
                 "table_name_to": row["table_name_to"],
                 "is_excluded": row["is_excluded"],
@@ -316,16 +321,18 @@ class DumpMode:
         self.metadata.prepared_sens_dict_files = ",".join(self.context.options.prepared_sens_dict_files or [])
 
         self.metadata.extensions = self._extensions
+        self.metadata.schemas = sorted(self._schemas)
 
         if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_schemas = self._schemas
 
+        self.metadata.views = self._views
+        self.metadata.constraints = self._constraints
+
         if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
             self.metadata.files = self._data_dump_files
             self.metadata.sequences_last_values = self._sequences_last_values
-            self.metadata.views = self._views
             self.metadata.indexes = self._indexes
-            self.metadata.constraints = self._constraints
 
             self.metadata.total_rows = self._total_rows
 
@@ -666,9 +673,7 @@ class DumpMode:
                 # Prepare data for metadata
                 self._count_totals()
                 await self._prepare_sequences_last_values(connection=connection)
-                await self._prepare_views(connection=connection)
                 await self._prepare_indexes(connection=connection)
-                await self._prepare_constraints(connection=connection)
                 await self._prepare_extensions(connection=connection)
                 await self._prepare_objects_ddl_to_metadata(connection)
         finally:
@@ -776,42 +781,56 @@ class DumpMode:
         else:
             self._pg_dump_partitioned_ancestors = set()
 
-    async def _prepare_schemas_lists(self, connection: Connection) -> None:  # noqa: C901
-        self._all_db_schemas = await get_schemas(connection)
-        excluded_schemas = []
+    async def _prepare_schemas_lists(self, connection: Connection) -> None:
+        # CREATE EXTENSION makes these schemas itself; their tables follow the extension rules, like in pg_dump
+        extension_schemas = await get_extension_schemas(connection)
+        self._all_db_schemas = [schema for schema in await get_schemas(connection) if schema not in extension_schemas]
+        options = self.context.options
+        schema_filters = (
+            options.schema_names,
+            options.schema_masks,
+            options.exclude_schema_names,
+            options.exclude_schema_masks,
+        )
 
-        protected_schemas: set[str] = set()
-        for rule in self.context.prepared_dictionary_obj.get("dictionary", []):
-            if schema := rule.get("schema"):
-                protected_schemas.add(schema)
-        for rule in self.context.prepared_dictionary_obj.get("validate_tables", []):
-            if schema := rule.get("schema"):
-                protected_schemas.add(schema)
+        self._schemas = resolve_schemas(self._all_db_schemas, *schema_filters)
+        self.context.exclude_schemas = [schema for schema in self._all_db_schemas if schema not in self._schemas]
 
-        for rule in self.context.prepared_dictionary_obj.get("dictionary_exclude", []):
-            table_mask = rule.get("table_mask")
-            if table_mask != "*":
-                continue
+        if any(schema_filters):
+            self.context.logger.info("Dump includes %s of %s schemas", len(self._schemas), len(self._all_db_schemas))
 
-            schema_mask_pattern = None
-            if schema_mask := rule.get("schema_mask"):
-                schema_mask_pattern = safe_compile(schema_mask)
+        # an event trigger has no schema, so pg_dump keeps it and the restore drops it by the schema of its function
+        self.metadata.event_triggers = {
+            name: {
+                "trigger_name": name,
+                "function_schema": schema,
+                "is_excluded": schema in self.context.exclude_schemas,
+            }
+            for name, schema in (await get_event_triggers(connection)).items()
+        }
+        if self.context.exclude_schemas:
+            # older pg_anon versions read only this key
+            self.metadata.excluded_event_triggers = [
+                name for name, trigger in self.metadata.event_triggers.items() if trigger["is_excluded"]
+            ]
 
-            for schema in self._all_db_schemas:
-                if schema in protected_schemas:
-                    continue
-                if rule.get("schema") == schema:
-                    excluded_schemas.append(schema)
-                    break
-                if schema_mask_pattern and schema_mask_pattern.search(schema):
-                    excluded_schemas.append(schema)
-                    continue
+    async def _check_excluded_schema_dependencies(self, connection: Connection) -> None:
+        """Stop before pg_dump when kept tables need types or parent tables from excluded schemas."""
+        if not self._need_dump_pre_and_post_sections or not self.context.exclude_schemas:
+            return
 
-        self._schemas = list(set(self._all_db_schemas) - set(excluded_schemas))
-        self.context.exclude_schemas.extend(excluded_schemas)
+        # pg_dump keeps such tables and the restore then fails on CREATE TABLE
+        dependent_tables = await get_tables_depending_on_schemas(connection, self.context.exclude_schemas)
+        broken_tables = dependent_tables & set(self.context.tables)
+        if not broken_tables:
+            return
 
-        if excluded_schemas:
-            self.metadata.excluded_event_triggers = await get_event_triggers_in_schemas(connection, excluded_schemas)
+        raise PgAnonError(
+            ErrorCode.EXCLUDED_SCHEMA_DEPENDENCY,
+            "Excluded schemas are still needed by "
+            f"{format_names_summary([f'{schema}.{table}' for schema, table in broken_tables], 'table')}: "
+            "their types or parent tables are in use. Exclude the tables too or keep the schemas.",
+        )
 
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection) -> None:
         if self.context.white_listed_tables or self.context.black_listed_tables:
@@ -869,10 +888,14 @@ class DumpMode:
 
             await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
+            await self._check_excluded_schema_dependencies(connection)
             await self._fetch_sequences_data(connection)
             await self._warn_infra_leaks(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
+            # every dump mode needs them: the restore drops keys and views that refer to excluded tables
+            await self._prepare_views(connection=connection)
+            await self._prepare_constraints(connection=connection)
             await self._dump_data(connection)
             await self._prepare_and_save_metadata()
 

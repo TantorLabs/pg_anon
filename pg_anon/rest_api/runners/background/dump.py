@@ -48,6 +48,18 @@ class DumpRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.schema_names:
+            self.cli_params.append(f"--schema-name={','.join(self.request.schema_names)}")
+
+        if self.request.schema_masks:
+            self.cli_params.append(f"--schema-mask={','.join(self.request.schema_masks)}")
+
+        if self.request.exclude_schema_names:
+            self.cli_params.append(f"--exclude-schema-name={','.join(self.request.exclude_schema_names)}")
+
+        if self.request.exclude_schema_masks:
+            self.cli_params.append(f"--exclude-schema-mask={','.join(self.request.exclude_schema_masks)}")
+
         if self.request.save_dicts:
             self.cli_params.extend(
                 [

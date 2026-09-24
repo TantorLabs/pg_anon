@@ -177,8 +177,11 @@ select * from users_anonymized;
 schema it had in the source, and `pg_anon` creates that schema if it is missing. You cannot move an
 extension to another schema: objects in the dump use the source schema name.
 
-- **An excluded schema still appears on the target if an extension lives in it.** It holds only the
+- **A schema excluded with `--exclude-schema-name` still appears on the target if an extension lives in it.** It holds only the
   extension and stays empty. The log shows a warning. Drop both by hand if you do not need them.
+- **Schemas that belong to an extension are created by `CREATE EXTENSION`**, for example `columnar_internal` of
+  `citus_columnar`. `pg_anon` does not create them, and schema options do not apply to them. User tables in such
+  schemas are dumped as usual.
 - **Data of extension tables is not dumped** — an extension fills them itself. The exception is
   configuration tables (`pg_extension_config_dump`): their rows are dumped.
 - **You need enough rights.** Before PostgreSQL 13 every extension needs a superuser. Since 13 the

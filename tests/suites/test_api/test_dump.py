@@ -259,3 +259,25 @@ async def test_dump_output_path_outside_storage_returns_400(
     err = await resp.json()
     assert err["error_code"] == "INVALID_PATH"
     assert webhook_recorder.payloads == []
+
+
+async def test_dump_schema_options_pass_through(
+    api_client,
+    api_source_db,
+    db_params,
+    webhook_recorder,
+):
+    body = build_dump_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        sens_dict=input_dict_text("sens_dict.py"),
+        output_path=f"/dump_schemas_{uuid_short()}",
+        webhook_url=webhook_recorder.url,
+        exclude_schema_masks=["no_such_schema", "tmp_{1,2}"],
+    )
+    resp = await api_client.post("/api/stateless/dump", json=body)
+    assert resp.status == 201
+    success = await _wait_success(webhook_recorder)
+    assert success["run_options"]["exclude_schema_masks"] == ["no_such_schema", "tmp_{1,2}"], (
+        "a comma inside regex brackets must not split the value"
+    )

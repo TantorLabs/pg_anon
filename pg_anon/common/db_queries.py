@@ -4,6 +4,16 @@ from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
 from pg_anon.common.dto import FieldInfo
 
 
+def schemas_filter(schema_column: str, excluded: list[str] | None = None) -> str:
+    """Build an SQL condition that leaves out the system schemas and the given ones."""
+    # only the "pg_" prefix is reserved, and LIKE 'pg_%' would also hide schemas like "pgq"
+    condition = f"left({schema_column}, 3) <> 'pg_' AND {schema_column} <> 'information_schema'"
+    if excluded:
+        quoted = ", ".join("'" + schema.replace("'", "''") + "'" for schema in excluded)
+        condition += f" AND {schema_column} NOT IN ({quoted})"
+    return condition
+
+
 def get_limit_query(limit: int | None) -> str:
     """Build a SQL LIMIT clause from the given limit value."""
     return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
@@ -48,7 +58,7 @@ def get_scan_fields_query(limit: int | None = None) -> str:
         a.attnum > 0
         AND c.relkind IN ('r', 'p')
         AND a.atttypid = t.oid
-        AND n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast')
+        AND {schemas_filter("n.nspname")}
         AND coalesce(i.indisprimary, false) = false
         AND row(c.oid, a.attnum) not in (
             SELECT
@@ -81,7 +91,7 @@ def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, 
             table_name
         FROM information_schema.tables
         WHERE table_type = 'BASE TABLE'
-          AND table_schema NOT IN ('pg_catalog', 'information_schema')
+          AND {schemas_filter("table_schema")}
           AND table_schema = '{schema}'
           {table_filter_clause}
         ORDER BY table_schema, table_name
@@ -187,7 +197,7 @@ def get_sequences_query(excluded_schemas: list[str] | None = None) -> str:
 
 def get_check_constraint_query() -> str:
     """Build a SQL query to find check constraints referencing custom functions."""
-    return r"""
+    return rf"""
     SELECT DISTINCT
         nsp.nspname,
         cl.relname,
@@ -208,14 +218,14 @@ def get_check_constraint_query() -> str:
             SELECT p.oid
             FROM pg_proc p
             JOIN pg_namespace n ON n.oid = p.pronamespace
-            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            WHERE {schemas_filter("n.nspname")}
         )
     """
 
 
 def get_sequences_max_value_init_query() -> str:
     """Build a PL/pgSQL block to reset sequence values to their table maximums."""
-    return """
+    return f"""
     DO $$
     DECLARE
         rec record;
@@ -235,7 +245,7 @@ def get_sequences_max_value_init_query() -> str:
             WHERE c.relkind = 'r'
               AND a.attnum > 0
               AND NOT a.attisdropped
-              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND {schemas_filter("n.nspname")}
               AND pg_get_serial_sequence(
                     quote_ident(n.nspname) || '.' || quote_ident(c.relname),
                     a.attname
@@ -279,9 +289,7 @@ def get_foreign_servers_count_query() -> str:
 
 def get_user_routines_and_triggers_count_query(excluded_schemas: list[str] | None = None) -> str:
     """Count user-defined functions/procedures and non-internal triggers, excluding system/anon_funcs schemas and extension-owned objects."""
-    always_excluded = ["information_schema", ANON_UTILS_DB_SCHEMA_NAME]
-    excluded = always_excluded + (excluded_schemas or [])
-    excluded_str = ", ".join("'" + v.replace("'", "''") + "'" for v in excluded)
+    excluded = [ANON_UTILS_DB_SCHEMA_NAME, *(excluded_schemas or [])]
 
     # deptype='e' excludes extension-owned objects: they are recreated by CREATE EXTENSION,
     # not dumped as-is, and carry no user data.
@@ -291,8 +299,7 @@ def get_user_routines_and_triggers_count_query(excluded_schemas: list[str] | Non
                 SELECT count(*)
                 FROM pg_proc p
                 JOIN pg_namespace n ON n.oid = p.pronamespace
-                WHERE n.nspname NOT LIKE 'pg\\_%'
-                  AND n.nspname NOT IN ({excluded_str})
+                WHERE {schemas_filter("n.nspname", excluded)}
                   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
             )
             +
@@ -302,8 +309,7 @@ def get_user_routines_and_triggers_count_query(excluded_schemas: list[str] | Non
                 JOIN pg_class c ON c.oid = t.tgrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
                 WHERE NOT t.tgisinternal
-                  AND n.nspname NOT LIKE 'pg\\_%'
-                  AND n.nspname NOT IN ({excluded_str})
+                  AND {schemas_filter("n.nspname", excluded)}
                   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')
             ) AS total
     """
