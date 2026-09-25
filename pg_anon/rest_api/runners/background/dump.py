@@ -48,6 +48,18 @@ class DumpRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.schema_names:
+            self.cli_params.append(f"--schema-name={','.join(self.request.schema_names)}")
+
+        if self.request.schema_masks:
+            self.cli_params.append(f"--schema-mask={','.join(self.request.schema_masks)}")
+
+        if self.request.exclude_schema_names:
+            self.cli_params.append(f"--exclude-schema-name={','.join(self.request.exclude_schema_names)}")
+
+        if self.request.exclude_schema_masks:
+            self.cli_params.append(f"--exclude-schema-mask={','.join(self.request.exclude_schema_masks)}")
+
         if self.request.save_dicts:
             self.cli_params.extend(
                 [
@@ -76,6 +88,9 @@ class DumpRunner(BaseRunner):
 
         if self.request.pg_dump_options:
             self.cli_params.append(f"--pg-dump-options={self.request.pg_dump_options}")
+
+        if self.request.allow_fdw_credentials:
+            self.cli_params.append("--allow-fdw-credentials")
 
     def _prepare_cli_params(self) -> None:
         super()._prepare_cli_params()

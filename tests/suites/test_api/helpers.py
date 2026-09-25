@@ -158,6 +158,7 @@ def build_dump_request(
     operation_id: str | None = None,
     partial_tables_dict: str | None = None,
     partial_tables_exclude_dict: str | None = None,
+    exclude_schema_masks: list[str] | None = None,
     pg_dump_path: str | None = None,
     pg_dump_options: str | None = None,
     proc_count: int | None = None,
@@ -192,6 +193,7 @@ def build_dump_request(
     if partial_tables_exclude_dict is not None:
         body["partial_tables_exclude_dict_contents"] = [dict_entry("partial_excl.py", partial_tables_exclude_dict)]
     optional = {
+        "exclude_schema_masks": exclude_schema_masks,
         "pg_dump_path": pg_dump_path,
         "pg_dump_options": pg_dump_options,
         "proc_count": proc_count,
@@ -213,6 +215,7 @@ def build_restore_request(
     operation_id: str | None = None,
     partial_tables_dict: str | None = None,
     partial_tables_exclude_dict: str | None = None,
+    schema_names: list[str] | None = None,
     pg_restore_path: str | None = None,
     pg_restore_options: str | None = None,
     proc_conn_count: int | None = None,
@@ -249,14 +252,14 @@ def build_restore_request(
         body["partial_tables_dict_contents"] = [dict_entry("partial.py", partial_tables_dict)]
     if partial_tables_exclude_dict is not None:
         body["partial_tables_exclude_dict_contents"] = [dict_entry("partial_excl.py", partial_tables_exclude_dict)]
-    if pg_restore_path is not None:
-        body["pg_restore_path"] = pg_restore_path
-    if pg_restore_options is not None:
-        body["pg_restore_options"] = pg_restore_options
-    if proc_conn_count is not None:
-        body["proc_conn_count"] = proc_conn_count
-    if conn_count is not None:
-        body["conn_count"] = conn_count
+    optional = {
+        "schema_names": schema_names,
+        "pg_restore_path": pg_restore_path,
+        "pg_restore_options": pg_restore_options,
+        "proc_conn_count": proc_conn_count,
+        "conn_count": conn_count,
+    }
+    body.update({key: value for key, value in optional.items() if value is not None})
     return body
 
 

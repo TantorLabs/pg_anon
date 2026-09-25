@@ -37,6 +37,18 @@ class RestoreRunner(BaseRunner):
                 f"--partial-tables-exclude-dict-file={','.join(input_partial_tables_exclude_dict_file_names)}"
             )
 
+        if self.request.schema_names:
+            self.cli_params.append(f"--schema-name={','.join(self.request.schema_names)}")
+
+        if self.request.schema_masks:
+            self.cli_params.append(f"--schema-mask={','.join(self.request.schema_masks)}")
+
+        if self.request.exclude_schema_names:
+            self.cli_params.append(f"--exclude-schema-name={','.join(self.request.exclude_schema_names)}")
+
+        if self.request.exclude_schema_masks:
+            self.cli_params.append(f"--exclude-schema-mask={','.join(self.request.exclude_schema_masks)}")
+
         if self.request.save_dicts:
             self.cli_params.extend(
                 [
@@ -65,6 +77,9 @@ class RestoreRunner(BaseRunner):
 
         if self.request.pg_restore_options:
             self.cli_params.append(f"--pg-restore-options={self.request.pg_restore_options}")
+
+        if self.request.keep_fdw_user_mappings:
+            self.cli_params.append("--keep-fdw-user-mappings")
 
     def _prepare_additional_cli_params(self) -> None:
         if self.request.drop_custom_check_constr:

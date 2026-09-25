@@ -1,5 +1,5 @@
 # FAQ
-> [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md)
+> [🏠 Home](../README.md#-documentation-index) | [⚙️ How it works](how-it-works.md) | [🛡️ Security](security.md) | [🛠️ Debugging](debugging.md)
 
 ### 1. Where can I find operation logs and launch parameters?
 All run data is stored in the `pg_anon_runs/` directory (relative to the working directory or `$PG_ANON_HOME`).  
@@ -217,3 +217,13 @@ The trailing `2` covers the control connection and, in restore mode, the extra c
 pg_anon performs this check itself before starting and fails early with a clear message
 if the database cannot provide the requested number of connections. To skip it, use
 `--disable-checks`.
+
+---
+
+### 14. Restore error: `missing required option "user"`
+
+An FDW `USER MAPPING` was dumped without its `OPTIONS` (the dumping role could not see
+them), and the wrapper requires them. Current pg_anon strips `USER MAPPING` entries on
+restore by default, so upgrading resolves this; if you restored with
+`--keep-fdw-user-mappings`, drop that flag. See
+[Security → Foreign Data Wrappers](security.md#foreign-data-wrappers-fdw).

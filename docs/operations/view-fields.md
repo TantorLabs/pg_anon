@@ -1,5 +1,5 @@
 # 🔬 View Fields
-> [🏠 Home](../../README.md#-operations) | [🔍 Scan](scan.md) | [💾 Dump](dump.md) | [📂 Restore](restore.md) | [📊 View Data](view-data.md) | [📚 SQL Functions Library](../sql-functions-library.md)
+> [🏠 Home](../../README.md#-operations) | [🔍 Scan](scan.md) | [💾 Dump](dump.md) | [📊 View Data](view-data.md) | [📚 SQL Functions Library](../sql-functions-library.md)
 
 ## Overview
 

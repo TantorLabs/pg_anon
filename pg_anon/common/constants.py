@@ -25,7 +25,6 @@ TRANSACTIONS_SERVER_SETTINGS = {
     "idle_session_timeout": "0",
 }
 
-DEFAULT_EXCLUDED_SCHEMAS = ["pg_catalog", "information_schema"]
 
 BASE_TYPE_ALIASES = {
     "varbit": "bit varying",

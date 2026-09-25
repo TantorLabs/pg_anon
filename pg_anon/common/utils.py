@@ -14,14 +14,20 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from pg_anon.common.dto import FieldInfo, RunOptions
     from pg_anon.context import Context
 
 import yaml
 
-from pg_anon.common.constants import BASE_TYPE_ALIASES, RUNS_BASE_DIR, SAVED_DICTS_INFO_FILE_NAME, TRACEBACK_LINES_COUNT
+from pg_anon.common.constants import (
+    ANON_UTILS_DB_SCHEMA_NAME,
+    BASE_TYPE_ALIASES,
+    RUNS_BASE_DIR,
+    SAVED_DICTS_INFO_FILE_NAME,
+    TRACEBACK_LINES_COUNT,
+)
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.logger import get_logger
 
@@ -144,6 +150,30 @@ def parse_comma_separated_list(value: str | None = None) -> list[str] | None:
         return None
 
     return list(value.split(","))
+
+
+def parse_pattern_list(value: str | None = None) -> list[str] | None:
+    """Split a comma-separated list of names and patterns, keeping commas inside brackets."""
+    if not value:
+        return None
+
+    items: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in value:
+        if char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+
+        if char == "," and not depth:
+            items.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    items.append("".join(current))
+
+    return [item for item in items if item]
 
 
 def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: str) -> dict | None:
@@ -351,26 +381,48 @@ def filter_db_tables(
     return filtered_tables, black_listed_tables, white_listed_tables
 
 
-def resolve_dependencies(
-    extension_name: str, extensions_map: dict[str, list[dict[str, Any]]], seen: set | None = None
-) -> set:
-    """Recursively resolve all dependencies for a PostgreSQL extension."""
-    if seen is None:
-        seen = set()
+def format_names_summary(names: Iterable[str], noun: str, limit: int = 2) -> str:
+    """Render names for a log message as "5 tables (a, b, and 3 more)"."""
+    sorted_names = sorted(names)
+    count = len(sorted_names)
+    summary = f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
-    if extension_name in seen:
-        return seen
+    if not sorted_names or limit <= 0:
+        return summary
 
-    seen.add(extension_name)
+    # one hidden name reads worse than the name itself
+    shown = sorted_names if count <= limit + 1 else sorted_names[:limit]
+    rest = count - len(shown)
+    listed = ", ".join(shown) + (f", and {rest} more" if rest else "")
+    return f"{summary} ({listed})"
 
-    for extension_data in extensions_map.get(extension_name, []):
-        if not extension_data["requires"]:
-            continue
 
-        for dependency in extension_data["requires"]:
-            resolve_dependencies(dependency, extensions_map, seen)
+def _matches_schema(schema: str, names: list[str] | None, masks: list[str] | None) -> bool:
+    if names and schema in names:
+        return True
 
-    return seen
+    return any(mask == "*" or safe_compile(mask).search(schema) for mask in masks or [])
+
+
+def resolve_schemas(
+    all_schemas: list[str],
+    names: list[str] | None = None,
+    masks: list[str] | None = None,
+    exclude_names: list[str] | None = None,
+    exclude_masks: list[str] | None = None,
+    protected: tuple[str, ...] = (ANON_UTILS_DB_SCHEMA_NAME,),
+) -> list[str]:
+    """Select schemas by names and masks, where exclude wins over include."""
+    keeps_all = not names and not masks
+    return [
+        schema
+        for schema in all_schemas
+        if schema in protected
+        or (
+            (keeps_all or _matches_schema(schema, names, masks))
+            and not _matches_schema(schema, exclude_names, exclude_masks)
+        )
+    ]
 
 
 def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:

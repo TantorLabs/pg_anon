@@ -1064,6 +1064,62 @@
             ],
             "title": "Partial Tables Exclude Dict Contents"
           },
+          "schema_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Names"
+          },
+          "schema_masks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Masks"
+          },
+          "exclude_schema_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Schema Names"
+          },
+          "exclude_schema_masks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Schema Masks"
+          },
           "output_path": {
             "type": "string",
             "title": "Output Path"
@@ -1100,6 +1156,11 @@
               }
             ],
             "title": "Pg Dump Options"
+          },
+          "allow_fdw_credentials": {
+            "type": "boolean",
+            "title": "Allow Fdw Credentials",
+            "default": false
           },
           "proc_count": {
             "anyOf": [
@@ -1521,6 +1582,62 @@
             ],
             "title": "Partial Tables Exclude Dict Contents"
           },
+          "schema_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Names"
+          },
+          "schema_masks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Masks"
+          },
+          "exclude_schema_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Schema Names"
+          },
+          "exclude_schema_masks": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Schema Masks"
+          },
           "pg_restore_path": {
             "anyOf": [
               {
@@ -1542,6 +1659,11 @@
               }
             ],
             "title": "Pg Restore Options"
+          },
+          "keep_fdw_user_mappings": {
+            "type": "boolean",
+            "title": "Keep Fdw User Mappings",
+            "default": false
           },
           "drop_custom_check_constr": {
             "type": "boolean",

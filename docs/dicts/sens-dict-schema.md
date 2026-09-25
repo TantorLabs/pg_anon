@@ -1,5 +1,5 @@
 # 📋 Sensitive Dictionary
-> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [💾 Dump](../operations/dump.md) | [🔬 View Fields](../operations/view-fields.md) | [📊 View Data](../operations/view-data.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [📋 Non-sensitive Dictionary](non-sens-dict-schema.md)  
+> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [💾 Dump](../operations/dump.md) | [🔬 View Fields](../operations/view-fields.md) | [📊 View Data](../operations/view-data.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [📋 Non-sensitive Dictionary](non-sens-dict-schema.md)
 
 ## Overview
 The sensitive dictionary defines explicit masking rules for fields.
@@ -49,13 +49,13 @@ This dictionary can be created manually or generated automatically using [create
                 """
         }
     ],
-    # Optional section. It is used to exclude schemas and tables from the data dump.  
+    # Optional section. It is used to leave the data of tables out of the dump. The structure stays.
     "dictionary_exclude": [
         {
-            "schema": "<schema_name: string>",             # Exclude only this schema
-            "schema_mask": "<schema_regex_mask: string>",  # Or exclude schemas matching regex pattern
-            "table": "<table_name: string>",               # Exclude only this table
-            "table_mask": "<table_regex_mask: string>",    # Or exclude tables matching regex pattern
+            "schema": "<schema_name: string>",             # Only this schema
+            "schema_mask": "<schema_regex_mask: string>",  # Or schemas matching a regular expression
+            "table": "<table_name: string>",               # Only this table
+            "table_mask": "<table_regex_mask: string>",    # Or tables matching a regular expression
         }
     ]
 }
@@ -65,6 +65,8 @@ This dictionary can be created manually or generated automatically using [create
 > - `dictionary_exclude` is optional section.  If a table appears in both the "dictionary_exclude" and "dictionary" sections, then table will be dumped. It can be used for particular dump and debugging of the masking process.
 > - In `dictionary_exclude`, you must use either `schema` or `schema_mask` → not both.
 > - In `dictionary_exclude`, you must use either `table` or `table_mask` → not both.
+> - `dictionary_exclude` leaves out **data only**, also with `table_mask: "*"`: the tables stay in the dump, but empty. To leave out a whole schema, use [`--exclude-schema-name`](../operations/dump.md#exclude-schemas).
+> - A foreign key to a table without data is restored as `NOT VALID`, see [Checks during restore](../operations/restore.md#checks-during-restore).
 
 ---
 
@@ -129,7 +131,7 @@ This dictionary can be created manually or generated automatically using [create
                 """
         }
     ],
-    # Excluding all tables from schemas `tenant_a`, `tenant_b`, `tenant_c` 
+    # Leaving out the data of all tables in schemas `tenant_a`, `tenant_b`, `tenant_c`; their structure stays
     "dictionary_exclude": [
         {
             "schema_mask": "tenant_.*",

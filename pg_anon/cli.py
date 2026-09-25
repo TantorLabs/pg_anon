@@ -14,7 +14,7 @@ from pg_anon.common.constants import (
 )
 from pg_anon.common.dto import PgAnonResult, RunOptions
 from pg_anon.common.enums import AnonMode, ResultCode, ScanMode, VerboseOptions
-from pg_anon.common.utils import make_run_dir, parse_comma_separated_list
+from pg_anon.common.utils import make_run_dir, parse_comma_separated_list, parse_pattern_list
 from pg_anon.version import __version__
 
 
@@ -233,6 +233,34 @@ def scan_parser() -> argparse.ArgumentParser:
     return p
 
 
+def add_schema_filter_options(p: argparse.ArgumentParser, target: str) -> None:
+    """Add the schema name and mask options to the parser."""
+    p.add_argument(
+        "--schema-name",
+        dest="schema_names",
+        type=parse_pattern_list,
+        help=f"""One schema name or a comma-separated list to keep in the {target}. Other schemas are left out.""",
+    )
+    p.add_argument(
+        "--schema-mask",
+        dest="schema_masks",
+        type=parse_pattern_list,
+        help=f"""One regular expression or a comma-separated list to select the schemas to keep in the {target}.""",
+    )
+    p.add_argument(
+        "--exclude-schema-name",
+        dest="exclude_schema_names",
+        type=parse_pattern_list,
+        help=f"""One schema name or a comma-separated list to leave out of the {target}, with both structure and data. Has priority over the options that keep schemas.""",
+    )
+    p.add_argument(
+        "--exclude-schema-mask",
+        dest="exclude_schema_masks",
+        type=parse_pattern_list,
+        help=f"""One regular expression or a comma-separated list to select the schemas to leave out of the {target}. Has priority over the options that keep schemas.""",
+    )
+
+
 def dump_parser() -> argparse.ArgumentParser:
     """Create the argument parser with dump-specific options."""
     p = argparse.ArgumentParser(add_help=False)
@@ -255,6 +283,7 @@ def dump_parser() -> argparse.ArgumentParser:
         type=parse_comma_separated_list,
         help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
     )
+    add_schema_filter_options(p, "dump")
     p.add_argument(
         "--dbg-stage-1-validate-dict",
         action="store_true",
@@ -304,6 +333,12 @@ def dump_parser() -> argparse.ArgumentParser:
         default=None,
         help="Additional options passed directly to pg_dump utility.",
     )
+    p.add_argument(
+        "--allow-fdw-credentials",
+        action="store_true",
+        default=False,
+        help="Allow FDW user-mapping credentials into the dump (blocked by default).",
+    )
 
     return p
 
@@ -330,6 +365,7 @@ def restore_parser() -> argparse.ArgumentParser:
         type=parse_comma_separated_list,
         help="""Input file or file list contains tables dictionary for exclude specific tables from the dump. All tables listed in these files will be excluded. These files must be prepared manually (acts as a blacklist).""",
     )
+    add_schema_filter_options(p, "restore")
     p.add_argument(
         "--db-connections",
         "--db-connections-per-process",
@@ -391,6 +427,12 @@ def restore_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Additional options passed directly to pg_restore utility.",
+    )
+    p.add_argument(
+        "--keep-fdw-user-mappings",
+        action="store_true",
+        default=False,
+        help="Restore FDW user mappings instead of stripping them (stripped by default).",
     )
 
     # Hidden param for validate_target_tables() in tests

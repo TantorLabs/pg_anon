@@ -1,5 +1,5 @@
 # 📋 Non-Sensitive Dictionary
-> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [🔐 Sensitive Dictionary](sens-dict-schema.md) |  
+> [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [🔐 Sensitive Dictionary](sens-dict-schema.md)
 
 The non-sensitive dictionary is used only during the [create-dict (scan) mode](../operations/scan.md) to speed up processing.
 It defines which fields should be treated as non-sensitive. Fields listed here are **excluded** from all sensitivity checks according to [meta-dictionary](meta-dict-schema.md) rules.

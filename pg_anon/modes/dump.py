@@ -1,12 +1,15 @@
 import asyncio
 import gzip
 import hashlib
+import logging
 import re
 import shlex
 import shutil
 import subprocess
 import uuid
 from datetime import datetime
+from enum import Enum
+from graphlib import CycleError, TopologicalSorter
 from pathlib import Path
 from typing import Any
 
@@ -29,26 +32,79 @@ from pg_anon.common.db_utils import (
     get_db_size,
     get_db_tables,
     get_dump_query,
-    get_event_triggers_in_schemas,
+    get_event_triggers,
+    get_extension_schemas,
+    get_extension_tables,
     get_extensions,
+    get_foreign_servers_count,
     get_indexes_data,
     get_legacy_inheritance_parents,
     get_partition_ancestors_map,
     get_partitioned_ancestors,
     get_schemas,
+    get_tables_depending_on_schemas,
+    get_user_routines_and_triggers_count,
     get_views_related_to_tables,
+    get_visible_user_mappings,
 )
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
     build_pg_util_env,
+    format_names_summary,
     get_dict_rule_for_table,
+    get_major_version,
     get_pg_util_version,
-    safe_compile,
+    resolve_schemas,
     save_dicts_info_file,
 )
 from pg_anon.context import Context
+
+
+class _DumpFlagPos(Enum):
+    NORMAL = "normal"  # before user --pg-dump-options
+    LAST = "last"  # after them, before positional db_name
+
+
+# pg_dump hardening flags applied by default, gated by the pg_dump binary major version.
+_HARDENING_DUMP_FLAGS: list[tuple[str, int, int | None, _DumpFlagPos, str]] = [
+    (
+        "--no-subscriptions",
+        10,
+        None,
+        _DumpFlagPos.NORMAL,
+        "excludes replication subscriptions, whose connection string may contain a password",
+    ),
+    (
+        "--no-statistics",
+        18,
+        None,
+        _DumpFlagPos.LAST,
+        "excludes planner statistics, which may contain real column values",
+    ),
+]
+
+
+def _applicable_hardening_dump_flags(pg_dump_major: int) -> list[tuple[str, _DumpFlagPos, str]]:
+    result: list[tuple[str, _DumpFlagPos, str]] = []
+    for flag, min_major, max_major, position, reason in _HARDENING_DUMP_FLAGS:
+        if pg_dump_major < min_major:
+            continue
+        if max_major is not None and pg_dump_major > max_major:
+            continue
+        result.append((flag, position, reason))
+    return result
+
+
+def _dependency_order(dependencies: dict[str, set[str]], logger: logging.Logger) -> list[str]:
+    """Sort extension names so that every extension follows the ones it depends on."""
+    try:
+        return list(TopologicalSorter(dependencies).static_order())
+    except CycleError:
+        # Not reachable through PostgreSQL, which rejects circular extension dependencies
+        logger.warning("Circular dependency between extensions, falling back to alphabetical order")
+        return sorted(dependencies)
 
 
 class DumpMode:
@@ -77,6 +133,7 @@ class DumpMode:
         self._all_db_schemas: list[str] = []
         self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
         self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        self._pg_dump_major: int | None = None
 
         if not self.context.options.output_dir:
             if not self.context.options.prepared_sens_dict_files:
@@ -218,6 +275,8 @@ class DumpMode:
                 "table_schema_from": row["table_schema_from"],
                 "table_name_from": row["table_name_from"],
                 "constraint_name": row["constraint_name"],
+                "contype": row["contype"],
+                "definition": row["definition"],
                 "table_schema_to": row["table_schema_to"],
                 "table_name_to": row["table_name_to"],
                 "is_excluded": row["is_excluded"],
@@ -228,16 +287,22 @@ class DumpMode:
             }
 
     async def _prepare_extensions(self, connection: Connection) -> None:
-        self._extensions = {}
-        extensions_data = await get_extensions(connection)
-        for schema, name, version, relocatable in extensions_data:
-            self._extensions[name] = {
-                "schema": schema,
+        extensions = {}
+        dependencies = {}
+
+        for row in await get_extensions(connection):
+            name = row["name"]
+            extensions[name] = {
+                "schema": row["schema"],
                 "name": name,
-                "version": version,
-                "relocatable": relocatable,
-                "is_excluded_by_schema": schema in self.context.exclude_schemas,
+                "version": row["version"],
+                "relocatable": row["relocatable"],
+                "is_excluded_by_schema": row["schema"] in self.context.exclude_schemas,
             }
+            dependencies[name] = set(row["requires"] or [])
+
+        # sorted for correct extension installation order
+        self._extensions = {name: extensions[name] for name in _dependency_order(dependencies, self.context.logger)}
 
     async def _prepare_and_save_metadata(self) -> None:
         if self.context.options.dbg_stage_1_validate_dict:
@@ -256,16 +321,18 @@ class DumpMode:
         self.metadata.prepared_sens_dict_files = ",".join(self.context.options.prepared_sens_dict_files or [])
 
         self.metadata.extensions = self._extensions
+        self.metadata.schemas = sorted(self._schemas)
 
         if self.context.white_listed_tables or self.context.black_listed_tables:
             self.metadata.partial_dump_schemas = self._schemas
 
+        self.metadata.views = self._views
+        self.metadata.constraints = self._constraints
+
         if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
             self.metadata.files = self._data_dump_files
             self.metadata.sequences_last_values = self._sequences_last_values
-            self.metadata.views = self._views
             self.metadata.indexes = self._indexes
-            self.metadata.constraints = self._constraints
 
             self.metadata.total_rows = self._total_rows
 
@@ -281,6 +348,11 @@ class DumpMode:
         self.metadata.save_into_file(self.metadata_file_path)
         if self._need_dump_data:
             self.metadata.save_dumped_tables_into_file(self.dumped_tables_file_path)
+
+    def _get_pg_dump_major(self) -> int:
+        if self._pg_dump_major is None:
+            self._pg_dump_major = int(get_major_version(get_pg_util_version(self.context.pg_dump)))
+        return self._pg_dump_major
 
     async def _run_pg_dump(self, section: str) -> None:
         specific_tables: list[str] = []
@@ -340,9 +412,18 @@ class DumpMode:
         if self.context.options.ignore_privileges:
             command.append("--no-privileges")
 
+        normal_flags: list[str] = []
+        last_flags: list[str] = []
+        for flag, position, reason in _applicable_hardening_dump_flags(self._get_pg_dump_major()):
+            self.context.logger.info("Passing %s to pg_dump (%s)", flag, reason)
+            (last_flags if position is _DumpFlagPos.LAST else normal_flags).append(flag)
+
+        command.extend(normal_flags)
         if self.context.options.pg_dump_options:
             command.extend(shlex.split(self.context.options.pg_dump_options))
 
+        # LAST flags go after user --pg-dump-options so --no-statistics wins over a user --with-statistics.
+        command.extend(last_flags)
         command.append(self.context.options.db_name)
         self.context.logger.debug(str(command))
         proc = subprocess.Popen(
@@ -592,14 +673,54 @@ class DumpMode:
                 # Prepare data for metadata
                 self._count_totals()
                 await self._prepare_sequences_last_values(connection=connection)
-                await self._prepare_views(connection=connection)
                 await self._prepare_indexes(connection=connection)
-                await self._prepare_constraints(connection=connection)
                 await self._prepare_extensions(connection=connection)
                 await self._prepare_objects_ddl_to_metadata(connection)
         finally:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
+
+    async def _check_fdw_credentials_leak(self, connection: Connection) -> None:
+        """Block the dump when FDW user-mapping credentials are visible; --allow-fdw-credentials downgrades to a warning."""
+        visible_mappings = await get_visible_user_mappings(connection)
+        if not visible_mappings:
+            return
+
+        if self.context.options.allow_fdw_credentials:
+            self.context.logger.warning(
+                "FDW credentials will be written to the dump: %d user mapping(s) with visible "
+                "OPTIONS. This was allowed explicitly via --allow-fdw-credentials.",
+                len(visible_mappings),
+            )
+            return
+
+        msg = (
+            f"Refusing to dump: {len(visible_mappings)} FDW user mapping(s) expose credentials "
+            "(OPTIONS) visible to the current role, which pg_dump would leak into the dump. "
+            "Either dump with a less-privileged role that cannot see the mapping OPTIONS, "
+            "or pass --allow-fdw-credentials to include them intentionally."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.CREDENTIALS_LEAK, msg)
+
+    async def _warn_infra_leaks(self, connection: Connection) -> None:
+        """Warn about leaks that can't be auto-sanitized without breaking structure (FDW servers, routine/trigger bodies)."""
+        foreign_servers_count = await get_foreign_servers_count(connection)
+        if foreign_servers_count:
+            self.context.logger.warning(
+                "FDW is in use: %d foreign server(s) will be dumped, exposing remote host/port (SERVER OPTIONS)",
+                foreign_servers_count,
+            )
+
+        routines_and_triggers_count = await get_user_routines_and_triggers_count(
+            connection, self.context.exclude_schemas
+        )
+        if routines_and_triggers_count:
+            self.context.logger.warning(
+                "%d user-defined function(s)/procedure(s)/trigger(s) will be dumped as-is; their "
+                "bodies may embed secrets or personal data.",
+                routines_and_triggers_count,
+            )
 
     async def _dump_pre_data(self) -> None:
         if self._skip_pre_data_dump:
@@ -619,14 +740,36 @@ class DumpMode:
         await self._run_pg_dump("post-data")
         self.context.logger.info("<------------- Finished dump post-data (pg_dump)")
 
+    async def _exclude_extension_tables(
+        self, connection: Connection, tables: list[tuple[str, str]]
+    ) -> list[tuple[str, str]]:
+        """Drop tables owned by extensions, keeping the configuration ones as pg_dump does."""
+        conditions: dict[tuple[str, str], str] = {}
+        internal_tables: set[tuple[str, str]] = set()
+
+        for table, condition in (await get_extension_tables(connection)).items():
+            if condition is None:
+                internal_tables.add(table)
+            elif condition:
+                conditions[table] = condition
+
+        self.context.extension_table_conditions = conditions
+        kept_tables = [table for table in tables if table not in internal_tables]
+
+        skipped_count = len(tables) - len(kept_tables)
+        if skipped_count:
+            self.context.logger.info("Skipping data of %d table(s) owned by extensions", skipped_count)
+
+        return kept_tables
+
     async def _fetch_sequences_data(self, connection: Connection) -> None:
         """Fetch sequences data and cache for reuse in pg_dump and metadata."""
         query = get_sequences_query(self.context.exclude_schemas)
-        self.context.logger.debug(str(query))
         self._sequences_data = [tuple(row) for row in await connection.fetch(query)]
 
     async def _prepare_tables_lists(self, connection: Connection) -> None:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
+        tables = await self._exclude_extension_tables(connection, tables)
         self.context.set_tables_lists(tables)
 
         self._partition_ancestors_map = await get_partition_ancestors_map(connection, self.context.tables)
@@ -638,42 +781,56 @@ class DumpMode:
         else:
             self._pg_dump_partitioned_ancestors = set()
 
-    async def _prepare_schemas_lists(self, connection: Connection) -> None:  # noqa: C901
-        self._all_db_schemas = await get_schemas(connection)
-        excluded_schemas = []
+    async def _prepare_schemas_lists(self, connection: Connection) -> None:
+        # CREATE EXTENSION makes these schemas itself; their tables follow the extension rules, like in pg_dump
+        extension_schemas = await get_extension_schemas(connection)
+        self._all_db_schemas = [schema for schema in await get_schemas(connection) if schema not in extension_schemas]
+        options = self.context.options
+        schema_filters = (
+            options.schema_names,
+            options.schema_masks,
+            options.exclude_schema_names,
+            options.exclude_schema_masks,
+        )
 
-        protected_schemas: set[str] = set()
-        for rule in self.context.prepared_dictionary_obj.get("dictionary", []):
-            if schema := rule.get("schema"):
-                protected_schemas.add(schema)
-        for rule in self.context.prepared_dictionary_obj.get("validate_tables", []):
-            if schema := rule.get("schema"):
-                protected_schemas.add(schema)
+        self._schemas = resolve_schemas(self._all_db_schemas, *schema_filters)
+        self.context.exclude_schemas = [schema for schema in self._all_db_schemas if schema not in self._schemas]
 
-        for rule in self.context.prepared_dictionary_obj.get("dictionary_exclude", []):
-            table_mask = rule.get("table_mask")
-            if table_mask != "*":
-                continue
+        if any(schema_filters):
+            self.context.logger.info("Dump includes %s of %s schemas", len(self._schemas), len(self._all_db_schemas))
 
-            schema_mask_pattern = None
-            if schema_mask := rule.get("schema_mask"):
-                schema_mask_pattern = safe_compile(schema_mask)
+        # an event trigger has no schema, so pg_dump keeps it and the restore drops it by the schema of its function
+        self.metadata.event_triggers = {
+            name: {
+                "trigger_name": name,
+                "function_schema": schema,
+                "is_excluded": schema in self.context.exclude_schemas,
+            }
+            for name, schema in (await get_event_triggers(connection)).items()
+        }
+        if self.context.exclude_schemas:
+            # older pg_anon versions read only this key
+            self.metadata.excluded_event_triggers = [
+                name for name, trigger in self.metadata.event_triggers.items() if trigger["is_excluded"]
+            ]
 
-            for schema in self._all_db_schemas:
-                if schema in protected_schemas:
-                    continue
-                if rule.get("schema") == schema:
-                    excluded_schemas.append(schema)
-                    break
-                if schema_mask_pattern and schema_mask_pattern.search(schema):
-                    excluded_schemas.append(schema)
-                    continue
+    async def _check_excluded_schema_dependencies(self, connection: Connection) -> None:
+        """Stop before pg_dump when kept tables need types or parent tables from excluded schemas."""
+        if not self._need_dump_pre_and_post_sections or not self.context.exclude_schemas:
+            return
 
-        self._schemas = list(set(self._all_db_schemas) - set(excluded_schemas))
-        self.context.exclude_schemas.extend(excluded_schemas)
+        # pg_dump keeps such tables and the restore then fails on CREATE TABLE
+        dependent_tables = await get_tables_depending_on_schemas(connection, self.context.exclude_schemas)
+        broken_tables = dependent_tables & set(self.context.tables)
+        if not broken_tables:
+            return
 
-        if excluded_schemas:
-            self.metadata.excluded_event_triggers = await get_event_triggers_in_schemas(connection, excluded_schemas)
+        raise PgAnonError(
+            ErrorCode.EXCLUDED_SCHEMA_DEPENDENCY,
+            "Excluded schemas are still needed by "
+            f"{format_names_summary([f'{schema}.{table}' for schema, table in broken_tables], 'table')}: "
+            "their types or parent tables are in use. Exclude the tables too or keep the schemas.",
+        )
 
     async def _prepare_objects_ddl_to_metadata(self, connection: Connection) -> None:
         if self.context.white_listed_tables or self.context.black_listed_tables:
@@ -723,15 +880,22 @@ class DumpMode:
                 # dump pool plus this connection, which holds the snapshot transaction
                 await check_required_connections(connection, self.context.options.db_connections_per_process + 1)
 
+            await self._check_fdw_credentials_leak(connection)
+
             self.context.read_prepared_dict()
             self.context.read_partial_tables_dicts()
             self._prepare_output_dir()
 
             await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
+            await self._check_excluded_schema_dependencies(connection)
             await self._fetch_sequences_data(connection)
+            await self._warn_infra_leaks(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
+            # every dump mode needs them: the restore drops keys and views that refer to excluded tables
+            await self._prepare_views(connection=connection)
+            await self._prepare_constraints(connection=connection)
             await self._dump_data(connection)
             await self._prepare_and_save_metadata()
 

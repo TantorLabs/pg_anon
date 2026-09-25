@@ -118,11 +118,16 @@ class DumpRequest(StatelessRunnerRequest):
     sens_dict_contents: list[DictionaryContent]
     partial_tables_dict_contents: list[DictionaryContent] | None = None
     partial_tables_exclude_dict_contents: list[DictionaryContent] | None = None
+    schema_names: list[str] | None = None
+    schema_masks: list[str] | None = None
+    exclude_schema_names: list[str] | None = None
+    exclude_schema_masks: list[str] | None = None
     output_path: str
     validated_output_path: str | None = Field(default=None, exclude=True)
 
     pg_dump_path: str | None = None
     pg_dump_options: str | None = None
+    allow_fdw_credentials: bool = False
 
     proc_count: int | None = Field(None, description="Deprecated: has no effect.", deprecated=True)
     save_dicts: bool = False
@@ -165,8 +170,13 @@ class RestoreRequest(StatelessRunnerRequest):
     validated_input_path: str | None = Field(default=None, exclude=True)
     partial_tables_dict_contents: list[DictionaryContent] | None = None
     partial_tables_exclude_dict_contents: list[DictionaryContent] | None = None
+    schema_names: list[str] | None = None
+    schema_masks: list[str] | None = None
+    exclude_schema_names: list[str] | None = None
+    exclude_schema_masks: list[str] | None = None
     pg_restore_path: str | None = None
     pg_restore_options: str | None = None
+    keep_fdw_user_mappings: bool = False
     drop_custom_check_constr: bool = False
     clean_db: bool = False
     drop_db: bool = False

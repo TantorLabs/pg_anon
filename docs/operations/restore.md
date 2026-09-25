@@ -1,5 +1,5 @@
 # Restore
-> [🏠 Home](../../README.md#-operations) | [💾 Dump](dump.md) | [🛠️ Debugging](../debugging.md) | [📑 Tables dictionary](../dicts/tables-dictionary.md) 
+> [🏠 Home](../../README.md#-operations) | [💾 Dump](dump.md) | [🛠️ Debugging](../debugging.md) | [🛡️ Security](../security.md) | [📑 Tables dictionary](../dicts/tables-dictionary.md) 
 
 ## Overview
 
@@ -8,6 +8,8 @@ This mode restores a masked backup created using pg_anon in the [dump mode](dump
 > ⚠️ **Note**
 > 
 > Only backups created with `pg_anon` can be restored. Backups created with `pg_dump` **cannot** be restored.
+
+Extensions are created before the structure — see [Extensions](../how-it-works.md#extensions).
 
 ---
 
@@ -126,6 +128,40 @@ pg_anon restore \
 
 ---
 
+## Exclude schemas:
+
+Schema options work on restore [as on dump](dump.md#exclude-schemas), in all restore modes. An excluded
+schema, its objects and its data are not restored. Foreign keys and views of other schemas that refer to it
+are not restored either.
+
+> ⚠️ **Note**
+>
+> If a table of a kept schema uses a type from an excluded schema, or is a partition or a child of a table
+> there, the restore fails. Exclude such schemas on dump instead: the dump checks this case before it starts.
+
+### Run example
+```commandline
+pg_anon restore \
+    --db-host=127.0.0.1 \
+    --db-user=postgres \
+    --db-user-password=postgres \
+    --db-name=target_db \
+    --input-dir=full_dump \
+    --exclude-schema-name=audit
+```
+
+---
+
+## Checks during restore
+
+- **Missing tables.** Before data loading, `pg_anon` checks that the target has all tables to restore. If not,
+  the restore stops and no data is loaded. Without `--clean-db`, extra tables in the target are fine.
+- **Foreign keys to tables without data.** If the dump has no data for the table that a foreign key points to,
+  but the table with the key has rows, the key is created as `NOT VALID`: new rows are checked, old rows are not. The log lists such keys. Load the
+  missing data and run `ALTER TABLE ... VALIDATE CONSTRAINT ...`.
+
+---
+
 ## Options
 
 ### Common pg_anon options:
@@ -163,12 +199,24 @@ pg_anon restore \
 | `--input-dir`                        | Yes      | Path to the directory containing dump files created in dump mode.                                                                                                                                                                                    |
 | `--partial-tables-dict-file`         | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for include specific tables in the dump. All tables **not listed** in these files will be excluded. These files must be prepared manually (acts as a whitelist). |
 | `--partial-tables-exclude-dict-file` | No       | Input file or file list contains [tables dictionary](../dicts/tables-dictionary.md) for exclude specific tables from the dump. All tables **listed** in these files will be excluded. These files must be prepared manually (acts as a blacklist).   |
+| `--schema-name`                      | No       | One schema name or a comma-separated list to keep in the restore. Other schemas are left out. See [Exclude schemas](#exclude-schemas). |
+| `--schema-mask`                      | No       | One regular expression or a comma-separated list to select the schemas to keep in the restore. See [Exclude schemas](#exclude-schemas). |
+| `--exclude-schema-name`              | No       | One schema name or a comma-separated list to leave out of the restore. See [Exclude schemas](#exclude-schemas). |
+| `--exclude-schema-mask`              | No       | One regular expression or a comma-separated list to select the schemas to leave out of the restore. See [Exclude schemas](#exclude-schemas). |
 | `--disable-checks`                   | No       | Disable pre-flight checks: PostgreSQL version compatibility and available database connections. Does **not** disable the empty-target and extra-tables safety checks. (default: false)                                                                                                                                                                                 |
 | `--seq-init-by-max-value`            | No       | Initialize sequences based on maximum values. Otherwise, the sequences will be initialized based on the values of the source database.                                                                                                               |
 | `--drop-custom-check-constr`         | No       | Drops all CHECK constraints that contain user-defined procedures to avoid performance degradation during data loading.                                                                                                                               |
 | `--pg-restore`                       | No       | Path to the `pg_restore` Postgres tool (default `/usr/bin/pg_restore`).                                                                                                                                                                                                              |
-| `--pg-restore-options`               | No       | Additional options passed directly to `pg_restore` utility. Example: `"--no-comments --no-table-access-method"`.                                                                                                                                     |
+| `--pg-restore-options`               | No       | Additional options passed to `pg_restore` as is, at your own risk. Example: `"--no-comments --no-table-access-method"`. See [Options for pg_restore](#options-for-pg_restore). |
+| `--keep-fdw-user-mappings`           | No       | Restore FDW `USER MAPPING` entries instead of stripping them; stripped by default. See [Security](../security.md#foreign-data-wrappers-fdw). (default: false)                                                                                         |
 | `--clean-db`                         | No       | Cleans the database objects before restoring (if they exist in the dump). Mutually exclusive with `--drop-db`.                                                                                                                                       |
 | `--drop-db`                          | No       | Drop target database before restore. Mutually exclusive with `--clean-db`.                                                                                                                                                                           |
 | `--ignore-privileges`                | No       | Ignore privileges from source db.                                                                                                                                                                                                                    |
 | `--save-dicts`                       | No       | Duplicate all input dictionaries into the operation's run directory under `pg_anon_runs`. Useful for debugging or integration purposes.                                                                                                                                              |
+
+### Options for pg_restore
+
+`--pg-restore-options` are passed to `pg_restore` as is, at your own risk. They change only how the structure is
+restored: `pg_anon` loads the data itself. If you change the list of restored objects with them, the structure and
+the data may not match. To choose schemas and tables, use schema options and tables dictionaries.
+The `sync-data-restore` mode does not run `pg_restore`, so the options have no effect there.

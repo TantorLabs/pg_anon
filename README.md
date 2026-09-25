@@ -422,6 +422,10 @@ own client.
 - **Dumps are ordinary files.** Nothing in a dump is encrypted; a masked dump still
   deserves the storage and access rules of a database backup.
 
+A dump can also hold secrets that masking does not change — FDW credentials, function
+bodies, planner statistics. pg_anon handles some of these by default and warns about the
+rest. See [Security](docs/security.md) for details.
+
 See [How it works](docs/how-it-works.md) and the
 [dictionary schemas](docs/dicts/meta-dict-schema.md) for what each rule does.
 
@@ -433,6 +437,7 @@ See [How it works](docs/how-it-works.md) and the
 | [💽 Installation & Configuration](docs/installation-and-configuring.md) | How to install and configure `pg_anon`                            |
 | [⚙️ How It Works](docs/how-it-works.md)                                 | How the masking process works in `pg_anon`                        |
 | [🛠️ Debugging](docs/debugging.md)                                      | How to debug the masking process                                  |
+| [🛡️ Security](docs/security.md)                                         | What can leak besides data, and how pg_anon protects against it   |
 | [💬 FAQ](docs/faq.md)                                                   | Common questions and troubleshooting tips                         |
 | [📚 SQL Functions Library](docs/sql-functions-library.md)               | Built-in SQL functions for masking                                |
 | [🔌 API](docs/api.md)                                                   | Available endpoints, request/response formats, and usage examples |

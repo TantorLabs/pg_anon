@@ -42,12 +42,13 @@ class Context:
         self.total_rows = 0
         self.create_dict_sens_matches: dict = {}  # for create-dict mode
         self.create_dict_no_sens_matches: dict = {}  # for create-dict mode
-        self.exclude_schemas = ["columnar_internal"]
+        self.exclude_schemas: list[str] = []
         self.included_tables_rules: list[dict] = []
         self.excluded_tables_rules: list[dict] = []
         self.tables: list[tuple[str, str]] = []
         self.black_listed_tables: set[tuple[str, str]] = set()
         self.white_listed_tables: set[tuple[str, str]] = set()
+        self.extension_table_conditions: dict[tuple[str, str], str] = {}
         self.data_const_constants_min_length: int | None = None
         self.setup_logger()
 
