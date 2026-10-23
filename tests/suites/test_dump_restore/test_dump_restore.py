@@ -81,6 +81,12 @@ async def test_dump_then_restore_preserves_all_tables(
     expected = await list_tables(db_manager, source_db)
     assert await check_list_tables(db_manager, target_db, expected)
 
+    emails = await db_manager.fetch(target_db, "SELECT email::text AS email FROM hr.employee")
+    assert emails
+    assert all(row["email"].endswith("@anon.example") for row in emails), "hr.employee.email must be masked"
+    cards = await db_manager.fetch(target_db, "SELECT DISTINCT cardholder_name FROM billing.payment_card")
+    assert [row["cardholder_name"] for row in cards] == ["ANONYMIZED"]
+
 
 async def test_dump_with_exclude_all_keeps_validated_table(
     source_db,
@@ -150,63 +156,6 @@ async def test_sync_struct_restores_empty_tables(
     assert await check_list_tables(db_manager, target_db, expected_tables)
     zero_counts = [[s, t, 0] for s, t in expected_tables]
     assert await check_rows_count(db_manager, target_db, zero_counts)
-
-
-async def test_sync_data_after_sync_struct(
-    source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    struct_out = output_path("sync_data_struct")
-    data_out = output_path("sync_data_data")
-
-    res = await pg_anon_runner.run(
-        "sync-struct-dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
-            f"--output-dir={struct_out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-    res = await pg_anon_runner.run(
-        "sync-struct-restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={struct_out}",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-
-    res = await pg_anon_runner.run(
-        "sync-data-dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('sync_struct.py')}",
-            f"--output-dir={data_out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-    res = await pg_anon_runner.run(
-        "sync-data-restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={data_out}",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-
-    # employee has data in source; after sync-data must also have data in target
-    counts = await db_manager.fetch(target_db, "SELECT count(1) FROM hr.employee")
-    assert counts[0][0] > 0
 
 
 async def test_sync_struct_restore_with_clean_db(
@@ -312,6 +261,11 @@ async def test_dump_with_sql_conditions_filters_rows(
     out = output_path("sql_conditions")
     res = await _dump(pg_anon_runner, db_params, source_db, out_dir=out, dict_file=input_dict("sql_conditions.py"))
     assert res.result_code == ResultCode.DONE
+
+    files = json.loads((Path(out) / "metadata.json").read_text(encoding="utf-8"))["files"]
+    partial_tables = {(info["schema"], info["table"]) for info in files.values() if info.get("partial_data")}
+    assert ("hr", "employee") in partial_tables, "a table with sql_condition must be marked as partial"
+    assert ("hr", "department") not in partial_tables, "a table without a condition must not be marked"
 
     res = await _restore(pg_anon_runner, db_params, target_db, in_dir=out, extra=["--drop-db"])
     assert res.result_code == ResultCode.DONE

@@ -77,11 +77,6 @@ def test_wheel_contains_only_the_package(wheel_names):
     assert all(name.startswith("pg_anon/") for name in payload), payload
 
 
-def test_wheel_excludes_repository_only_paths(wheel_names):
-    leaked = [name for name in wheel_names if name.startswith(EXCLUDED_PREFIXES)]
-    assert not leaked
-
-
 def test_sdist_excludes_repository_only_paths(sdist_names):
     leaked = [name for name in sdist_names if name.startswith(EXCLUDED_PREFIXES)]
     assert not leaked

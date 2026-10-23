@@ -1,10 +1,23 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+
+import pytest
+import yaml
 
 from .conftest import input_dict, output_path
 from pg_anon.common.enums import ResultCode
+from pg_anon.common.toc import read_toc_lines
+
+# The suite is about a foreign key that refers to a partitioned table, possible since PG 12.
+pytestmark = pytest.mark.min_pg(120000)
+
+
+def _pg_restore_bin(db_params) -> str:
+    config = yaml.safe_load(Path(db_params.test_config).read_text())
+    return config["pg-utils-versions"]["default"]["pg_restore"]
 
 
 async def _fk_present(db_manager, db: str) -> bool:
@@ -17,18 +30,6 @@ async def _fk_present(db_manager, db: str) -> bool:
     """,
     )
     return bool(rows)
-
-
-async def _per_leaf_clones(db_manager, db: str) -> int:
-    rows = await db_manager.fetch(
-        db,
-        """
-        SELECT count(*) AS c FROM pg_constraint
-        WHERE conrelid = 'fkpart.attachment'::regclass
-          AND contype = 'f' AND conparentid <> 0
-    """,
-    )
-    return rows[0]["c"]
 
 
 async def _table_present(db_manager, db: str, schema: str, table: str) -> bool:
@@ -61,7 +62,7 @@ async def test_dump_metadata_links_partitioned_index_to_leaves(
     )
     assert res.result_code == ResultCode.DONE
 
-    metadata = json.loads((Path(out) / "metadata.json").read_text(encoding="utf-8"))
+    metadata = json.loads((Path(out) / "structure.json").read_text(encoding="utf-8"))
     indexes = metadata.get("indexes") or {}
 
     parent_entry = indexes.get("events_occurred_at_idx")
@@ -115,11 +116,19 @@ async def test_restore_drops_index_attach_when_parent_index_excluded(
     )
     assert res.result_code == ResultCode.DONE
 
-    metadata_path = Path(out) / "metadata.json"
+    # a dump marks an object to skip by its OIDs; the INDEX ATTACH entries that need it follow it
+    toc = read_toc_lines(_pg_restore_bin(db_params), Path(out) / "post_data.backup")
+    skipped = [
+        f"{match.group(1)}:{match.group(2)}"
+        for line in toc
+        if (match := re.match(r"\d+;\s+(\d+)\s+(\d+)\s+INDEX fkpart events_occurred_at_idx ", line))
+    ]
+    assert len(skipped) == 1, f"fixture must produce the entry of the partitioned index; got {skipped}"
+    attach_entries = [line for line in toc if re.search(r" INDEX ATTACH fkpart events_2025_q\d_occurred_at_idx ", line)]
+    assert len(attach_entries) == 2, f"fixture must produce two INDEX ATTACH entries; got {attach_entries}"
+    metadata_path = Path(out) / "structure.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    indexes = metadata.get("indexes") or {}
-    assert "events_occurred_at_idx" in indexes, "fixture must produce events_occurred_at_idx in metadata.indexes"
-    indexes["events_occurred_at_idx"]["is_excluded"] = True
+    metadata["dump_dependents_to_skip"].extend(skipped)
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     res = await pg_anon_runner.run(
@@ -131,9 +140,7 @@ async def test_restore_drops_index_attach_when_parent_index_excluded(
             "--drop-custom-check-constr",
         ],
     )
-    assert res.result_code == ResultCode.DONE, (
-        "restore must complete even when the parent partitioned index is marked is_excluded=True"
-    )
+    assert res.result_code == ResultCode.DONE, "restore must complete even when the parent partitioned index is skipped"
 
     rows = await db_manager.fetch(
         target_db,
@@ -142,7 +149,7 @@ async def test_restore_drops_index_attach_when_parent_index_excluded(
         WHERE n.nspname = 'fkpart' AND c.relname = 'events_occurred_at_idx'
     """,
     )
-    assert not rows, "events_occurred_at_idx was marked excluded — it must be absent on target"
+    assert not rows, "events_occurred_at_idx was skipped — it must be absent on target"
 
     inh = await db_manager.fetch(
         target_db,
@@ -157,43 +164,6 @@ async def test_restore_drops_index_attach_when_parent_index_excluded(
     assert {r["child"] for r in inh} == {"events_2025_q1", "events_2025_q2"}, (
         "leaf partitions of fkpart.events must still be attached on target"
     )
-
-
-async def test_full_clone_preserves_fk_on_partitioned(
-    source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    out = output_path("full_clone")
-
-    res = await pg_anon_runner.run(
-        "dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('empty.py')}",
-            f"--output-dir={out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-
-    res = await pg_anon_runner.run(
-        "restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={out}",
-            "--drop-custom-check-constr",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-
-    assert await _fk_present(db_manager, target_db), "user-defined FK on partitioned root must survive full clone"
-    clones = await _per_leaf_clones(db_manager, target_db)
-    assert clones >= 2, f"expected at least 2 per-leaf FK clones, got {clones}"
 
 
 async def test_partial_whitelist_leaves_and_referrer_keeps_partitioning_and_fk(
@@ -325,7 +295,7 @@ async def test_partial_whitelist_subpartition_leaves_includes_all_ancestors(
     }, f"sub-partition attach chain must be fully re-created; got {sorted(pairs)}"
 
 
-async def test_partial_whitelist_legacy_inherits_child_does_not_pull_parent(
+async def test_partial_whitelist_legacy_inherits_child_pulls_parent_without_its_rows(
     source_db,
     target_db,
     db_manager,
@@ -356,15 +326,13 @@ async def test_partial_whitelist_legacy_inherits_child_does_not_pull_parent(
             "--drop-custom-check-constr",
         ],
     )
-    if res.result_code == ResultCode.DONE:
-        animal = await db_manager.fetch(
-            target_db,
-            """
-            SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'fkpart' AND c.relname = 'animal'
-        """,
-        )
-        assert not animal, "legacy INHERITS parent must not be auto-pulled into the dump"
+    assert res.result_code == ResultCode.DONE, "restore must succeed: the child cannot be created without its parent"
+
+    assert await _table_present(db_manager, target_db, "fkpart", "animal"), (
+        "legacy INHERITS parent must be pulled into the dump with its child"
+    )
+    rows = await db_manager.fetch(target_db, "SELECT count(*) AS n FROM ONLY fkpart.animal")
+    assert rows[0]["n"] == 0, "rows of the parent itself are not in the whitelist and must not be dumped"
 
 
 async def _events_descr(db_manager, db: str, evt_id: int) -> str | None:
@@ -407,12 +375,10 @@ async def test_anon_rule_on_partitioned_parent_applies_to_leaves(
     q1 = await _events_descr(db_manager, target_db, 1)
     q2 = await _events_descr(db_manager, target_db, 2)
     assert q1 != "secret-q1", (
-        "правило родителя fkpart.events должно анонимизировать descr в партиции "
-        f"events_2025_q1, но получено исходное значение {q1!r}"
+        f"the rule of the parent fkpart.events must mask descr in partition events_2025_q1, got {q1!r}"
     )
     assert q2 != "secret-q2", (
-        "правило родителя fkpart.events должно анонимизировать descr в партиции "
-        f"events_2025_q2, но получено исходное значение {q2!r}"
+        f"the rule of the parent fkpart.events must mask descr in partition events_2025_q2, got {q2!r}"
     )
 
 
@@ -450,8 +416,8 @@ async def test_anon_rule_on_partition_leaves_directly(
 
     q1 = await _events_descr(db_manager, target_db, 1)
     q2 = await _events_descr(db_manager, target_db, 2)
-    assert q1 != "secret-q1", f"правило для events_2025_q1 должно анонимизировать descr, получено {q1!r}"
-    assert q2 != "secret-q2", f"правило для events_2025_q2 должно анонимизировать descr, получено {q2!r}"
+    assert q1 != "secret-q1", f"the rule of events_2025_q1 must mask descr, got {q1!r}"
+    assert q2 != "secret-q2", f"the rule of events_2025_q2 must mask descr, got {q2!r}"
 
 
 async def test_anon_partition_rule_overrides_parent_rule(
@@ -489,55 +455,8 @@ async def test_anon_partition_rule_overrides_parent_rule(
     q1 = await _events_descr(db_manager, target_db, 1)
     q2 = await _events_descr(db_manager, target_db, 2)
     assert q1 == "REDACTED_Q1", (
-        "собственное правило партиции events_2025_q1 должно иметь приоритет над "
-        f"правилом родителя, ожидалось 'REDACTED_Q1', получено {q1!r}"
+        f"the own rule of partition events_2025_q1 must win over the rule of the parent, got {q1!r}"
     )
     assert q2 not in ("secret-q2", "REDACTED_Q1"), (
-        f"партиция events_2025_q2 без своего правила должна наследовать правило родителя (digest), получено {q2!r}"
-    )
-
-
-async def test_partial_blacklist_one_leaf_drops_fk(
-    source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    out = output_path("blacklist_one_leaf")
-
-    res = await pg_anon_runner.run(
-        "dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('empty.py')}",
-            f"--output-dir={out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-            f"--partial-tables-exclude-dict-file={input_dict('exclude_one_leaf.py')}",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
-
-    res = await pg_anon_runner.run(
-        "restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={out}",
-            "--drop-custom-check-constr",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE, "restore must complete even when an FK is dropped due to leaf blacklist"
-
-    assert not await _table_present(db_manager, target_db, "fkpart", "events_2025_q1"), (
-        "blacklisted leaf partition must not appear on target"
-    )
-
-    assert not await _fk_present(db_manager, target_db), (
-        "FK must be dropped when the blacklist excludes one of the partition leaves"
-    )
-
-    assert await _table_present(db_manager, target_db, "fkpart", "attachment"), (
-        "referrer table must be restored even when the FK is dropped"
+        f"partition events_2025_q2 has no rule of its own, so the rule of the parent must apply, got {q2!r}"
     )

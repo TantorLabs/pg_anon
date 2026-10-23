@@ -28,6 +28,10 @@ def read_metadata(out_dir: str) -> dict:
     return json.loads((Path(out_dir) / "metadata.json").read_text())
 
 
+def read_structure(out_dir: str) -> dict:
+    return json.loads((Path(out_dir) / "structure.json").read_text())
+
+
 def dumped_tables(out_dir: str) -> set[tuple[str, str]]:
     return {(info["schema"], info["table"]) for info in read_metadata(out_dir)["files"].values()}
 
@@ -65,20 +69,8 @@ async def test_schema_options_set_dump_composition(source_db, db_params, pg_anon
     res, out = await dump_with(pg_anon_runner, db_params, source_db, f"opts_{'_'.join(options)}", options)
 
     assert res.result_code == ResultCode.DONE
-    metadata = read_metadata(out)
-    assert set(metadata["schemas"]) == expected_schemas
+    assert set(read_structure(out)["schemas"]) == expected_schemas
     assert {schema for schema, _ in dumped_tables(out)} <= expected_schemas
-
-
-async def test_excluded_schema_is_absent_after_restore(source_db, target_db, db_params, pg_anon_runner, db_manager):
-    res, out = await dump_with(
-        pg_anon_runner, db_params, source_db, "excluded_restore", ["--exclude-schema-name=s_excl"]
-    )
-    assert res.result_code == ResultCode.DONE
-
-    res = await restore(pg_anon_runner, db_params, target_db, in_dir=out)
-    assert res.result_code == ResultCode.DONE, f"restore failed: {res.error_message}"
-    assert "s_excl" not in await target_schemas(db_manager, target_db)
 
 
 async def test_include_schema_matching_nothing_leaves_no_objects(source_db, db_params, pg_anon_runner):
@@ -88,14 +80,13 @@ async def test_include_schema_matching_nothing_leaves_no_objects(source_db, db_p
     assert "No objects for dump" in (res.error_message or "")
 
 
-@pytest.mark.parametrize("mode", ["dump", "sync-struct-dump", "sync-data-dump"])
-async def test_every_dump_mode_writes_schemas(source_db, db_params, pg_anon_runner, mode):
+async def test_sync_struct_dump_writes_schemas(source_db, db_params, pg_anon_runner):
     res, out = await dump_with(
-        pg_anon_runner, db_params, source_db, f"schemas_{mode}", ["--exclude-schema-name=s_excl"], mode
+        pg_anon_runner, db_params, source_db, "schemas_struct", ["--exclude-schema-name=s_excl"], "sync-struct-dump"
     )
 
     assert res.result_code == ResultCode.DONE
-    assert set(read_metadata(out)["schemas"]) == ALL_SCHEMAS - {"s_excl"}
+    assert set(read_structure(out)["schemas"]) == ALL_SCHEMAS - {"s_excl"}
 
 
 async def test_schema_count_is_logged_only_with_options(source_db, db_params, pg_anon_runner, caplog):
@@ -107,9 +98,9 @@ async def test_schema_count_is_logged_only_with_options(source_db, db_params, pg
     with caplog.at_level(logging.INFO, logger="pg_anon.logger"):
         _, out = await dump_with(pg_anon_runner, db_params, source_db, "log_options", ["--exclude-schema-name=s_excl"])
 
-    kept = len(read_metadata(out)["schemas"])
+    kept = len(read_structure(out)["schemas"])
     assert f"Dump includes {kept} of {len(ALL_SCHEMAS)} schemas" in caplog.messages
-    assert len(read_metadata(plain_out)["schemas"]) == len(ALL_SCHEMAS)
+    assert len(read_structure(plain_out)["schemas"]) == len(ALL_SCHEMAS)
 
 
 async def test_struct_and_data_dumps_with_same_options_fit(source_db, target_db, db_params, pg_anon_runner, db_manager):
@@ -144,7 +135,7 @@ async def test_dump_does_not_need_pg_restore(source_db, db_params, pg_anon_runne
     )
 
     assert res.result_code == ResultCode.DONE, f"dump must not call pg_restore: {res.error_message}"
-    assert read_metadata(out)["schemas"]
+    assert read_structure(out)["schemas"]
 
 
 async def test_restore_excludes_schema_and_what_refers_to_it(
@@ -180,7 +171,7 @@ async def test_restore_of_old_dump_without_schemas_key(source_db, target_db, db_
     res, out = await dump_with(pg_anon_runner, db_params, source_db, "old_dump", [])
     assert res.result_code == ResultCode.DONE
 
-    metadata_path = Path(out) / "metadata.json"
+    metadata_path = Path(out) / "structure.json"
     metadata = json.loads(metadata_path.read_text())
     del metadata["schemas"]
     metadata_path.write_text(json.dumps(metadata))
@@ -192,7 +183,7 @@ async def test_restore_of_old_dump_without_schemas_key(source_db, target_db, db_
     assert not {"s_excl", "only_types"} & await target_schemas(db_manager, target_db)
 
 
-async def test_partial_dump_keeps_partial_schemas_key(source_db, db_params, pg_anon_runner):
+async def test_partial_dump_writes_schemas_without_partial_keys(source_db, db_params, pg_anon_runner):
     res, out = await dump_with(
         pg_anon_runner,
         db_params,
@@ -202,9 +193,11 @@ async def test_partial_dump_keeps_partial_schemas_key(source_db, db_params, pg_a
     )
 
     assert res.result_code == ResultCode.DONE
-    metadata = read_metadata(out)
-    assert set(metadata["partial_dump_schemas"]) == set(metadata["schemas"]) == ALL_SCHEMAS - {"s_excl"}
-    assert not [ddl for ddl in metadata.get("partial_dump_types") or [] if "s_excl" in ddl]
+    structure = read_structure(out)
+    assert set(structure["schemas"]) == ALL_SCHEMAS - {"s_excl"}
+    for metadata in (structure, read_metadata(out)):
+        assert "partial_dump_schemas" not in metadata
+        assert "partial_dump_types" not in metadata
 
 
 async def test_partial_restore_creates_schema_with_a_space_in_name(

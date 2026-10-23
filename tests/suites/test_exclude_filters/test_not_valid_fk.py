@@ -28,7 +28,10 @@ INSERT INTO refs.empty_child VALUES (1, NULL);
 CREATE TABLE refs.excluded_parent (id int PRIMARY KEY);
 INSERT INTO refs.excluded_parent SELECT generate_series(1, 3);
 CREATE TABLE refs.idle_child (id int PRIMARY KEY, parent_id int REFERENCES refs.excluded_parent(id));
+"""
 
+# a foreign key that refers to a partitioned table needs PG 12
+FK_CASES_PARTITION_DDL = """
 CREATE TABLE refs.events (id int, day int, PRIMARY KEY (id, day)) PARTITION BY RANGE (day);
 CREATE TABLE refs.events_old PARTITION OF refs.events FOR VALUES FROM (0) TO (100);
 CREATE TABLE refs.events_new PARTITION OF refs.events FOR VALUES FROM (100) TO (200);
@@ -69,7 +72,7 @@ async def conflict_dump(source_db, db_params, pg_anon_runner) -> str:
 
 async def test_dictionary_exclude_keeps_structure_of_the_schema(conflict_dump):
     """The sensitive dictionary only leaves out data, the schema stays in the dump."""
-    metadata = json.loads((Path(conflict_dump) / "metadata.json").read_text())
+    metadata = json.loads((Path(conflict_dump) / "structure.json").read_text())
 
     assert "profile" in metadata["schemas"]
 
@@ -91,9 +94,18 @@ async def test_restore_creates_unenforceable_fk_as_not_valid(
 
     assert res.result_code == ResultCode.DONE, f"restore failed: {res.error_message}"
     assert (await fk_state(db_manager, target_db))["items_owner_id_fkey"] is False
-    assert any("created as NOT VALID" in message for message in caplog.messages), (
-        "keys left unchecked must be listed at the end of the restore"
-    )
+    lines = [message for message in caplog.messages if "created as NOT VALID" in message]
+    assert sorted(lines[:-1]) == [
+        f"Foreign key {key} is created as NOT VALID: the dump does not have all rows of the referenced table."
+        for key in (
+            "crm.orders_owner_id_fkey from crm.orders to profile.owners",
+            "profile.items_owner_id_fkey from profile.items to profile.owners",
+        )
+    ], "each key left unchecked must be named"
+    assert lines[-1] == (
+        "2 foreign keys created as NOT VALID. Load the missing rows, then run for each of them: "
+        "ALTER TABLE ... VALIDATE CONSTRAINT ..."
+    ), "keys left unchecked must be counted at the end of the restore"
 
 
 async def test_not_valid_fk_still_rejects_new_rows(conflict_dump, target_db, db_params, pg_anon_runner, db_manager):
@@ -127,7 +139,7 @@ async def test_old_dump_without_constraint_definition_fails_as_before(
     conflict_dump, target_db, db_params, pg_anon_runner, db_manager
 ):
     """Dumps made before this change carry no definition, so the old behaviour stays."""
-    metadata_path = Path(conflict_dump) / "metadata.json"
+    metadata_path = Path(conflict_dump) / "structure.json"
     metadata = json.loads(metadata_path.read_text())
     for constraint in metadata["constraints"].values():
         constraint.pop("definition", None)
@@ -142,11 +154,13 @@ async def test_old_dump_without_constraint_definition_fails_as_before(
 
 
 @pytest.fixture(scope="module")
-async def fk_cases_dump(db_manager, db_params, pg_anon_runner) -> AsyncIterator[str]:
+async def fk_cases_dump(db_manager, db_params, pg_anon_runner, pg_version_num) -> AsyncIterator[str]:
     await db_manager.create_db(FK_CASES_DB)
     res = await pg_anon_runner.run("init", FK_CASES_DB)
     assert res.result_code == ResultCode.DONE
     await db_manager.execute(FK_CASES_DB, FK_CASES_DDL)
+    if pg_version_num >= 120000:
+        await db_manager.execute(FK_CASES_DB, FK_CASES_PARTITION_DDL)
 
     out = output_path("fk_cases")
     res = await dump(pg_anon_runner, db_params, FK_CASES_DB, out_dir=out, dict_file=input_dict("fk_cases.py"))
@@ -162,14 +176,22 @@ async def fk_cases_restored(fk_cases_dump, target_db, db_params, pg_anon_runner,
     return await fk_state(db_manager, target_db)
 
 
+def dumped_rows(dump_dir: str) -> dict[str, str]:
+    files = json.loads((Path(dump_dir) / "metadata.json").read_text())["files"]
+    return {info["table"]: info["rows"] for info in files.values()}
+
+
 async def test_fk_cases_dump_has_the_expected_data(fk_cases_dump):
-    dumped = {
-        info["table"]: info["rows"]
-        for info in json.loads((Path(fk_cases_dump) / "metadata.json").read_text())["files"].values()
-    }
+    dumped = dumped_rows(fk_cases_dump)
 
     assert dumped.get("empty_parent") == "0", "a table without rows is still dumped"
     assert "excluded_parent" not in dumped
+
+
+@pytest.mark.min_pg(120000)
+async def test_fk_cases_dump_has_the_expected_partition_data(fk_cases_dump):
+    dumped = dumped_rows(fk_cases_dump)
+
     assert "events_old" not in dumped
     assert dumped.get("events_new") == "1"
 
@@ -184,5 +206,6 @@ async def test_fk_without_rows_to_check_stays_valid(fk_cases_restored):
     assert fk_cases_restored["idle_child_parent_id_fkey"] is True
 
 
+@pytest.mark.min_pg(120000)
 async def test_fk_to_a_partition_without_data_is_not_valid(fk_cases_restored):
     assert fk_cases_restored["event_links_event_id_event_day_fkey"] is False

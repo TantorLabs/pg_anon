@@ -39,8 +39,13 @@ async def test_view_data_print_hr_employee(source_db, db_params):
             ],
         )
     )
-    res = await PgAnonApp(options).run()
-    assert res.result_code == ResultCode.DONE
+    executor = ViewDataMode(PgAnonApp(options).context)
+    await executor.run()
+
+    email = executor.field_names.index("* email")
+    assert executor.data, "hr.employee must have rows to show"
+    assert {row[email] for row in executor.data} == {"redacted@example.com"}, "view-data must show masked values"
+    assert executor.table is not None
 
 
 async def test_view_data_json_has_uniform_row_length(source_db, db_params):

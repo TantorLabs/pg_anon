@@ -139,6 +139,7 @@ async def restore_twice(pg_anon_runner, db_params, db_manager, target_db, dump_d
     return await restore(pg_anon_runner, db_params, target_db, in_dir=dump_dir, extra=["--clean-db"])
 
 
+@pytest.mark.min_pg(100000)
 async def test_clean_db_accepts_tables_without_data_file(
     no_data_file_dump, target_db, db_params, pg_anon_runner, db_manager
 ):
@@ -159,9 +160,33 @@ async def test_clean_db_accepts_tables_without_data_file(
     assert rows[0]["count"] == 1
 
 
+@pytest.mark.min_pg(100000)
 async def test_clean_db_still_reports_extra_tables(no_data_file_dump, target_db, db_params, pg_anon_runner, db_manager):
     res = await restore_twice(
         pg_anon_runner, db_params, db_manager, target_db, no_data_file_dump, "CREATE TABLE refs.extra (id int)"
+    )
+
+    assert res.result_code == ResultCode.FAIL
+    assert res.exception.code == ErrorCode.TARGET_HAS_EXTRA_TABLES
+    assert 'Target DB has 1 table(s) not present in the dump: "refs"."extra"' in str(res.exception)
+
+
+@pytest.mark.min_pg(100000)
+@pytest.mark.parametrize("option", ["--partial-tables-exclude-dict-file", "--partial-tables-dict-file"])
+async def test_clean_db_reports_extra_tables_with_a_list_too(
+    option, no_data_file_dump, target_db, db_params, pg_anon_runner, db_manager
+):
+    """A list chooses tables of the dump; a table that the dump does not have is still extra."""
+    res = await restore(pg_anon_runner, db_params, target_db, in_dir=no_data_file_dump)
+    assert res.result_code == ResultCode.DONE, f"restore failed: {res.error_message}"
+    await db_manager.execute(target_db, "CREATE TABLE refs.extra (id int)")
+
+    res = await restore(
+        pg_anon_runner,
+        db_params,
+        target_db,
+        in_dir=no_data_file_dump,
+        extra=["--clean-db", f"{option}={input_dict('list_refs_events_new.py')}"],
     )
 
     assert res.result_code == ResultCode.FAIL

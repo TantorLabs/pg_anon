@@ -36,7 +36,6 @@ class Context:
         self.validate_limit = "LIMIT 100"
         self.meta_dictionary_obj: dict = {}
         self.prepared_dictionary_obj: dict = {}
-        self.prepared_dictionary_contents: dict[str, str] = {}  # for dump process
         self.metadata: dict | None = None  # for restore process
         self.task_results: dict = {}  # for dump process (key is hash() of SQL query)
         self.total_rows = 0
@@ -205,13 +204,11 @@ class Context:
             "dictionary_exclude": [],
             "validate_tables": [],
         }
-        self.prepared_dictionary_contents = {}
         tmp_prepared_dict = {}
 
         for dict_file in self.options.prepared_sens_dict_files:
             dictionary_file_name = Path.cwd() / dict_file
             dict_data = read_dict_data_from_file(dictionary_file_name)
-            self.prepared_dictionary_contents.update({str(dictionary_file_name): str(dict_data)})
 
             if not dict_data:
                 continue
@@ -302,10 +299,15 @@ class Context:
         logger_set_log_level(log_level=log_level)
         self.logger = get_logger()
 
-    def set_tables_lists(self, tables: list[tuple[str, str]]) -> None:
+    def set_tables_lists(
+        self,
+        tables: list[tuple[str, str]],
+        partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
+    ) -> None:
         """Filter and assign table lists based on inclusion and exclusion rules."""
         self.tables, self.black_listed_tables, self.white_listed_tables = filter_db_tables(
             tables=tables,
             white_list_rules=self.included_tables_rules,
             black_list_rules=self.excluded_tables_rules,
+            partition_ancestors=partition_ancestors,
         )

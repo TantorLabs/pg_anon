@@ -201,7 +201,7 @@ async def test_metadata_lists_extensions_in_dependency_order(ext_source_db, db_m
     """PostgreSQL refuses CREATE EXTENSION while a required extension is missing."""
     out = await _dump(pg_anon_runner, db_params, ext_source_db, "empty.py", "dependency_order")
 
-    extensions = json.loads(Path(out, "metadata.json").read_text(encoding="utf-8"))["extensions"]
+    extensions = json.loads(Path(out, "structure.json").read_text(encoding="utf-8"))["extensions"]
     names = list(extensions)
 
     dependencies = await db_manager.fetch(
@@ -251,7 +251,7 @@ async def test_metadata_without_relocatable_field_is_supported(
     for item in Path(out).iterdir():
         (dump_dir / item.name).write_bytes(item.read_bytes())
 
-    metadata_path = dump_dir / "metadata.json"
+    metadata_path = dump_dir / "structure.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     for extension in metadata["extensions"].values():
         extension.pop("relocatable", None)

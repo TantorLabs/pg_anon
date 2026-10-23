@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME
+
 if TYPE_CHECKING:
     from tests.infrastructure.db import DBManager
 
@@ -237,6 +239,22 @@ _CATALOG_QUERIES: dict[str, str] = {
 }
 
 
+# pg_policies has no "permissive" column before PG 10
+_POLICIES_BEFORE_PG10 = "SELECT schemaname, tablename, policyname, roles, cmd FROM pg_policies ORDER BY 1, 2, 3"
+
+
+async def sequence_params(db_manager: DBManager, db: str, schema: str, name: str) -> list[dict]:
+    """Sequence parameters: `pg_sequences` is PG 10+, before it the sequence is a relation with these columns."""
+    if await db_manager.server_version_num(db) >= 100000:
+        query = (
+            "SELECT increment_by, min_value, max_value, cache_size "
+            f"FROM pg_sequences WHERE schemaname='{schema}' AND sequencename='{name}'"
+        )
+    else:
+        query = f"SELECT increment_by, min_value, max_value, cache_value AS cache_size FROM {schema}.{name}"
+    return [dict(r) for r in await db_manager.fetch(db, query)]
+
+
 async def diff_catalog(db_manager: DBManager, source: str, target: str) -> dict[str, list]:
     """Diff catalog objects between source and target DB.
 
@@ -251,8 +269,11 @@ async def diff_catalog(db_manager: DBManager, source: str, target: str) -> dict[
         # row can be hashed for set membership.
         return tuple(tuple(v) if isinstance(v, list) else v for v in row.values())
 
+    queries = dict(_CATALOG_QUERIES)
+    if await db_manager.server_version_num(source) < 100000:
+        queries["policies"] = _POLICIES_BEFORE_PG10
     diffs: dict[str, list] = {}
-    for category, query in _CATALOG_QUERIES.items():
+    for category, query in queries.items():
         src = [_row_key(r) for r in await db_manager.fetch(source, query)]
         tgt = {_row_key(r) for r in await db_manager.fetch(target, query)}
         missing = [r for r in src if r not in tgt]
@@ -332,3 +353,326 @@ def assert_no_sens_dicts(actual_path: str | Path, expected_path: str | Path) -> 
         assert ai["schema"] == ei["schema"]
         assert ai["table"] == ei["table"]
         assert set(ai["fields"]) == set(ei["fields"])
+
+
+# --------------------------------------------------------------------------
+# Two-way catalog snapshot (used by partial dump/restore tests)
+# --------------------------------------------------------------------------
+
+_SYSTEM_SCHEMAS = "('pg_catalog','information_schema','pg_toast')"
+
+_SNAPSHOT_QUERIES: dict[str, str] = {
+    "domains": f"""
+        SELECT n.nspname, t.typname, format_type(t.typbasetype, t.typtypmod), t.typnotnull::text,
+               coalesce(cn.nspname || '.' || c.collname, ''), coalesce(t.typdefault, '')
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        LEFT JOIN pg_collation c ON c.oid = t.typcollation AND t.typcollation <> 0
+        LEFT JOIN pg_namespace cn ON cn.oid = c.collnamespace
+        WHERE t.typtype = 'd' AND n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "domain_constraints": f"""
+        SELECT n.nspname, t.typname, co.conname, pg_get_constraintdef(co.oid), co.convalidated::text
+        FROM pg_constraint co
+        JOIN pg_type t ON t.oid = co.contypid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE co.contypid <> 0 AND co.contype <> 'n' AND n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "composite_fields": f"""
+        SELECT n.nspname, c.relname, a.attname, format_type(a.atttypid, a.atttypmod),
+               coalesce(cn.nspname || '.' || co.collname, '')
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+        LEFT JOIN pg_collation co ON co.oid = a.attcollation AND a.attcollation <> 0
+        LEFT JOIN pg_namespace cn ON cn.oid = co.collnamespace
+        WHERE c.relkind = 'c' AND n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "enum_labels": f"""
+        SELECT n.nspname, t.typname,
+               coalesce((SELECT string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder)
+                         FROM pg_enum e WHERE e.enumtypid = t.oid), '')
+        FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typtype = 'e' AND n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "casts": """
+        SELECT format_type(c.castsource, NULL), format_type(c.casttarget, NULL), c.castfunc::regprocedure::text,
+               c.castcontext::text, c.castmethod::text
+        FROM pg_cast c
+        WHERE c.oid >= 16384
+    """,
+    "operators": """
+        SELECT n.nspname, o.oprname, coalesce(format_type(NULLIF(o.oprleft, 0), NULL), ''),
+               coalesce(format_type(NULLIF(o.oprright, 0), NULL), ''), coalesce(format_type(o.oprresult, NULL), ''),
+               o.oprcode::text, o.oprcanhash::text, o.oprcanmerge::text,
+               o.oprcom::regoperator::text, o.oprnegate::regoperator::text,
+               o.oprrest::text, o.oprjoin::text
+        FROM pg_operator o JOIN pg_namespace n ON n.oid = o.oprnamespace
+        WHERE o.oid >= 16384
+    """,
+    "operator_classes": """
+        SELECT n.nspname, c.opcname, am.amname, format_type(c.opcintype, NULL), c.opcdefault::text,
+               fn.nspname || '.' || f.opfname,
+               coalesce(format_type(NULLIF(c.opckeytype, 0), NULL), '')
+        FROM pg_opclass c
+        JOIN pg_namespace n ON n.oid = c.opcnamespace
+        JOIN pg_am am ON am.oid = c.opcmethod
+        JOIN pg_opfamily f ON f.oid = c.opcfamily
+        JOIN pg_namespace fn ON fn.oid = f.opfnamespace
+        WHERE c.oid >= 16384
+    """,
+    "operator_families": """
+        SELECT n.nspname, f.opfname, am.amname
+        FROM pg_opfamily f
+        JOIN pg_namespace n ON n.oid = f.opfnamespace
+        JOIN pg_am am ON am.oid = f.opfmethod
+        WHERE f.oid >= 16384
+    """,
+    "operator_family_members": """
+        SELECT n.nspname || '.' || f.opfname, 'operator', m.amopstrategy::text,
+               format_type(m.amoplefttype, NULL), format_type(m.amoprighttype, NULL),
+               m.amopopr::regoperator::text, m.amoppurpose::text
+        FROM pg_amop m
+        JOIN pg_opfamily f ON f.oid = m.amopfamily
+        JOIN pg_namespace n ON n.oid = f.opfnamespace
+        WHERE f.oid >= 16384
+        UNION ALL
+        SELECT n.nspname || '.' || f.opfname, 'function', m.amprocnum::text,
+               format_type(m.amproclefttype, NULL), format_type(m.amprocrighttype, NULL),
+               m.amproc::regprocedure::text, ''
+        FROM pg_amproc m
+        JOIN pg_opfamily f ON f.oid = m.amprocfamily
+        JOIN pg_namespace n ON n.oid = f.opfnamespace
+        WHERE f.oid >= 16384
+    """,
+    "views": f"""
+        SELECT n.nspname, c.relname, c.relkind::text, pg_get_viewdef(c.oid, true)
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('v', 'm') AND n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "column_defaults": f"""
+        SELECT n.nspname, c.relname, a.attname, pg_get_expr(d.adbin, d.adrelid)
+        FROM pg_attrdef d
+        JOIN pg_class c ON c.oid = d.adrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+        WHERE n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """,
+    "inheritance": """
+        SELECT i.inhrelid::regclass::text, i.inhparent::regclass::text
+        FROM pg_inherits i
+        WHERE i.inhrelid >= 16384
+    """,
+    "comments": """
+        SELECT 'relation', n.nspname, c.relname, d.objsubid::text, d.description
+        FROM pg_description d
+        JOIN pg_class c ON c.oid = d.objoid AND d.classoid = 'pg_class'::regclass
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE d.objoid >= 16384
+        UNION ALL
+        SELECT 'type', n.nspname, t.typname, '', d.description
+        FROM pg_description d
+        JOIN pg_type t ON t.oid = d.objoid AND d.classoid = 'pg_type'::regclass
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE d.objoid >= 16384
+        UNION ALL
+        SELECT 'function', n.nspname, p.oid::regprocedure::text, '', d.description
+        FROM pg_description d
+        JOIN pg_proc p ON p.oid = d.objoid AND d.classoid = 'pg_proc'::regclass
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE d.objoid >= 16384
+    """,
+}
+
+# Queries that need a newer server; the value is (minimum server_version_num, query).
+_SNAPSHOT_QUERIES_BY_VERSION: dict[str, tuple[int, str]] = {
+    "range_types": (
+        90600,
+        """
+        SELECT n.nspname, t.typname, format_type(r.rngsubtype, NULL), r.rngsubdiff::text,
+               on_.nspname || '.' || oc.opcname, coalesce(cn.nspname || '.' || co.collname, ''),
+               r.rngcanonical::text
+        FROM pg_range r
+        JOIN pg_type t ON t.oid = r.rngtypid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        JOIN pg_opclass oc ON oc.oid = r.rngsubopc
+        JOIN pg_namespace on_ ON on_.oid = oc.opcnamespace
+        LEFT JOIN pg_collation co ON co.oid = r.rngcollation AND r.rngcollation <> 0
+        LEFT JOIN pg_namespace cn ON cn.oid = co.collnamespace
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+        """,
+    ),
+    "multirange_types": (
+        140000,
+        """
+        SELECT n.nspname, t.typname, mn.nspname || '.' || mt.typname
+        FROM pg_range r
+        JOIN pg_type t ON t.oid = r.rngtypid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        JOIN pg_type mt ON mt.oid = r.rngmultitypid
+        JOIN pg_namespace mn ON mn.oid = mt.typnamespace
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+        """,
+    ),
+    "function_definitions": (
+        90600,
+        """
+        SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
+               l.lanname, p.prosrc, p.provolatile::text, p.proparallel::text, p.proisstrict::text,
+               p.prosecdef::text
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+          AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass
+                          AND d.objid = p.oid AND d.deptype = 'e')
+        """,
+    ),
+    "function_sql_bodies": (
+        140000,
+        """
+        SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_sqlbody(p.oid)
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND p.prosqlbody IS NOT NULL
+        """,
+    ),
+    "column_extras": (
+        100000,
+        """
+        SELECT n.nspname, c.relname, a.attname, a.attidentity::text, {generated}
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast')
+          AND a.attnum > 0 AND NOT a.attisdropped AND ({condition})
+        """,
+    ),
+    "statistics": (
+        100000,
+        """
+        SELECT n.nspname, s.stxname, s.stxrelid::regclass::text, s.stxkind::text
+        FROM pg_statistic_ext s JOIN pg_namespace n ON n.oid = s.stxnamespace
+        """,
+    ),
+    "publications": (
+        100000,
+        """
+        SELECT p.pubname, p.puballtables::text, p.pubinsert::text, p.pubupdate::text, p.pubdelete::text
+        FROM pg_publication p
+        """,
+    ),
+    "publication_tables": (
+        100000,
+        """
+        SELECT p.pubname, r.prrelid::regclass::text
+        FROM pg_publication_rel r JOIN pg_publication p ON p.oid = r.prpubid
+        """,
+    ),
+}
+
+
+def _text_row(row) -> tuple[str, ...]:
+    return tuple("" if v is None else (v.decode() if isinstance(v, bytes) else str(v)) for v in row.values())
+
+
+def _is_anon_utils_row(row: tuple[str, ...]) -> bool:
+    """Rows of the pg_anon utility schema exist in every database that was initialised."""
+    return any(v == ANON_UTILS_DB_SCHEMA_NAME or f"{ANON_UTILS_DB_SCHEMA_NAME}." in v for v in row)
+
+
+async def _aggregates_query(db_manager: DBManager, db: str) -> str:
+    """Build the pg_aggregate query: every column in text form, no OIDs."""
+    cols = await db_manager.fetch(
+        db,
+        """
+        SELECT a.attname, a.atttypid::regtype::text AS typ
+        FROM pg_attribute a
+        WHERE a.attrelid = 'pg_aggregate'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY a.attnum
+        """,
+    )
+    parts = []
+    for col in cols:
+        name, typ = col["attname"], col["typ"]
+        if name == "aggfnoid":
+            continue
+        if name in ("aggtranstype", "aggmtranstype"):
+            parts.append(f"coalesce(format_type(NULLIF(g.{name}, 0), NULL), '')")
+        elif name == "aggsortop":
+            parts.append(f"g.{name}::regoperator::text")
+        elif typ == "regproc":
+            parts.append(f"g.{name}::text")
+        else:
+            parts.append(f"coalesce(g.{name}::text, '')")
+    return f"""
+        SELECT n.nspname, g.aggfnoid::regprocedure::text, p.proparallel::text, {", ".join(parts)}
+        FROM pg_aggregate g
+        JOIN pg_proc p ON p.oid = g.aggfnoid
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname NOT IN {_SYSTEM_SCHEMAS}
+    """
+
+
+async def catalog_snapshot(db_manager: DBManager, db: str) -> dict[str, set[tuple[str, ...]]]:
+    """Snapshot of user objects as text rows without OIDs: `{category: {row, ...}}`."""
+    version_num = await db_manager.server_version_num(db)
+    queries = {**_CATALOG_QUERIES, **_SNAPSHOT_QUERIES, "aggregates": await _aggregates_query(db_manager, db)}
+    if version_num < 100000:
+        queries["policies"] = _POLICIES_BEFORE_PG10
+    for category, (min_version, query) in _SNAPSHOT_QUERIES_BY_VERSION.items():
+        if version_num < min_version:
+            continue
+        if category == "column_extras":
+            generated = "a.attgenerated::text" if version_num >= 120000 else "''"
+            condition = "a.attidentity <> ''" + (" OR a.attgenerated <> ''" if version_num >= 120000 else "")
+            query = query.format(generated=generated, condition=condition)  # noqa: PLW2901
+        queries[category] = query
+
+    snapshot: dict[str, set[tuple[str, ...]]] = {}
+    for category, query in queries.items():
+        rows = {_text_row(r) for r in await db_manager.fetch(db, query)}
+        snapshot[category] = {r for r in rows if not _is_anon_utils_row(r)}
+    # PG 18 lists NOT NULL as constraints; older servers do not, so leave them out everywhere
+    snapshot["constraints"] = {r for r in snapshot["constraints"] if r[3] != "n"}
+    return snapshot
+
+
+def snapshot_diff(
+    source: dict[str, set[tuple[str, ...]]], target: dict[str, set[tuple[str, ...]]]
+) -> dict[str, tuple[list[tuple[str, ...]], list[tuple[str, ...]]]]:
+    """Two-way diff: `{category: (only in source, only in target)}`; equal categories are left out."""
+    diff = {}
+    for category in sorted(source.keys() | target.keys()):
+        src, tgt = source.get(category, set()), target.get(category, set())
+        if src != tgt:
+            diff[category] = (sorted(src - tgt), sorted(tgt - src))
+    return diff
+
+
+def load_expected_missing(path: str | Path, version_num: int) -> dict[str, list[tuple[str, ...]]]:
+    """Read a file of rows that must not be in the target: `{category: [row, ...]}`, a row may be limited by version."""
+    raw = ast.literal_eval(Path(path).read_text(encoding="utf-8"))
+
+    def rows(items: list) -> list[tuple[str, ...]]:
+        found = []
+        for item in items:
+            if isinstance(item, dict):
+                # {"row": tuple, "min_pg": 140000, "max_pg": 179999}: the row exists only on these servers
+                if not item.get("min_pg", 0) <= version_num <= item.get("max_pg", 10**9):
+                    continue
+                item = item["row"]  # noqa: PLW2901
+            found.append(tuple(item))
+        return sorted(found)
+
+    result = {category: rows(items) for category, items in raw.items()}
+    return {category: found for category, found in result.items() if found}
+
+
+def assert_target_lacks_exactly(
+    diff: dict[str, tuple[list[tuple[str, ...]], list[tuple[str, ...]]]], expected_missing: dict[str, list]
+) -> None:
+    """The target has no rows of its own, and the rows it lacks are exactly the expected ones."""
+    extra = {category: sides[1] for category, sides in diff.items() if sides[1]}
+    missing = {category: sides[0] for category, sides in diff.items() if sides[0]}
+    assert not extra, "the target has catalog rows that the source does not have"
+    assert missing == expected_missing, "the rows missing in the target are not the expected ones"

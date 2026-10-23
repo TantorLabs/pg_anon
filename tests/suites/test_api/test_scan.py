@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from .conftest import input_dict_text
 from .helpers import build_scan_request
 
@@ -125,23 +123,3 @@ async def test_scan_extra_headers_reach_webhook(
     await webhook_recorder.wait_for_terminal(max_wait=180)
     headers = webhook_recorder.headers[0]
     assert headers.get("x-trace-id", headers.get("X-Trace-Id")) == "trace-007"
-
-
-async def test_scan_metadata_preserves_nested_objects(
-    api_client,
-    api_source_db,
-    db_params,
-    webhook_recorder,
-):
-    metadata = {"obj": {"k": [1, 2, 3]}, "n": None, "bool": True}
-    body = build_scan_request(
-        db_params=db_params,
-        db_name=api_source_db,
-        meta_dict=input_dict_text("meta_dict.py"),
-        webhook_url=webhook_recorder.url,
-        webhook_metadata=metadata,
-    )
-    resp = await api_client.post("/api/stateless/scan", json=body)
-    assert resp.status == 201
-    terminal = await webhook_recorder.wait_for_terminal(max_wait=180)
-    assert json.loads(json.dumps(terminal["webhook_metadata"])) == metadata

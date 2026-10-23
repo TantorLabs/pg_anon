@@ -1,0 +1,214 @@
+{
+    "created": "02/10/2026 20:59:51",
+    "pg_version": "15.19",
+    "pg_dump_version": "15.19",
+    "dictionary_content_hash": {
+        "/home/max/PycharmProjects/pg_anon/tests/suites/test_partial_tangle/input_dict/empty.py": "1b160dc3efe1acdcda5bb868abfc3a1a2584ce35759e8ed5c23eaac33da47ea6"
+    },
+    "prepared_sens_dict_files": "/home/max/PycharmProjects/pg_anon/tests/suites/test_partial_tangle/input_dict/empty.py",
+    "dbg_stage_2_validate_data": false,
+    "dbg_stage_3_validate_full": false,
+    "seq_lastvals": {
+        "tg_core.customers_id_seq": {
+            "schema": "tg_core",
+            "table": "customers",
+            "seq_name": "customers_id_seq",
+            "value": 5,
+            "is_excluded": false
+        },
+        "tg_core.gone_t_id_seq": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "seq_name": "gone_t_id_seq",
+            "value": 3,
+            "is_excluded": false
+        },
+        "tg_core.orders_id_seq": {
+            "schema": "tg_core",
+            "table": "orders",
+            "seq_name": "orders_id_seq",
+            "value": 10,
+            "is_excluded": false
+        }
+    },
+    "views": {
+        "customer_orders": {
+            "view_schema": "tg_core",
+            "view_name": "customer_orders",
+            "view_type": "view",
+            "table_schema": "tg_core",
+            "table_name": "orders",
+            "is_excluded": false
+        },
+        "gone_mv": {
+            "view_schema": "tg_core",
+            "view_name": "gone_mv",
+            "view_type": "materialized_view",
+            "table_schema": "tg_core",
+            "table_name": "gone_t",
+            "is_excluded": false
+        },
+        "gone_v": {
+            "view_schema": "tg_core",
+            "view_name": "gone_v",
+            "view_type": "view",
+            "table_schema": "tg_core",
+            "table_name": "gone_t",
+            "is_excluded": false
+        },
+        "order_totals": {
+            "view_schema": "tg_core",
+            "view_name": "order_totals",
+            "view_type": "materialized_view",
+            "table_schema": "tg_core",
+            "table_name": "orders",
+            "is_excluded": false
+        }
+    },
+    "indexes": {
+        "customers_pkey": {
+            "schema": "tg_core",
+            "table": "customers",
+            "index_name": "customers_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "orders_pkey": {
+            "schema": "tg_core",
+            "table": "orders",
+            "index_name": "orders_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "order_items_pkey": {
+            "schema": "tg_core",
+            "table": "order_items",
+            "index_name": "order_items_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "gone_t_pkey": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "index_name": "gone_t_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "gone_idx": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "index_name": "gone_idx",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        }
+    },
+    "constraints": {
+        "gone_fk_out": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "orders",
+            "constraint_name": "gone_fk_out",
+            "contype": "f",
+            "definition": "FOREIGN KEY (ref_id) REFERENCES tg_core.gone_t(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "gone_t",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "orders_customer_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "orders",
+            "constraint_name": "orders_customer_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (customer_id) REFERENCES tg_core.customers(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "customers",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "order_items_order_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "order_items",
+            "constraint_name": "order_items_order_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (order_id) REFERENCES tg_core.orders(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "orders",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "gone_t_customer_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "gone_t",
+            "constraint_name": "gone_t_customer_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (customer_id) REFERENCES tg_core.customers(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "customers",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        }
+    },
+    "files": {
+        "0c84d860d2293d01b9997b6719f9136d.bin.gz": {
+            "schema": "tg_core",
+            "table": "customers",
+            "rows": "5"
+        },
+        "bd1aef767f8c639bde3e24f99a922983.bin.gz": {
+            "schema": "tg_core",
+            "table": "orders",
+            "rows": "10"
+        },
+        "2becefad8013e2c151bfad7b52f87d6b.bin.gz": {
+            "schema": "tg_core",
+            "table": "order_items",
+            "rows": "20"
+        },
+        "5a6f3a1e4b65b19b495f50e3b480fc7d.bin.gz": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "rows": "3"
+        }
+    },
+    "schemas": [
+        "anon_funcs",
+        "public",
+        "tg_core"
+    ],
+    "total_rows": 38,
+    "db_size": 8101223,
+    "extensions": {
+        "pgcrypto": {
+            "schema": "public",
+            "name": "pgcrypto",
+            "version": "1.3",
+            "relocatable": true,
+            "is_excluded_by_schema": false
+        },
+        "plpgsql": {
+            "schema": "pg_catalog",
+            "name": "plpgsql",
+            "version": "1.0",
+            "relocatable": false,
+            "is_excluded_by_schema": false
+        }
+    },
+    "event_triggers": {}
+}

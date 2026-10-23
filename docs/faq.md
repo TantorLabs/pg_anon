@@ -181,7 +181,7 @@ You must terminate all active sessions and run the restore operation again.
 ### 12. Difference between options `--drop-db` and `--clean-db` for restore mode
 
 - `--drop-db` - recreate target database using commands `DROP DATABASE` and `CREATE DATABASE`. After that running restore process on empty db.
-- `--clean-db` - Performs a restore similar to pg_restore --clean --if-exists. It creates missing tables from the backup in the target database. It also preserves extra tables that exist in the target DB and are not contained in the restoring backup. This option does not require an empty target database.  
+- `--clean-db` - Performs a restore similar to `pg_restore --clean --if-exists`: objects of the dump are dropped and created again. This option does not require an empty target database. Tables that are not in the dump are not dropped, so in `restore` mode the target must not have them: otherwise the restore stops with `TARGET_HAS_EXTRA_TABLES`.
 
 ---
 

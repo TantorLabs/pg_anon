@@ -55,10 +55,11 @@ async def test_schema_of_an_extension_is_neither_dumped_nor_created(owned_schema
     )
     assert res.result_code == ResultCode.DONE
 
-    metadata = json.loads((Path(out) / "metadata.json").read_text())
-    assert "ext_owned" not in metadata["schemas"]
-    assert "ext_owned" not in metadata["partial_dump_schemas"]
-    assert "app" in metadata["schemas"]
+    structure = json.loads((Path(out) / "structure.json").read_text())
+    assert "ext_owned" not in structure["schemas"]
+    assert "app" in structure["schemas"]
+    for metadata in (structure, json.loads((Path(out) / "metadata.json").read_text())):
+        assert "partial_dump_schemas" not in metadata
 
 
 @pytest.mark.parametrize("options", [[], ["--schema-name=app"], ["--exclude-schema-name=ext_owned"]])
@@ -82,4 +83,4 @@ async def test_user_tables_in_a_schema_of_an_extension_are_dumped(owned_schema_d
     dumped = {(info["schema"], info["table"]): info["rows"] for info in metadata["files"].values()}
     assert dumped.get(("ext_owned", "user_data")) == "3", "user data must not be lost"
     assert ("ext_owned", "catalog") not in dumped, "internal tables of an extension are not dumped"
-    assert "ext_owned" not in metadata["schemas"]
+    assert "ext_owned" not in json.loads((Path(out) / "structure.json").read_text())["schemas"]

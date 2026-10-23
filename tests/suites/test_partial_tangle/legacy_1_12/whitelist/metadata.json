@@ -1,0 +1,232 @@
+{
+    "created": "02/10/2026 20:59:53",
+    "pg_version": "15.19",
+    "pg_dump_version": "15.19",
+    "dictionary_content_hash": {
+        "/home/max/PycharmProjects/pg_anon/tests/suites/test_partial_tangle/input_dict/empty.py": "1b160dc3efe1acdcda5bb868abfc3a1a2584ce35759e8ed5c23eaac33da47ea6"
+    },
+    "prepared_sens_dict_files": "/home/max/PycharmProjects/pg_anon/tests/suites/test_partial_tangle/input_dict/empty.py",
+    "dbg_stage_2_validate_data": false,
+    "dbg_stage_3_validate_full": false,
+    "seq_lastvals": {
+        "tg_core.customers_id_seq": {
+            "schema": "tg_core",
+            "table": "customers",
+            "seq_name": "customers_id_seq",
+            "value": 5,
+            "is_excluded": false
+        },
+        "tg_core.orders_id_seq": {
+            "schema": "tg_core",
+            "table": "orders",
+            "seq_name": "orders_id_seq",
+            "value": 10,
+            "is_excluded": false
+        }
+    },
+    "views": {
+        "customer_orders": {
+            "view_schema": "tg_core",
+            "view_name": "customer_orders",
+            "view_type": "view",
+            "table_schema": "tg_core",
+            "table_name": "orders",
+            "is_excluded": false
+        },
+        "gone_mv": {
+            "view_schema": "tg_core",
+            "view_name": "gone_mv",
+            "view_type": "materialized_view",
+            "table_schema": "tg_core",
+            "table_name": "gone_t",
+            "is_excluded": true
+        },
+        "gone_v": {
+            "view_schema": "tg_core",
+            "view_name": "gone_v",
+            "view_type": "view",
+            "table_schema": "tg_core",
+            "table_name": "gone_t",
+            "is_excluded": true
+        },
+        "order_totals": {
+            "view_schema": "tg_core",
+            "view_name": "order_totals",
+            "view_type": "materialized_view",
+            "table_schema": "tg_core",
+            "table_name": "orders",
+            "is_excluded": false
+        }
+    },
+    "indexes": {
+        "customers_pkey": {
+            "schema": "tg_core",
+            "table": "customers",
+            "index_name": "customers_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "orders_pkey": {
+            "schema": "tg_core",
+            "table": "orders",
+            "index_name": "orders_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "order_items_pkey": {
+            "schema": "tg_core",
+            "table": "order_items",
+            "index_name": "order_items_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "gone_t_pkey": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "index_name": "gone_t_pkey",
+            "is_excluded": true,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "gone_idx": {
+            "schema": "tg_core",
+            "table": "gone_t",
+            "index_name": "gone_idx",
+            "is_excluded": true,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        }
+    },
+    "constraints": {
+        "gone_fk_out": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "orders",
+            "constraint_name": "gone_fk_out",
+            "contype": "f",
+            "definition": "FOREIGN KEY (ref_id) REFERENCES tg_core.gone_t(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "gone_t",
+            "is_excluded": true,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "orders_customer_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "orders",
+            "constraint_name": "orders_customer_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (customer_id) REFERENCES tg_core.customers(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "customers",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "order_items_order_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "order_items",
+            "constraint_name": "order_items_order_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (order_id) REFERENCES tg_core.orders(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "orders",
+            "is_excluded": false,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        },
+        "gone_t_customer_id_fkey": {
+            "table_schema_from": "tg_core",
+            "table_name_from": "gone_t",
+            "constraint_name": "gone_t_customer_id_fkey",
+            "contype": "f",
+            "definition": "FOREIGN KEY (customer_id) REFERENCES tg_core.customers(id)",
+            "table_schema_to": "tg_core",
+            "table_name_to": "customers",
+            "is_excluded": true,
+            "referenced_relkind": "r",
+            "referrer_relkind": "r",
+            "referenced_partition_leaves": null,
+            "referrer_partition_leaves": null
+        }
+    },
+    "files": {
+        "0c84d860d2293d01b9997b6719f9136d.bin.gz": {
+            "schema": "tg_core",
+            "table": "customers",
+            "rows": "5"
+        },
+        "bd1aef767f8c639bde3e24f99a922983.bin.gz": {
+            "schema": "tg_core",
+            "table": "orders",
+            "rows": "10"
+        },
+        "2becefad8013e2c151bfad7b52f87d6b.bin.gz": {
+            "schema": "tg_core",
+            "table": "order_items",
+            "rows": "20"
+        }
+    },
+    "schemas": [
+        "anon_funcs",
+        "public",
+        "tg_core"
+    ],
+    "total_rows": 35,
+    "db_size": 8101223,
+    "partial_dump_schemas": [
+        "anon_funcs",
+        "public",
+        "tg_core"
+    ],
+    "extensions": {
+        "pgcrypto": {
+            "schema": "public",
+            "name": "pgcrypto",
+            "version": "1.3",
+            "relocatable": true,
+            "is_excluded_by_schema": false
+        },
+        "plpgsql": {
+            "schema": "pg_catalog",
+            "name": "plpgsql",
+            "version": "1.0",
+            "relocatable": false,
+            "is_excluded_by_schema": false
+        }
+    },
+    "partial_dump_types": [],
+    "partial_dump_domains": [],
+    "partial_dump_ranges": [],
+    "partial_dump_functions": [
+        "CREATE OR REPLACE FUNCTION anon_funcs.noise(noise_value anyelement, ratio double precision)\n RETURNS anyelement\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  res ALIAS FOR $0;\n  ran float;\nBEGIN\n  ran = (2.0 * random() - 1.0) * ratio;\n  SELECT (noise_value * (1.0 - ran))::ANYELEMENT\n    INTO res;\n  RETURN res;\nEXCEPTION\n  WHEN numeric_value_out_of_range THEN\n    SELECT (noise_value * (1.0 + ran))::ANYELEMENT\n      INTO res;\n    RETURN res;\nEND;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.dnoise(noise_value anyelement, noise_range interval)\n RETURNS anyelement\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  res ALIAS FOR $0;\n  ran INTERVAL;\nBEGIN\n  ran = (2.0 * random() - 1.0) * noise_range;\n  SELECT (noise_value + ran)::ANYELEMENT\n    INTO res;\n  RETURN res;\nEXCEPTION\n  WHEN datetime_field_overflow THEN\n    SELECT (noise_value - ran)::ANYELEMENT\n      INTO res;\n    RETURN res;\nEND;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.digest(seed text, salt text, algorithm text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE PARALLEL SAFE STRICT\nAS $function$\n  SELECT encode(digest(concat(seed,salt),algorithm),'hex');\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.partial(ov text, prefix integer, padding text, suffix integer)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE PARALLEL SAFE\nAS $function$\n  SELECT substring(ov FROM 1 FOR prefix)\n      || padding\n      || substring(ov FROM (length(ov)-suffix+1) FOR suffix);\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.partial_email(ov text)\n RETURNS text\n LANGUAGE plpgsql\n IMMUTABLE PARALLEL SAFE\nAS $function$\nBEGIN\n  RETURN substring(ov, 1, 2) || '******' ||\n         '@' ||\n         substring(ov from position('@' in ov) + 1 for position('.' in reverse(ov)) - 2) ||\n         '******' ||\n         '.' ||\n         right(ov, position('.' in reverse(ov)) - 1);\nEND;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_string(l integer)\n RETURNS text\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n  SELECT array_to_string(\n    array(\n        select substr('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',\n                      ((random()*(36-1)+1)::integer)\n                      ,1)\n        from generate_series(1,l)\n    ),''\n  );\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_zip()\n RETURNS text\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n  SELECT array_to_string(\n         array(\n                select substr('0123456789',((random()*(10-1)+1)::integer),1)\n                from generate_series(1,6)\n            ),''\n          );\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_inn()\n RETURNS text\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n  SELECT array_to_string(\n         array(\n                select substr('0123456789',((random()*(10-1)+1)::integer),1)\n                from generate_series(1,8)\n            ),''\n          );\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_date_between(date_start timestamp with time zone, date_end timestamp with time zone)\n RETURNS timestamp with time zone\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n    SELECT (random()*(date_end-date_start))::interval+date_start;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_date()\n RETURNS timestamp with time zone\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n  SELECT anon_funcs.random_date_between('1900-01-01'::timestamp with time zone,now());\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_int_between(int_start integer, int_stop integer)\n RETURNS integer\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n    SELECT FLOOR(random()*(int_stop-int_start)+int_start)::INTEGER;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_bigint_between(int_start bigint, int_stop bigint)\n RETURNS bigint\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n    SELECT FLOOR(random()*(int_stop-int_start)+int_start)::BIGINT;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_phone(phone_prefix text DEFAULT '0'::text)\n RETURNS text\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT\nAS $function$\n  SELECT  phone_prefix\n          || CAST(anon_funcs.random_int_between(100000000,999999999) AS TEXT)\n          AS \"phone\";\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_hash(seed text, algorithm text)\n RETURNS text\n LANGUAGE sql\n PARALLEL RESTRICTED STRICT SECURITY DEFINER\nAS $function$\n  SELECT anon_funcs.digest(\n    seed,\n    anon_funcs.random_string(6),\n    algorithm\n  );\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.random_in(a anyarray)\n RETURNS anyelement\n LANGUAGE sql\n STRICT\nAS $function$\n  SELECT a[pg_catalog.floor(pg_catalog.random()*array_length(a,1)+1)]\n$function$\n",
+        "CREATE OR REPLACE FUNCTION anon_funcs.hex_to_int(hexval text)\n RETURNS integer\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n    result  INT;\nBEGIN\n    EXECUTE 'SELECT x' || quote_literal(hexval) || '::INT' INTO result;\n    RETURN result;\nEND;\n$function$\n",
+        "CREATE OR REPLACE FUNCTION tg_core.tg_trg_fn()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$ BEGIN RETURN NEW; END $function$\n"
+    ],
+    "partial_dump_casts": [],
+    "partial_dump_operators": [],
+    "partial_dump_aggregates": [],
+    "event_triggers": {}
+}

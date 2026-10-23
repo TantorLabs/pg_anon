@@ -5,6 +5,8 @@ import pytest
 from .conftest import input_dict, output_path
 from pg_anon.common.enums import ResultCode
 
+VALID_OPTIONS = "--no-owner"  # accepted by pg_dump and pg_restore of every supported version
+
 
 async def test_dump_with_valid_pg_dump_options(source_db, db_params, pg_anon_runner):
     res = await pg_anon_runner.run(
@@ -15,7 +17,7 @@ async def test_dump_with_valid_pg_dump_options(source_db, db_params, pg_anon_run
             f"--output-dir={output_path('valid_dump')}",
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             "--clear-output-dir",
-            "--pg-dump-options=--no-comments --no-publications",
+            f"--pg-dump-options={VALID_OPTIONS}",
         ],
     )
     assert res.result_code == ResultCode.DONE
@@ -61,7 +63,7 @@ async def test_restore_with_valid_pg_restore_options(target_db, db_params, pg_an
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--input-dir={prepared_dump}",
             "--drop-custom-check-constr",
-            "--pg-restore-options=--no-comments --no-publications",
+            f"--pg-restore-options={VALID_OPTIONS}",
             "--drop-db",
         ],
     )

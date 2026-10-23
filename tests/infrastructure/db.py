@@ -96,6 +96,11 @@ class DBManager:
         )
         await self.execute("postgres", f"DROP DATABASE IF EXISTS {db_name}")
 
+    async def server_version_num(self, db_name: str) -> int:
+        """Return `SHOW server_version_num` of the server as an integer."""
+        rows = await self.fetch(db_name, "SHOW server_version_num")
+        return int(rows[0][0])
+
     async def execute(self, db_name: str, query: str) -> None:
         """Execute SQL (DDL/DML) without returning results."""
         db_conn = await create_connection(self._connection_params(db_name))

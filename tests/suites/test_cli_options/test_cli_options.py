@@ -147,16 +147,23 @@ async def test_seq_init_by_max_value_resets_sequences(
     pg_anon_runner,
 ):
     out = output_path("seq_init_by_max")
-    res = await pg_anon_runner.run(
-        "dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('empty.py')}",
-            f"--output-dir={out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
+    # without the flag the restore copies this low value, so only the flag gives an id above max(id)
+    await db_manager.execute(source_db, "SELECT setval(pg_get_serial_sequence('hr.employee', 'id'), 1)")
+    try:
+        res = await pg_anon_runner.run(
+            "dump",
+            source_db,
+            [
+                f"--prepared-sens-dict-file={input_dict('empty.py')}",
+                f"--output-dir={out}",
+                f"--db-connections-per-process={db_params.db_connections_per_process}",
+                "--clear-output-dir",
+            ],
+        )
+    finally:
+        await db_manager.execute(
+            source_db, "SELECT setval(pg_get_serial_sequence('hr.employee', 'id'), (SELECT max(id) FROM hr.employee))"
+        )
     assert res.result_code == ResultCode.DONE
 
     res = await pg_anon_runner.run(

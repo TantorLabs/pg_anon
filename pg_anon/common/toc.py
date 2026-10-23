@@ -1,16 +1,58 @@
 import re
 import subprocess
+import tempfile
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
-CUSTOM_OBJECTS_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR|AGGREGATE)\b")
+CUSTOM_OBJECTS_ENTRY_RE = re.compile(
+    r"^\d+;\s+\d+\s+\d+\s+(DOMAIN|TYPE|FUNCTION|PROCEDURE|CAST|OPERATOR(?!\s+(?:CLASS|FAMILY)\b)|AGGREGATE)\b"
+)
+OPERATOR_CLASS_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+OPERATOR (?:CLASS|FAMILY)\b")
 USER_MAPPING_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+USER MAPPING\b")
 EXTENSION_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+EXTENSION\b")
-PUBLICATION_TABLE_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+PUBLICATION TABLE(?:S IN SCHEMA)?\s+(?P<schema>\S+)")
+# the public schema has the same OID on every PostgreSQL version
+PUBLIC_SCHEMA_ENTRY_RE = re.compile(r"^\d+;\s+2615\s+2200\s+SCHEMA\s+-\s+public\s")
 
 _ENTRY_ID_RE = re.compile(r"^(\d+);\s")
 _FAILED_ENTRY_RE = re.compile(r"from TOC entry (\d+)")
 _SCHEMA_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+SCHEMA\s+-\s+(?P<name_and_owner>\S.*)$")
+_TOC_ENTRY_HEADER_RE = re.compile(r"^-- TOC entry (\d+) \(class (\d+) OID (\d+)\)$")
+_TOC_DEPENDENCIES_RE = re.compile(r"^-- Dependencies:((?: \d+)+)$")
+_TABLE_ENTRY_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+(?:FOREIGN )?TABLE\s+(?!ATTACH\s)")
+# "<id>; <class> <oid> <TYPE> <schema> <name> <owner>": the type is written in capitals
+_ENTRY_TITLE_RE = re.compile(r"^\d+;\s+\d+\s+\d+\s+(?P<desc>(?:[A-Z]+ )+)(?P<schema>\S+) (?P<rest>.*)$")
+
+# entries that pg_dump writes as parts of a table, so they go away together with the table
+TABLE_PART_DESCS = frozenset(
+    {
+        "ACL",
+        "CHECK CONSTRAINT",
+        "COMMENT",
+        "CONSTRAINT",
+        "DEFAULT",
+        "FK CONSTRAINT",
+        "FOREIGN TABLE",
+        "INDEX",
+        "INDEX ATTACH",
+        "POLICY",
+        "PUBLICATION TABLE",
+        "ROW SECURITY",
+        "RULE",
+        "SECURITY LABEL",
+        "SEQUENCE",
+        "SEQUENCE OWNED BY",
+        "SEQUENCE SET",
+        "STATISTICS",
+        "STATISTICS DATA",
+        "TABLE",
+        "TABLE ATTACH",
+        "TABLE DATA",
+        "TRIGGER",
+    }
+)
+# parts of a table that can also depend on another table: they are lost when their own table is restored
+TABLE_LINK_DESCS = frozenset({"FK CONSTRAINT", "TRIGGER"})
 
 
 def read_toc_lines(
@@ -31,6 +73,46 @@ def read_toc_lines(
     toc_lines = toc_bytes.decode("utf-8", errors="replace").split("\n")
 
     return [line for line in toc_lines if line and not line.startswith(";")]
+
+
+@dataclass
+class TocEntry:
+    entry_id: int
+    classid: int
+    objid: int
+    dependencies: list[int] = field(default_factory=list)
+
+
+def read_toc_entries(pg_restore: str, backup_path: str | Path, env: dict[str, str] | None = None) -> list[TocEntry]:
+    """Read the catalog OIDs and the dependencies of TOC entries from the comments of a verbose pg_restore script."""
+    backup_path = Path(backup_path)
+    if not backup_path.exists():
+        return []
+
+    entries: list[TocEntry] = []
+    # verbose mode can write a lot to stderr: a file, not a pipe, so pg_restore never blocks on it
+    with tempfile.TemporaryFile() as stderr_file:
+        proc = subprocess.Popen(  # noqa: S603
+            [pg_restore, "-v", "-f", "-", str(backup_path)],
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            env=env,
+        )
+        assert proc.stdout is not None  # noqa: S101
+        for raw_line in proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+            if match := _TOC_ENTRY_HEADER_RE.match(line):
+                entries.append(TocEntry(*(int(value) for value in match.groups())))
+            elif entries and (match := _TOC_DEPENDENCIES_RE.match(line)):
+                entries[-1].dependencies = [int(value) for value in match.group(1).split()]
+
+        # without the entries the restore would create objects that depend on excluded tables
+        if proc.wait() != 0:
+            stderr_file.seek(0)
+            stderr = stderr_file.read().decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"pg_restore could not read {backup_path}: {stderr[-2000:]}")
+
+    return entries
 
 
 def write_toc_list(path: Path, lines: list[str]) -> Path:
@@ -84,5 +166,18 @@ def schema_entry_patterns(schemas: Iterable[str]) -> list[re.Pattern[str]]:
 
 
 def table_entry_matches(line: str, schema: str, table: str) -> bool:
-    """Check that the line is the TABLE entry of the given table."""
-    return bool(re.match(rf"^\d+;\s+\d+\s+\d+\s+TABLE\s+{re.escape(schema)}\s+{re.escape(table)}\s", line))
+    """Check that the line is the TABLE or FOREIGN TABLE entry of the given table."""
+    return bool(re.match(rf"^\d+;\s+\d+\s+\d+\s+(?:FOREIGN )?TABLE\s+{re.escape(schema)}\s+{re.escape(table)}\s", line))
+
+
+def is_table_entry(line: str) -> bool:
+    """Check that the line is the TABLE or FOREIGN TABLE entry of some table."""
+    return bool(_TABLE_ENTRY_RE.match(line))
+
+
+def entry_title(line: str) -> tuple[str, str, str] | None:
+    """Return the type, the schema ("-" for none) and the name without the owner of a TOC entry."""
+    match = _ENTRY_TITLE_RE.match(line)
+    if not match:
+        return None
+    return match["desc"].strip(), match["schema"], match["rest"].rsplit(" ", 1)[0]

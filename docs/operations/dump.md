@@ -15,6 +15,20 @@ This mode creates a masked backup using rules from the [sensitive dictionary](..
 
 ---
 
+## Dump files
+
+| Mode | Writes |
+|---|---|
+| `dump` | Structure files and data files |
+| `sync-struct-dump` | Structure files: `pre_data.backup`, `post_data.backup`, `structure.json` |
+| `sync-data-dump` | Data files: `metadata.json`, `dumped_tables.py`, `*.bin.gz` |
+
+`structure.json` describes the structure of the dump, and `metadata.json` describes its data. Do not edit these files
+by hand. `dumped_tables.py` lists the tables with data, and you can use it as a
+[tables dictionary](../dicts/tables-dictionary.md).
+
+---
+
 ## Full dump (`dump`) mode:
 Creates a backup containing both the database structure and masked data.
 
@@ -91,6 +105,16 @@ Partial dumps use a tables dictionary containing a list of tables.
 This dictionary can act as either a whitelist or a blacklist.
 See [tables dictionary](../dicts/tables-dictionary.md).
 
+- A rule for a parent table also covers its partitions and child tables. A kept child table keeps all its parents,
+  without their own rows. See [Parent and child tables](../dicts/tables-dictionary.md#parent-and-child-tables).
+- Views, materialized views and sequences that depend on a left-out table are left out too. Other objects that
+  depend on it, such as functions, types and foreign keys of other tables, stay in the dump files, but restore does
+  not create them. See [Partial dump](../security.md#partial-dump) in Security.
+- If a kept table needs a left-out table, for example as a column type, the dump stops with the error
+  `EXCLUDED_TABLE_DEPENDENCY` before `pg_dump` starts: such a dump cannot be restored. Leave out the dependent table
+  too, or keep the table it needs. `sync-data-dump` has no structure, so it does not check this.
+- A long list of left-out tables can go over the system limits: see [Limits](#limits).
+
 ### Run example
 #### Dump only need tables (whitelist)
 ```commandline
@@ -151,7 +175,7 @@ no structure and no data in the dump.
   structure.
 
 If a table that stays in the dump uses a type from an excluded schema, or is a partition or a child of a table
-there, the dump stops with an error. Exclude these tables too, or keep the schema. `sync-data-dump` has no
+there, the dump stops with the error `EXCLUDED_SCHEMA_DEPENDENCY`. Exclude these tables too, or keep the schema. `sync-data-dump` has no
 structure, so it does not check this.
 
 ### Run example
@@ -174,6 +198,26 @@ pg_anon dump \
 | [Schema options](#exclude-schemas) | Schemas, with structure and data |
 | [Tables dictionary](../dicts/tables-dictionary.md) | Tables, with structure and data |
 | `dictionary_exclude` in the [sensitive dictionary](../dicts/sens-dict-schema.md) | Data of tables. The structure stays |
+
+---
+
+## Limits
+
+These limits apply to `dump` and `sync-struct-dump`: they run `pg_dump`.
+
+**Number of left-out tables.** `pg_anon` passes each left-out table to `pg_dump` as a command-line argument. The
+command line has a system limit in bytes: on Linux it is one quarter of the stack size (`ulimit -s`). With the default
+stack size of 8 MB, about 45 thousand left-out tables with short names fit, and fewer with long names. If the list
+is too long, the dump stops before `pg_dump` starts with the error `TOO_MANY_EXCLUDED_TABLES`. What to do:
+
+- leave out whole schemas with [schema options](#exclude-schemas) instead of many tables;
+- raise the stack size, for example `ulimit -s 65536` in the shell that runs `pg_anon`.
+
+**Locks.** `pg_dump` locks every table of the dump in one transaction. The server has
+`max_locks_per_transaction * (max_connections + max_prepared_transactions)` lock slots for all sessions. If there are
+not enough slots, the dump stops with the error `MAX_LOCKS_EXCEEDED`. Raise `max_locks_per_transaction` in
+`postgresql.conf` and restart the server: for example, with `max_connections = 100`, the value 256 is enough for
+20 thousand tables.
 
 ---
 

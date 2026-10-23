@@ -33,6 +33,22 @@ from pg_anon.logger import get_logger
 
 logger = get_logger()
 
+
+def is_max_locks_error(stderr: str) -> bool:
+    """Tell if pg_dump failed because the server ran out of locks."""
+    return "max_locks_per_transaction" in stderr
+
+
+def parse_version(value: str | None) -> tuple[int, ...] | None:
+    """Turn a version like '1.12.0' into a tuple of numbers; None when it is not a plain version."""
+    if not value:
+        return None
+    match = re.match(r"^\d+(\.\d+)*", value.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group(0).split("."))
+
+
 PARENS_PATTERN = re.compile(r"\([^\)]*\)")
 TYPE_PATTERN = re.compile(
     r"""
@@ -99,6 +115,13 @@ def exception_handler(func: Callable) -> Callable:
 def get_major_version(str_version: str) -> str:
     """Extract the major version number from a version string."""
     return re.findall(r"(\d+)", str_version)[0]
+
+
+def get_major_version_parts(str_version: str) -> tuple[int, ...]:
+    """Return the major version as numbers to compare: (9, 6) for 9.6.24, (15,) for 15.4."""
+    numbers = [int(number) for number in re.findall(r"\d+", str_version)]
+    # before PostgreSQL 10 the major version has two parts
+    return tuple(numbers[:2]) if numbers[0] < 10 else (numbers[0],)  # noqa: PLR2004
 
 
 def pretty_size(bytes_v: int) -> str:
@@ -348,12 +371,25 @@ def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
     return "".join(lines[-limit:])
 
 
+def table_matches_rules(
+    rules: list[dict] | None,
+    table: tuple[str, str],
+    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
+) -> bool:
+    """Check that the rules name the table or one of the tables above it: partitioned tables or INHERITS parents."""
+    if not rules:
+        return False
+    names = [table, *(partition_ancestors or {}).get(table, [])]
+    return any(get_dict_rule_for_table(rules, *name) for name in names)
+
+
 def filter_db_tables(
     tables: list[tuple[str, str]],
     white_list_rules: list[dict] | None = None,
     black_list_rules: list[dict] | None = None,
+    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
 ) -> tuple[list[tuple[str, str]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """Filter database tables by whitelist and blacklist rules."""
+    """Filter database tables by whitelist and blacklist rules; a rule for a parent table covers its child tables."""
     filtered_tables: list[tuple[str, str]] = []
     black_listed_tables: set[tuple[str, str]] = set()
     white_listed_tables: set[tuple[str, str]] = set()
@@ -362,14 +398,14 @@ def filter_db_tables(
 
     for table_data in tables:
         # black list has the highest priority for pg_dump / pg_restore
-        if black_list_rules and get_dict_rule_for_table(black_list_rules, *table_data):
+        if table_matches_rules(black_list_rules, table_data, partition_ancestors):
             # if table in black list, this table must be filtered out
             black_listed_tables.add(table_data)
             continue
 
         # white list has the second priority for pg_dump / pg_restore
         if white_list_rules:
-            if get_dict_rule_for_table(white_list_rules, *table_data):
+            if table_matches_rules(white_list_rules, table_data, partition_ancestors):
                 # if white list is using and table in white list, this table must not be filtered
                 white_listed_tables.add(table_data)
                 filtered_tables.append(table_data)
@@ -379,6 +415,59 @@ def filter_db_tables(
         filtered_tables.append(table_data)
 
     return filtered_tables, black_listed_tables, white_listed_tables
+
+
+def log_rules_for_parent_tables(
+    rules: list[dict] | None,
+    tables: Iterable[tuple[str, str]],
+    ancestors: dict[tuple[str, str], list[tuple[str, str]]],
+    action: str,
+) -> None:
+    """Write a log line for each rule that covers child tables only because it matches a table above them."""
+    children: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for table in tables:
+        for ancestor in ancestors.get(table, []):
+            children.setdefault(ancestor, set()).add(table)
+
+    for rule in rules or []:
+        covered = {
+            table for parent, below in children.items() if get_dict_rule_for_table([rule], *parent) for table in below
+        }
+        count = sum(1 for table in covered if not get_dict_rule_for_table([rule], *table))
+        if count:
+            noun = "child table is" if count == 1 else "child tables are"
+            logger.info("The rule %s matches a parent table: %s %s %s too.", json.dumps(rule), count, noun, action)
+
+
+def warn_rules_without_tables(
+    rules: list[dict] | None,
+    tables: Iterable[tuple[str, str]],
+    list_name: str,
+    place: str,
+    limit: int = 5,
+    shown: int = 2,
+) -> None:
+    """Write a warning for each rule that matches no table; many rules give one summary line."""
+    table_list = list(tables)
+    unmatched = [
+        json.dumps(rule, ensure_ascii=False)
+        for rule in rules or []
+        if not any(get_dict_rule_for_table([rule], *table) for table in table_list)
+    ]
+    if len(unmatched) <= limit:
+        for rule in unmatched:
+            logger.warning("%s: the rule %s matches no table in %s.", list_name, rule, place)
+        return
+
+    rest = len(unmatched) - shown
+    logger.warning(
+        "%s: %s rules match no table in %s: %s, and %s more.",
+        list_name,
+        len(unmatched),
+        place,
+        ", ".join(unmatched[:shown]),
+        rest,
+    )
 
 
 def format_names_summary(names: Iterable[str], noun: str, limit: int = 2) -> str:
@@ -434,10 +523,13 @@ def safe_compile(pattern: str, flags: int = 0) -> re.Pattern:
         return re.compile(r"(?!)")  # Never matching. Instead of None
 
 
-def save_json_file(file_path: str | Path, data: dict) -> None:
-    """Write a dictionary to a JSON file with pretty formatting."""
+def save_json_file(file_path: str | Path, data: dict, compact: bool = False) -> None:
+    """Write a dictionary to a JSON file: with pretty formatting, or in one line when compact."""
     with Path(file_path).open("w", encoding="utf-8") as out_file:
-        out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
+        if compact:
+            out_file.write(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+        else:
+            out_file.write(json.dumps(data, indent=4, ensure_ascii=False))
 
 
 def read_dict_data(data: str, dict_name: str | Path) -> dict[str, Any] | None:

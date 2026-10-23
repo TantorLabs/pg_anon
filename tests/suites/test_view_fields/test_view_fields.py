@@ -60,6 +60,7 @@ async def test_view_fields_returns_every_scannable_field_minus_excluded(source_d
     assert len(executor.table.rows) == scan_total - excluded
     sens, plain = _count_sens_vs_plain(executor)
     assert sens + plain == scan_total - excluded
+    assert executor.fields_cut_by_limits is False, "without --fields-count there is no limit"
 
 
 async def test_view_fields_filter_by_schema_name(source_db, db_params):
@@ -134,13 +135,6 @@ async def test_view_fields_filter_by_table_mask(source_db, db_params):
 
     assert executor.fields
     assert all(re.search(mask, f.relname) for f in executor.fields)
-
-
-def test_fields_count_defaults_to_no_limit(db_params, source_db):
-    options = build_run_options(_options(db_params, source_db, input_dict("view_fields.py")))
-    assert options.fields_count is None
-    executor = ViewFieldsMode(PgAnonApp(options).context)
-    assert executor._output_fields_limit is None  # noqa: SLF001
 
 
 async def test_view_fields_respects_fields_count_limit(source_db, db_params):

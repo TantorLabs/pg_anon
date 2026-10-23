@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import hashlib
 import logging
+import os
 import re
 import shlex
 import shutil
@@ -20,46 +21,56 @@ from pg_anon.common.db_utils import (
     check_required_connections,
     create_connection,
     create_pool,
+    describe_db_objects,
     get_all_fields_list,
+    get_all_tables,
     get_constraints_to_excluded_tables,
-    get_custom_aggregates_ddl,
-    get_custom_casts_ddl,
-    get_custom_domains_ddl,
-    get_custom_functions_ddl,
-    get_custom_operators_ddl,
-    get_custom_ranges_ddl,
-    get_custom_types_ddl,
     get_db_size,
     get_db_tables,
+    get_dependency_graph,
     get_dump_query,
     get_event_triggers,
     get_extension_schemas,
     get_extension_tables,
     get_extensions,
+    get_foreign_descendants_map,
     get_foreign_servers_count,
     get_indexes_data,
     get_legacy_inheritance_parents,
     get_partition_ancestors_map,
-    get_partitioned_ancestors,
     get_schemas,
-    get_tables_depending_on_schemas,
+    get_table_ancestors_map,
     get_user_routines_and_triggers_count,
-    get_views_related_to_tables,
     get_visible_user_mappings,
+)
+from pg_anon.common.dependencies import (
+    dependency_error,
+    DependencyGraph,
+    describe_objects,
+    EXCLUDABLE_RELATION_KINDS,
+    Node,
+    tables_of_owners,
 )
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
     build_pg_util_env,
+    filter_db_tables,
     format_names_summary,
     get_dict_rule_for_table,
     get_major_version,
     get_pg_util_version,
+    is_max_locks_error,
+    log_rules_for_parent_tables,
     resolve_schemas,
     save_dicts_info_file,
+    warn_rules_without_tables,
 )
 from pg_anon.context import Context
+from pg_anon.version import __version__, DUMP_MIN_PG_ANON_VERSION
+
+POINTER_SIZE = 8  # bytes per argv/envp pointer on 64-bit systems
 
 
 class _DumpFlagPos(Enum):
@@ -112,6 +123,7 @@ class DumpMode:
         self.context: Context = context
         self.metadata: Metadata = Metadata()
         self.metadata_file_name: str = "metadata.json"
+        self.structure_file_name: str = "structure.json"
         self.dumped_tables_file_name: str = "dumped_tables.py"
 
         self._data_dump_queries: list[str] = []
@@ -124,15 +136,16 @@ class DumpMode:
         self._sequences_data: list[tuple[str, ...]] = []
         self._sequences_last_values: dict | None = None
         self._indexes: dict | None = None
-        self._views: dict | None = None
         self._constraints: dict | None = None
         self._extensions: dict | None = None
 
-        self._views_for_including: list[str] = []
-        self._views_for_excluding: list[str] = []
         self._all_db_schemas: list[str] = []
-        self._pg_dump_partitioned_ancestors: set[tuple[str, str]] = set()
+        self._graph: DependencyGraph | None = None
+        self._dump_tables: set[Node] = set()
+        self._excluded_relations: list[tuple[str, str]] = []
+        self._extension_tables: set[tuple[str, str]] = set()
         self._partition_ancestors_map: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        self._table_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
         self._pg_dump_major: int | None = None
 
         if not self.context.options.output_dir:
@@ -144,6 +157,7 @@ class DumpMode:
             self.output_dir = Path.cwd() / self.context.options.output_dir
 
         self.metadata_file_path = self.output_dir / self.metadata_file_name
+        self.structure_file_path = self.output_dir / self.structure_file_name
         self.dumped_tables_file_path = self.output_dir / self.dumped_tables_file_name
 
         self._need_dump_pre_and_post_sections = self.context.options.mode in (AnonMode.SYNC_STRUCT_DUMP, AnonMode.DUMP)
@@ -229,49 +243,40 @@ class DumpMode:
                         "table": table_name,
                         "seq_name": sequence_name,
                         "value": sequence_last_value,
-                        "is_excluded": (table_schema, table_name) not in self.context.tables,
                     }
 
     async def _prepare_indexes(self, connection: Connection) -> None:
         self._indexes = {}
-        views_list = [
-            (view_data["view_schema"], view_data["view_name"])
-            for view_data in (self._views or {}).values()
-            if not view_data["is_excluded"]
-        ]
-        indexes_data = await get_indexes_data(connection, self.context.tables + views_list)
+        indexes_data = await get_indexes_data(connection, self.context.tables)
         for row in indexes_data:
+            if row["is_excluded"]:
+                continue
             self._indexes[row["index_name"]] = {
                 "schema": row["schema"],
                 "table": row["table"],
                 "index_name": row["index_name"],
-                "is_excluded": row["is_excluded"],
                 "parent_index_schema": row["parent_index_schema"],
                 "parent_index_name": row["parent_index_name"],
-            }
-
-    async def _prepare_views(self, connection: Connection) -> None:
-        self._views = {}
-        views_data = await get_views_related_to_tables(connection, self.context.tables)
-        for view_schema, view_name, view_type, table_schema, table_name, is_excluded in views_data:
-            if view_name in self._views and self._views[view_name]["is_excluded"]:
-                continue
-
-            self._views[view_name] = {
-                "view_schema": view_schema,
-                "view_name": view_name,
-                "view_type": view_type,
-                "table_schema": table_schema,
-                "table_name": table_name,
-                "is_excluded": is_excluded,
             }
 
     async def _prepare_constraints(self, connection: Connection) -> None:
         self._constraints = {}
         constraints_data = await get_constraints_to_excluded_tables(connection, self.context.tables)
 
+        kept_tables = {self._graph.relation_name(node) for node in self._dump_tables} if self._graph else set()
+        dumped_tables = set(self.context.tables)
+
         for row in constraints_data:
-            self._constraints[row["constraint_name"]] = {
+            tables = {
+                (row["table_schema_from"], row["table_name_from"]),
+                (row["table_schema_to"], row["table_name_to"]),
+            }
+            # a key between kept tables stays in metadata even when some of their partitions are excluded
+            if row["is_excluded"] and not (row["contype"] == "f" and tables <= kept_tables):
+                continue
+            # a constraint name is unique only inside its table
+            key = f"{row['table_schema_from']}.{row['table_name_from']}.{row['constraint_name']}"
+            self._constraints[key] = {
                 "table_schema_from": row["table_schema_from"],
                 "table_name_from": row["table_name_from"],
                 "constraint_name": row["constraint_name"],
@@ -279,12 +284,24 @@ class DumpMode:
                 "definition": row["definition"],
                 "table_schema_to": row["table_schema_to"],
                 "table_name_to": row["table_name_to"],
-                "is_excluded": row["is_excluded"],
                 "referenced_relkind": row["referenced_relkind"],
                 "referrer_relkind": row["referrer_relkind"],
                 "referenced_partition_leaves": row["referenced_partition_leaves"],
                 "referrer_partition_leaves": row["referrer_partition_leaves"],
             }
+            # a structure dump does not say how the rows come, so it only writes the key down
+            needs_mark = self.context.options.mode == AnonMode.DUMP
+            if needs_mark and any(
+                tuple(leaf) not in dumped_tables for leaf in row["referenced_partition_leaves"] or []
+            ):
+                # pg_restore does not create this key, the restore creates it itself
+                self._constraints[key]["partition_excluded"] = True
+            # names of excluded partitions must not get into the dump
+            for leaves_key in ("referenced_partition_leaves", "referrer_partition_leaves"):
+                if row[leaves_key]:
+                    self._constraints[key][leaves_key] = [
+                        leaf for leaf in row[leaves_key] if tuple(leaf) in dumped_tables
+                    ]
 
     async def _prepare_extensions(self, connection: Connection) -> None:
         extensions = {}
@@ -308,32 +325,27 @@ class DumpMode:
         if self.context.options.dbg_stage_1_validate_dict:
             return
 
+        self.metadata.pg_anon_version = __version__
+        self.metadata.min_pg_anon_version = DUMP_MIN_PG_ANON_VERSION
         self.metadata.created = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.metadata.pg_version = self.context.pg_version
         self.metadata.pg_dump_version = get_pg_util_version(self.context.pg_dump)
+        self.metadata.dbg_stage_2_validate_data = self.context.options.dbg_stage_2_validate_data
+        self.metadata.dbg_stage_3_validate_full = self.context.options.dbg_stage_3_validate_full
 
-        self.metadata.dictionary_content_hash = {}
-        for dictionary_file_name, dictionary_content in self.context.prepared_dictionary_contents.items():
-            self.metadata.dictionary_content_hash[dictionary_file_name] = hashlib.sha256(
-                dictionary_content.encode("utf-8")
-            ).hexdigest()
-
-        self.metadata.prepared_sens_dict_files = ",".join(self.context.options.prepared_sens_dict_files or [])
-
-        self.metadata.extensions = self._extensions
-        self.metadata.schemas = sorted(self._schemas)
-
-        if self.context.white_listed_tables or self.context.black_listed_tables:
-            self.metadata.partial_dump_schemas = self._schemas
-
-        self.metadata.views = self._views
-        self.metadata.constraints = self._constraints
-
-        if self.context.options.mode != AnonMode.SYNC_STRUCT_DUMP:
-            self.metadata.files = self._data_dump_files
-            self.metadata.sequences_last_values = self._sequences_last_values
+        if self._need_dump_pre_and_post_sections:
+            self.metadata.extensions = self._extensions
+            self.metadata.schemas = sorted(self._schemas)
+            self.metadata.constraints = self._constraints
             self.metadata.indexes = self._indexes
 
+            self.metadata.save_structure_into_file(self.structure_file_path)
+
+        if self._need_dump_data:
+            self.metadata.prepared_sens_dict_files = ",".join(self.context.options.prepared_sens_dict_files or [])
+
+            self.metadata.files = self._data_dump_files
+            self.metadata.sequences_last_values = self._sequences_last_values
             self.metadata.total_rows = self._total_rows
 
             self.metadata.db_size = await get_db_size(
@@ -342,11 +354,7 @@ class DumpMode:
                 db_name=self.context.options.db_name,
             )
 
-        self.metadata.dbg_stage_2_validate_data = self.context.options.dbg_stage_2_validate_data
-        self.metadata.dbg_stage_3_validate_full = self.context.options.dbg_stage_3_validate_full
-
-        self.metadata.save_into_file(self.metadata_file_path)
-        if self._need_dump_data:
+            self.metadata.save_into_file(self.metadata_file_path)
             self.metadata.save_dumped_tables_into_file(self.dumped_tables_file_path)
 
     def _get_pg_dump_major(self) -> int:
@@ -354,28 +362,25 @@ class DumpMode:
             self._pg_dump_major = int(get_major_version(get_pg_util_version(self.context.pg_dump)))
         return self._pg_dump_major
 
+    def _check_command_size(self, command: list[str], env: dict[str, str]) -> None:
+        """Stop before pg_dump when its command line and environment do not fit into ARG_MAX."""
+        entries = [*command, *(f"{key}={value}" for key, value in env.items())]
+        size = sum(len(entry.encode("utf-8")) + 1 + POINTER_SIZE for entry in entries)
+        limit = os.sysconf("SC_ARG_MAX")
+        if size <= limit:
+            return
+        msg = (
+            f"ERROR: the pg_dump command is too long to start: {len(self._excluded_relations)} excluded tables "
+            f"make it {size} bytes, but the system limit is {limit} bytes. "
+            "Exclude whole schemas instead of single tables, or raise the limit with `ulimit -s`."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.TOO_MANY_EXCLUDED_TABLES, msg)
+
     async def _run_pg_dump(self, section: str) -> None:
-        specific_tables: list[str] = []
-
-        if self.context.black_listed_tables:
-            black_list = [
-                ("-T", f'"{table_schema}"."{table_name}"')
-                for table_schema, table_name in self.context.black_listed_tables
-            ]
-            specific_tables.extend([item for sublist in black_list for item in sublist])
-
-        if self.context.white_listed_tables:
-            full_whitelist = set(self.context.white_listed_tables) | self._pg_dump_partitioned_ancestors
-            white_list = [("-t", f'"{table_schema}"."{table_name}"') for table_schema, table_name in full_whitelist]
-            specific_tables.extend([item for sublist in white_list for item in sublist])
-
-            if self._sequences_data:
-                seq_list = [
-                    ("-t", f'"{seq_schema}"."{seq_name}"')
-                    for table_schema, table_name, _, seq_schema, seq_name in self._sequences_data
-                    if (table_schema, table_name) in self.context.white_listed_tables
-                ]
-                specific_tables.extend([item for sublist in seq_list for item in sublist])
+        excluded_relations = [
+            item for schema, name in self._excluded_relations for item in ("-T", f'"{schema}"."{name}"')
+        ]
 
         exclude_schemas = [
             item
@@ -394,7 +399,7 @@ class DumpMode:
             "-U",
             self.context.options.db_user,
             *exclude_schemas,
-            *specific_tables,
+            *excluded_relations,
             "--section",
             section,
             "-E",
@@ -425,12 +430,14 @@ class DumpMode:
         # LAST flags go after user --pg-dump-options so --no-statistics wins over a user --with-statistics.
         command.extend(last_flags)
         command.append(self.context.options.db_name)
-        self.context.logger.debug(str(command))
+        env = build_pg_util_env(self.context.options)
+        if section == "pre-data":
+            self._check_command_size(command, env)
         proc = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=build_pg_util_env(self.context.options),
+            env=env,
         )
         # pg_dump put command result into stdout if not using "-f" option, else stdout is empty
         # pg_dump put logs into stderr
@@ -441,6 +448,14 @@ class DumpMode:
             self.context.logger.info(log_line)
 
         if proc.returncode != 0:
+            if is_max_locks_error(pg_dump_logs):
+                msg = (
+                    f"ERROR: pg_dump ran out of locks: it locks every table of the dump, "
+                    f"and this dump has {len(self._dump_tables)} tables. "
+                    "Increase max_locks_per_transaction on the server."
+                )
+                self.context.logger.error(msg)
+                raise PgAnonError(ErrorCode.MAX_LOCKS_EXCEEDED, msg)
             msg = "ERROR: database schema dump has failed!"
             self.context.logger.error(msg)
             raise PgAnonError(ErrorCode.DUMP_FAILED, msg)
@@ -560,6 +575,14 @@ class DumpMode:
                 self.context.logger.info(str(query))
                 self._data_dump_queries.append(query)
 
+        for file in self._data_dump_files.values():
+            # the restore applies its lists to parent tables by this key, also without structure.json
+            ancestors = self._table_ancestors.get((file["schema"], file["table"]), [])
+            file["ancestors"] = [list(ancestor) for ancestor in ancestors]
+            if (file["schema"], file["table"]) in self._extension_tables:
+                # CREATE EXTENSION makes this table, so the restore must not look for it in the dump structure
+                file["extension_table"] = True
+
     @staticmethod
     def _collect_completed(done: set[asyncio.Task], pending: set[asyncio.Task], results: dict[str, str]) -> None:
         """Merge finished task results, re-raising the first failure and cancelling the rest."""
@@ -673,9 +696,6 @@ class DumpMode:
                 # Prepare data for metadata
                 self._count_totals()
                 await self._prepare_sequences_last_values(connection=connection)
-                await self._prepare_indexes(connection=connection)
-                await self._prepare_extensions(connection=connection)
-                await self._prepare_objects_ddl_to_metadata(connection)
         finally:
             await connection.close()
             self.context.logger.info("<------------- Finished dump data")
@@ -722,6 +742,25 @@ class DumpMode:
                 routines_and_triggers_count,
             )
 
+    async def _warn_foreign_parents(self, connection: Connection) -> None:
+        """Warn about the dumped tables with foreign child tables: without user mappings they fail on the target."""
+        if self._skip_pre_data_dump or not self._graph:
+            return
+
+        kept_tables = {self._graph.relation_name(node) for node in self._dump_tables}
+        foreign_parents = [
+            f"{schema}.{table}"
+            for (schema, table), foreign_tables in (await get_foreign_descendants_map(connection)).items()
+            if (schema, table) in kept_tables and foreign_tables & kept_tables
+        ]
+        if foreign_parents:
+            self.context.logger.warning(
+                "Foreign child tables found under %s. In the target database, queries to these tables without ONLY "
+                "go to the foreign tables and fail without a user mapping. To avoid this, exclude the foreign tables "
+                "with an exclude list, restore with --keep-fdw-user-mappings, or create the user mappings by hand.",
+                format_names_summary(foreign_parents, "table"),
+            )
+
     async def _dump_pre_data(self) -> None:
         if self._skip_pre_data_dump:
             self.context.logger.info("-------------> Skipped dump pre-data (pg_dump)")
@@ -747,7 +786,8 @@ class DumpMode:
         conditions: dict[tuple[str, str], str] = {}
         internal_tables: set[tuple[str, str]] = set()
 
-        for table, condition in (await get_extension_tables(connection)).items():
+        extension_tables = await get_extension_tables(connection)
+        for table, condition in extension_tables.items():
             if condition is None:
                 internal_tables.add(table)
             elif condition:
@@ -755,6 +795,7 @@ class DumpMode:
 
         self.context.extension_table_conditions = conditions
         kept_tables = [table for table in tables if table not in internal_tables]
+        self._extension_tables = {table for table in kept_tables if table in extension_tables}
 
         skipped_count = len(tables) - len(kept_tables)
         if skipped_count:
@@ -770,16 +811,128 @@ class DumpMode:
     async def _prepare_tables_lists(self, connection: Connection) -> None:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         tables = await self._exclude_extension_tables(connection, tables)
-        self.context.set_tables_lists(tables)
+        self._partition_ancestors_map = await get_partition_ancestors_map(connection, tables)
+        # the lists follow INHERITS parents too, the masking rules follow only partitioned tables
+        self._table_ancestors = await get_table_ancestors_map(connection)
+        self.context.set_tables_lists(tables, self._table_ancestors)
+        if self._skip_pre_data_dump and self._skip_post_data_dump:
+            # no structure is dumped, so _prepare_exclusions does not check the lists
+            all_tables = await get_all_tables(connection)
+            warn_rules_without_tables(self.context.excluded_tables_rules, all_tables, "Exclude list", "the database")
+            warn_rules_without_tables(self.context.included_tables_rules, all_tables, "Include list", "the database")
 
-        self._partition_ancestors_map = await get_partition_ancestors_map(connection, self.context.tables)
+    async def _prepare_exclusions(self, connection: Connection) -> None:
+        """Find the tables to exclude and what depends on them; stop when a kept table depends on them."""
+        if self._skip_pre_data_dump and self._skip_post_data_dump:
+            return
 
-        if self.context.white_listed_tables:
-            self._pg_dump_partitioned_ancestors = await get_partitioned_ancestors(
-                connection, list(self.context.white_listed_tables)
-            )
-        else:
-            self._pg_dump_partitioned_ancestors = set()
+        self._graph = await get_dependency_graph(connection)
+        kept_tables, excluded_tables = self._split_tables()
+        self._dump_tables = self._graph.table_nodes(kept_tables)
+
+        dependents = set()
+        for roots, error_code in (
+            (self._graph.schema_nodes(self.context.exclude_schemas), ErrorCode.EXCLUDED_SCHEMA_DEPENDENCY),
+            (self._graph.table_nodes(excluded_tables), ErrorCode.EXCLUDED_TABLE_DEPENDENCY),
+        ):
+            owners, kept_dependents = self._graph.walk(roots, self._dump_tables)
+            if kept_dependents:
+                raise dependency_error(
+                    error_code, [".".join(self._graph.relation_name(table)) for table in kept_dependents]
+                )
+            dependents |= owners
+
+        dependent_relations = {
+            self._graph.relation_name(node)
+            for node in dependents
+            if self._graph.relation_kind(node) in EXCLUDABLE_RELATION_KINDS
+        }
+        self._excluded_relations = sorted(
+            set(excluded_tables)
+            | {relation for relation in dependent_relations if relation[0] not in self.context.exclude_schemas}
+        )
+        skipped_owners = {
+            node for node in dependents if self._graph.relation_kind(node) not in EXCLUDABLE_RELATION_KINDS
+        }
+        # the restore finds these objects in the TOC of the dump by their OIDs
+        self.metadata.dependencies, self.metadata.dump_dependents_to_skip = describe_objects(
+            self._graph, tables_of_owners(self._graph, self._dump_tables), skipped_owners
+        )
+
+        await self._log_lost_dependents(connection, dependents, skipped_owners, excluded_tables)
+        if self.context.included_tables_rules or self.context.excluded_tables_rules or self.context.exclude_schemas:
+            self.context.logger.info("Dump includes %s of %s tables", len(self._dump_tables), len(self._graph.tables()))
+
+    async def _log_lost_dependents(
+        self,
+        connection: Connection,
+        dependents: set[Node],
+        skipped_owners: set[Node],
+        excluded_tables: list[tuple[str, str]],
+    ) -> None:
+        """Name the objects that depend on excluded tables or schemas; their own indexes, keys and the like are left out."""
+        graph = self._graph
+        if graph is None:
+            return
+        schema_nodes = graph.schema_nodes(self.context.exclude_schemas)
+        in_schemas = schema_nodes.union(*(graph.dependents.get(schema, set()) for schema in schema_nodes))
+        relations = {node for node in dependents if graph.relation_kind(node) in EXCLUDABLE_RELATION_KINDS}
+        dropped = in_schemas | relations | graph.table_nodes(excluded_tables)
+
+        lost = {node for node in skipped_owners if not graph.is_part_of(node, dropped)}
+        # views go to the exclusion list of pg_dump, but they are lost all the same
+        lost |= {
+            node
+            for node in relations
+            if graph.relation_kind(node) in ("v", "m") and not graph.is_part_of(node, in_schemas)
+        }
+        if not lost:
+            return
+
+        excluded = "excluded tables and schemas" if self.context.exclude_schemas else "excluded tables"
+        names = await describe_db_objects(connection, sorted(lost))
+        self.context.logger.info(
+            "Objects that depend on %s and will not be restored: %s",
+            excluded,
+            format_names_summary(names, "object", limit=5),
+        )
+
+    def _split_tables(self) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]:
+        """Split the tables into kept and excluded ones; a list entry for a parent table covers its child tables."""
+        tables = {table for table in self._graph.tables().values() if table[0] not in self.context.exclude_schemas}
+        partitioned = {(schema, name) for kind, schema, name in self._graph.relations.values() if kind == "p"}
+        ancestors = {table: self._table_ancestors[table] for table in tables if table in self._table_ancestors}
+        white_rules, black_rules = self.context.included_tables_rules, self.context.excluded_tables_rules
+        kept, black_listed, white_listed = filter_db_tables(sorted(tables), white_rules, black_rules, ancestors)
+        kept_tables = set(kept)
+        # a partition or a child table cannot be created without its parents
+        parents = {parent for table in white_listed for parent in ancestors.get(table, [])}
+        kept_tables |= parents & tables
+
+        all_tables = set(self._graph.tables().values())
+        warn_rules_without_tables(black_rules, all_tables, "Exclude list", "the database")
+        warn_rules_without_tables(white_rules, all_tables, "Include list", "the database")
+        log_rules_for_parent_tables(black_rules, tables, ancestors, "excluded")
+        log_rules_for_parent_tables(white_rules, tables - black_listed, ancestors, "included")
+
+        # the restore applies its lists to parent tables by these two descriptions
+        self.metadata.partitions = []
+        self.metadata.inherits = []
+        for table in sorted(kept_tables):
+            table_ancestors = [list(ancestor) for ancestor in ancestors.get(table, [])]
+            if table in partitioned or (table_ancestors and tuple(table_ancestors[0]) in partitioned):
+                self.metadata.partitions.append(
+                    {
+                        "schema": table[0],
+                        "table": table[1],
+                        "is_partitioned": table in partitioned,
+                        "ancestors": table_ancestors,
+                    }
+                )
+            elif table_ancestors:
+                self.metadata.inherits.append({"schema": table[0], "table": table[1], "ancestors": table_ancestors})
+
+        return kept_tables, sorted(tables - kept_tables)
 
     async def _prepare_schemas_lists(self, connection: Connection) -> None:
         # CREATE EXTENSION makes these schemas itself; their tables follow the extension rules, like in pg_dump
@@ -813,40 +966,6 @@ class DumpMode:
             self.metadata.excluded_event_triggers = [
                 name for name, trigger in self.metadata.event_triggers.items() if trigger["is_excluded"]
             ]
-
-    async def _check_excluded_schema_dependencies(self, connection: Connection) -> None:
-        """Stop before pg_dump when kept tables need types or parent tables from excluded schemas."""
-        if not self._need_dump_pre_and_post_sections or not self.context.exclude_schemas:
-            return
-
-        # pg_dump keeps such tables and the restore then fails on CREATE TABLE
-        dependent_tables = await get_tables_depending_on_schemas(connection, self.context.exclude_schemas)
-        broken_tables = dependent_tables & set(self.context.tables)
-        if not broken_tables:
-            return
-
-        raise PgAnonError(
-            ErrorCode.EXCLUDED_SCHEMA_DEPENDENCY,
-            "Excluded schemas are still needed by "
-            f"{format_names_summary([f'{schema}.{table}' for schema, table in broken_tables], 'table')}: "
-            "their types or parent tables are in use. Exclude the tables too or keep the schemas.",
-        )
-
-    async def _prepare_objects_ddl_to_metadata(self, connection: Connection) -> None:
-        if self.context.white_listed_tables or self.context.black_listed_tables:
-            self.metadata.partial_dump_types = await get_custom_types_ddl(connection, self.context.exclude_schemas)
-            self.metadata.partial_dump_domains = await get_custom_domains_ddl(connection, self.context.exclude_schemas)
-            self.metadata.partial_dump_ranges = await get_custom_ranges_ddl(connection, self.context.exclude_schemas)
-            self.metadata.partial_dump_functions = await get_custom_functions_ddl(
-                connection, self.context.exclude_schemas
-            )
-            self.metadata.partial_dump_casts = await get_custom_casts_ddl(connection, self.context.exclude_schemas)
-            self.metadata.partial_dump_operators = await get_custom_operators_ddl(
-                connection, self.context.exclude_schemas
-            )
-            self.metadata.partial_dump_aggregates = await get_custom_aggregates_ddl(
-                connection, self.context.exclude_schemas
-            )
 
     def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
@@ -888,14 +1007,16 @@ class DumpMode:
 
             await self._prepare_schemas_lists(connection)
             await self._prepare_tables_lists(connection)
-            await self._check_excluded_schema_dependencies(connection)
+            await self._prepare_exclusions(connection)
             await self._fetch_sequences_data(connection)
             await self._warn_infra_leaks(connection)
+            await self._warn_foreign_parents(connection)
             await self._dump_pre_data()
             await self._dump_post_data()
-            # every dump mode needs them: the restore drops keys and views that refer to excluded tables
-            await self._prepare_views(connection=connection)
-            await self._prepare_constraints(connection=connection)
+            if self._need_dump_pre_and_post_sections:
+                await self._prepare_constraints(connection=connection)
+                await self._prepare_indexes(connection=connection)
+                await self._prepare_extensions(connection=connection)
             await self._dump_data(connection)
             await self._prepare_and_save_metadata()
 

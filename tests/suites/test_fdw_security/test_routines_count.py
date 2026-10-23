@@ -47,7 +47,7 @@ async def test_extension_objects_excluded_user_objects_counted(db_manager, clean
         """
         CREATE TABLE public.t (id int);
         CREATE FUNCTION public.trg_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
-        CREATE TRIGGER my_trg BEFORE INSERT ON public.t FOR EACH ROW EXECUTE FUNCTION public.trg_fn();
+        CREATE TRIGGER my_trg BEFORE INSERT ON public.t FOR EACH ROW EXECUTE PROCEDURE public.trg_fn();
         """,
     )
     assert await _count(db_manager, clean_db) == base + 3

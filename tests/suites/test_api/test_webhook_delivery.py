@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
+
+import aiohttp
+import pytest
 
 from pg_anon.rest_api import callbacks
 from pg_anon.rest_api.pydantic_models import StatelessRunnerResponse
@@ -70,12 +73,23 @@ async def test_webhook_metadata_preserves_complex_payload(webhook_recorder: Webh
     }
 
 
-async def test_webhook_verify_ssl_flag_propagates(webhook_recorder: WebhookRecorder):
+@pytest.mark.parametrize("verify_ssl", [False, True])
+async def test_webhook_verify_ssl_flag_propagates(webhook_recorder: WebhookRecorder, monkeypatch, verify_ssl):
+    ssl_args = []
+    original_post = aiohttp.ClientSession.post
+
+    def post(self, *args: Any, **kwargs: Any):  # noqa: ANN401
+        ssl_args.append(kwargs.get("ssl"))
+        return original_post(self, *args, **kwargs)
+
+    monkeypatch.setattr(aiohttp.ClientSession, "post", post)
+
     await callbacks.send_webhook(
         webhook_recorder.url,
         _make_payload(),
-        verify_ssl=False,
+        verify_ssl=verify_ssl,
         max_retries=1,
         base_delay=0.01,
     )
+    assert ssl_args == [verify_ssl]
     assert len(webhook_recorder.payloads) == 1

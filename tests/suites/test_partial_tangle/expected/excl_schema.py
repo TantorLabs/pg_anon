@@ -1,0 +1,20 @@
+# What must not be in the target database: catalog rows of the source that the restore must leave out.
+# A row may be {'row': (...), 'min_pg': N, 'max_pg': N}: it counts only on servers with server_version_num in that range.
+{'columns': [('tg_core', 'gone_schema_view', 'id', 'integer', 'False'),
+             ('tg_gone_schema', 'items', 'id', 'integer', 'True'),
+             ('tg_gone_schema', 'items', 'kind', 'tg_gone_schema.kind', 'False')],
+ 'constraints': [('tg_gone_schema', 'items', 'items_pkey', 'p', 'PRIMARY KEY (id)')],
+ 'enum_labels': [('tg_gone_schema', 'kind', 'a,b')],
+ 'indexes': [('tg_gone_schema',
+              'items',
+              'items_pkey',
+              'CREATE UNIQUE INDEX items_pkey ON tg_gone_schema.items USING btree (id)')],
+ 'schemas': [('tg_gone_schema',)],
+ 'tables': [('tg_core', 'gone_schema_view', 'v'), ('tg_gone_schema', 'items', 'r')],
+ 'types': [('tg_core', 'gone_schema_view', 'c'),
+           ('tg_gone_schema', 'items', 'c'),
+           ('tg_gone_schema', 'kind', 'e')],
+ 'views': [{'max_pg': 159999,
+            'row': ('tg_core', 'gone_schema_view', 'v', ' SELECT items.id\n   FROM tg_gone_schema.items;')},
+           {'min_pg': 160000,
+            'row': ('tg_core', 'gone_schema_view', 'v', ' SELECT id\n   FROM tg_gone_schema.items;')}]}

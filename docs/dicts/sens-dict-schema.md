@@ -66,7 +66,7 @@ This dictionary can be created manually or generated automatically using [create
 > - In `dictionary_exclude`, you must use either `schema` or `schema_mask` → not both.
 > - In `dictionary_exclude`, you must use either `table` or `table_mask` → not both.
 > - `dictionary_exclude` leaves out **data only**, also with `table_mask: "*"`: the tables stay in the dump, but empty. To leave out a whole schema, use [`--exclude-schema-name`](../operations/dump.md#exclude-schemas).
-> - A foreign key to a table without data is restored as `NOT VALID`, see [Checks during restore](../operations/restore.md#checks-during-restore).
+> - A foreign key to a table without data, or to a table dumped with `sql_condition` or `raw_sql`, may be restored as `NOT VALID`: see [Foreign keys](../operations/restore.md#foreign-keys).
 
 ---
 

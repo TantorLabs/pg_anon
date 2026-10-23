@@ -66,7 +66,7 @@ async def test_view_fields_fields_limit_count(api_client, api_source_db, db_para
     )
     resp = await api_client.post("/api/stateless/view-fields", json=body)
     fields = (await resp.json())["content"]
-    assert len(fields) <= 2
+    assert len(fields) == 2
 
 
 async def test_view_fields_orm_dict_translates_names(api_client, api_source_db, db_params):

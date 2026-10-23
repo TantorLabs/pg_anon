@@ -74,7 +74,7 @@ jobs:
       # Sparse cross, not a full product: every PostgreSQL on the oldest Python,
       # then every remaining Python on one PostgreSQL.
       matrix:
-        postgres: ["12", "13", "14", "15", "16", "17", "18"]
+        postgres: ["9.6", "10", "11", "12", "13", "14", "15", "16", "17", "18"]
         python: ["3.11"]
         include:
           - { postgres: "17", python: "3.12" }

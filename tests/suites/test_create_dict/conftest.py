@@ -35,24 +35,3 @@ async def source_db(db_manager, pg_anon_runner, fixtures):
     await fixtures.build_full_env(SOURCE_DB)
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)
-
-
-@pytest.fixture
-async def target_db(db_manager, request):
-    name = f"pg_anon_create_dict_tgt_{request.node.name}"[:60]
-    await db_manager.create_db(name)
-    yield name
-    await db_manager.drop_db(name)
-
-
-PIPELINE_SOURCE_DB = "pg_anon_create_dict_pipe_source"
-
-
-@pytest.fixture(scope="module")
-async def pipeline_source_db(db_manager, pg_anon_runner, fixtures):
-    await db_manager.create_db(PIPELINE_SOURCE_DB)
-    res = await pg_anon_runner.run("init", PIPELINE_SOURCE_DB)
-    assert res.result_code == ResultCode.DONE
-    await fixtures.build_minimal_env(PIPELINE_SOURCE_DB)
-    yield PIPELINE_SOURCE_DB
-    await db_manager.drop_db(PIPELINE_SOURCE_DB)

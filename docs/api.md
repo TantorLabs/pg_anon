@@ -707,6 +707,59 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 
 ---
 
+## Error codes
+Webhooks use the same codes in the `error_code` field.
+
+| Code | When |
+|---|---|
+| `NO_DICT_FILES` | No sensitive dictionary file is given. |
+| `INVALID_META_DICT` | The meta-dictionary has values of wrong types. |
+| `INVALID_DICT_FILE` | A dictionary file cannot be read or has a wrong structure. |
+| `TABLE_EXCLUDED` | `view-data`: the dictionary leaves out the table. |
+| `TABLE_NOT_FOUND` | `view-data`: the table does not exist. |
+| `INVALID_LIMIT` | `view-data`, `view-fields`: the limit is not greater than zero. |
+| `INVALID_OFFSET` | `view-data`: the offset is less than zero. |
+| `DB_CONNECTION_FAILED` | The database cannot be reached. |
+| `DB_QUERY_FAILED` | A query to the database failed. |
+| `INSUFFICIENT_CONNECTIONS` | The server cannot give the needed number of connections. |
+| `INVALID_CONFIG` | The config file does not set the paths of `pg_dump` and `pg_restore`. |
+| `INVALID_FILE_FORMAT` | The config file is not a `.yml` or `.yaml` file. |
+| `INVALID_PATH` | A path is wrong or the file is not found. |
+| `PG_TOOLS_NOT_FOUND` | `pg_dump` or `pg_restore` is not found. |
+| `SCHEMA_NOT_INITIALIZED` | The `anon_funcs` schema does not exist: run the `init` mode first. |
+| `OUTPUT_DIR_NOT_EMPTY` | Dump: the output directory is not empty. |
+| `INVALID_OUTPUT_DIR` | Dump: the output directory cannot be used. |
+| `NO_OBJECTS_FOR_DUMP` | Dump: the lists and the dictionary leave no table with data. |
+| `DUMP_FAILED` | Dump: `pg_dump` or a data query failed. |
+| `CREDENTIALS_LEAK` | Dump: FDW user mapping credentials would go into the dump. See [Security](security.md#foreign-data-wrappers-fdw). |
+| `EXCLUDED_SCHEMA_DEPENDENCY` | Dump or restore: a kept table needs a type or a parent table from an excluded schema. |
+| `EXCLUDED_TABLE_DEPENDENCY` | Dump or restore: a kept table needs a left-out table, for example as a column type. |
+| `TOO_MANY_EXCLUDED_TABLES` | Dump: the list of left-out tables is too long for the `pg_dump` command line. See [Limits](operations/dump.md#limits). |
+| `MAX_LOCKS_EXCEEDED` | Dump: the server has not enough lock slots for all tables. See [Limits](operations/dump.md#limits). |
+| `INPUT_DIR_NOT_FOUND` | Restore: the input directory does not exist. |
+| `DUMP_VERSION_NOT_SUPPORTED` | Restore: the dump needs a newer `pg_anon`. |
+| `DUMP_STRUCTURE_NOT_FOUND` | Restore: the dump has no `structure.json`. |
+| `DUMP_DATA_NOT_FOUND` | Restore: the dump has no `metadata.json` or no data files. |
+| `DUMP_STRUCTURE_MISMATCH` | Restore: `pre_data.backup` and `structure.json` come from different dumps. |
+| `DUMP_DATA_TABLES_NOT_IN_STRUCTURE` | Restore: the dump has data of a table that its structure files do not create. |
+| `DB_NOT_EMPTY` | Restore: the target database is not empty. |
+| `TARGET_HAS_EXTRA_TABLES` | Restore with `--clean-db`: the target has tables that the dump does not have. |
+| `TARGET_MISSING_TABLES` | Restore: the target has no table for some data of the dump. |
+| `VERSION_INCOMPATIBLE` | Restore: the target server or `pg_restore` is older than the source server or `pg_dump`. |
+| `RESTORE_FAILED` | Restore: `pg_restore`, a DDL command or data loading failed. |
+| `NO_TABLES_FOR_RESTORE` | Restore: the whitelist matches no table of the dump. |
+| `EXTENSION_ERROR` | Restore: an extension is not available or cannot be created. |
+| `ROW_COUNT_MISMATCH` | Restore: the number of loaded rows is not the same as in the dump. |
+| `VALIDATION_FAILED` | Restore: the check of restored tables against the `validate_tables` section failed. |
+| `NO_OBJECTS_FOR_SCAN` | Scan: there is no field to scan. The scan writes a warning and ends with success, so this code does not come as an error. |
+| `SCAN_FIELD_ERROR` | Scan: the scan of a field failed. |
+| `UNKNOWN_MODE` | The mode is unknown or not set. |
+| `OPERATION_FAILED` | The background operation stopped without a result. |
+| `INTERNAL_ERROR` | Any other error. |
+
+
+---
+
 # 📋 General schemas
 
 ## DbConnectionParams
@@ -825,7 +878,7 @@ curl -X GET http://127.0.0.1:8000/operation/c6c98133-856f-46b3-ba9e-3a0092b8d9aa
 ## ErrorResponse
 | Field      | Type   | Required | Description                                        |
 |------------|--------|----------|----------------------------------------------------|
-| error_code | string | Yes      | Machine-readable error code for i18n mapping.      |
+| error_code | string | Yes      | Machine-readable error code for i18n mapping. See [Error codes](#error-codes). |
 | message    | string | Yes      | Human-readable error message.                      |
 
 ## HTTPValidationError

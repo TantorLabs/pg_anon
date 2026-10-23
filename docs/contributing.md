@@ -67,7 +67,7 @@ Main directories:
 - `pg_anon/`: Main python modules.
 - `pg_anon/rest_api/`: Additional python modules for starting rest service.
 - `tests/`: Test suites and the infrastructure they share.
-  - `tests/infrastructure/`: Fixtures and helpers — `data.py` builds test databases through Python builders (there is no SQL dump to load), `db.py` wraps database access, `pg_anon.py` runs pg_anon itself, `assertions.py` compares source and target.
+  - `tests/infrastructure/`: Fixtures and helpers — `data.py` builds test databases through Python builders (there is no SQL dump to load), `db.py` wraps database access, `pg_anon.py` runs pg_anon itself, `assertions.py` compares source and target, `query_guard.py` fails a test whose query has too many bind parameters.
   - `tests/suites/<suite>/`: One directory per suite, each with its own `conftest.py` and, where needed, `input_dict/` (dictionaries fed to pg_anon), `expected/` (reference results) and the gitignored `output/` and `output_dict/`.
 
 
@@ -76,9 +76,11 @@ The main logic of pg_anon is contained within the following Python modules:
  - `constants.py` - Constants for pg_anon.
  - `db_queries.py` - SQL queries templates.
  - `db_utils.py` - Utility functions for working with databases.
+ - `dependencies.py` - Dependencies between objects of the source database, used for partial dumps and restores.
  - `dto.py` - Small classes for data transfer.
  - `enums.py` - Enumerations for pg_anon.
  - `errors.py` - Error enumerations and classes for pg_anon.
+ - `toc.py` - Reading the TOC of `pg_restore` archives.
  - `utils.py` - Common utility functions.
 - `pg_anon/modes/`
   - `initialization.py` - Class with logic for mode `init`.
@@ -161,9 +163,11 @@ pg_anon/
 │   │   ├── constants.py
 │   │   ├── db_queries.py
 │   │   ├── db_utils.py
+│   │   ├── dependencies.py
 │   │   ├── dto.py
 │   │   ├── enums.py
 │   │   ├── errors.py
+│   │   ├── toc.py
 │   │   └── utils.py
 │   ├── modes
 │   │   ├── __init__.py
@@ -216,6 +220,7 @@ pg_anon/
 │   │   ├── db.py
 │   │   ├── params.py
 │   │   ├── pg_anon.py
+│   │   ├── query_guard.py
 │   │   └── sizes.py
 │   ├── suites
 │   │   ├── __init__.py
@@ -225,22 +230,31 @@ pg_anon/
 │   │   ├── test_db_utils_param_limit
 │   │   ├── test_demo
 │   │   ├── test_dict_merge
+│   │   ├── test_dump_format
 │   │   ├── test_dump_restore
+│   │   ├── test_exclude_filters
+│   │   ├── test_fdw_security
 │   │   ├── test_full_clone
 │   │   ├── test_mask
 │   │   ├── test_normalize_data_type
 │   │   ├── test_packaging
 │   │   ├── test_partial
-│   │   ├── test_partial_ddl
+│   │   ├── test_partial_child_tables
 │   │   ├── test_partial_extension
+│   │   ├── test_partial_fk
+│   │   ├── test_partial_partition_lists
 │   │   ├── test_partial_partitioned_fk
+│   │   ├── test_partial_tangle
 │   │   ├── test_pg_utils_options
+│   │   ├── test_publication_membership
 │   │   ├── test_restore_clean
 │   │   ├── test_scan_fields_query
 │   │   ├── test_stress
+│   │   ├── test_sync_modes
 │   │   ├── test_validate
 │   │   ├── test_view_data
-│   │   └── test_view_fields
+│   │   ├── test_view_fields
+│   │   └── test_wide_schema
 │   ├── __init__.py
 │   ├── config.yml
 │   └── conftest.py

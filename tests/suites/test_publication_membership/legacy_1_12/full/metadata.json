@@ -1,0 +1,95 @@
+{
+    "created": "20/10/2026 16:38:18",
+    "pg_version": "15.19",
+    "pg_dump_version": "15.19",
+    "dictionary_content_hash": {
+        "/home/max/PycharmProjects/pg_anon/tests/suites/test_publication_membership/input_dict/empty.py": "1b160dc3efe1acdcda5bb868abfc3a1a2584ce35759e8ed5c23eaac33da47ea6"
+    },
+    "prepared_sens_dict_files": "/home/max/PycharmProjects/pg_anon/tests/suites/test_publication_membership/input_dict/empty.py",
+    "dbg_stage_2_validate_data": false,
+    "dbg_stage_3_validate_full": false,
+    "seq_lastvals": {},
+    "views": {},
+    "indexes": {
+        "t_pkey": {
+            "schema": "public",
+            "table": "t",
+            "index_name": "t_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "t2_pkey": {
+            "schema": "s",
+            "table": "t2",
+            "index_name": "t2_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "t3_pkey": {
+            "schema": "s",
+            "table": "t3",
+            "index_name": "t3_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        },
+        "t4_pkey": {
+            "schema": "x",
+            "table": "t4",
+            "index_name": "t4_pkey",
+            "is_excluded": false,
+            "parent_index_schema": null,
+            "parent_index_name": null
+        }
+    },
+    "constraints": {},
+    "files": {
+        "5d86694c450951dcb2d4ef1efd30e8b3.bin.gz": {
+            "schema": "public",
+            "table": "t",
+            "rows": "2"
+        },
+        "251b28a12f5cb56f70f987473dbce461.bin.gz": {
+            "schema": "s",
+            "table": "t2",
+            "rows": "1"
+        },
+        "07d8ee357d9d897f976da8f91934ac6e.bin.gz": {
+            "schema": "s",
+            "table": "t3",
+            "rows": "1"
+        },
+        "34ab212dc52f1232d07b60207250947d.bin.gz": {
+            "schema": "x",
+            "table": "t4",
+            "rows": "1"
+        }
+    },
+    "schemas": [
+        "anon_funcs",
+        "public",
+        "s",
+        "x"
+    ],
+    "total_rows": 5,
+    "db_size": 7871847,
+    "extensions": {
+        "pgcrypto": {
+            "schema": "public",
+            "name": "pgcrypto",
+            "version": "1.3",
+            "relocatable": true,
+            "is_excluded_by_schema": false
+        },
+        "plpgsql": {
+            "schema": "pg_catalog",
+            "name": "plpgsql",
+            "version": "1.0",
+            "relocatable": false,
+            "is_excluded_by_schema": false
+        }
+    },
+    "event_triggers": {}
+}

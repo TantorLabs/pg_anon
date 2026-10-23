@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pg_anon"
-version = "1.12.0"
+version = "1.13.0"
 description = "Data masking tool for PostgreSQL."
 readme = "README.md"
 license = "MIT"
@@ -90,6 +90,8 @@ norecursedirs = ["input_dict", "expected", "output", "output_dict"]
 addopts = "-m 'not stress'"
 markers = [
     "stress: slow, resource-heavy stress tests; excluded by default, run with `-m stress`",
+    "min_pg(version_num): skip the test on a server older than version_num (for example 140000)",
+    "max_pg(version_num): skip the test on a server of version_num or newer (120000 means only before PostgreSQL 12)",
     "packaging: distribution/metadata checks; need no PostgreSQL, run with `-m packaging`",
 ]
 
@@ -106,6 +108,7 @@ extend-exclude = [
     "tests/suites/*/expected/",
     "tests/suites/*/input_dict/",
     "tests/suites/*/output_dict/",
+    "tests/suites/*/legacy_*/",
 ]
 
 [tool.ruff.lint]

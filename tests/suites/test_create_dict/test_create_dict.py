@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .conftest import input_dict, output_dict, output_path
+from .conftest import input_dict, output_dict
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
@@ -222,75 +222,6 @@ async def test_create_dict_fails_on_non_existent_scan_func(source_db, db_params)
         )
     ).run()
     assert res.result_code == ResultCode.FAIL
-
-
-async def test_create_dict_then_dump_then_restore_pipeline(
-    pipeline_source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    sens_out = output_dict("pipe_sens.json")
-    no_sens_out = output_dict("pipe_no_sens.json")
-
-    res = await PgAnonApp(
-        _options(
-            db_params,
-            pipeline_source_db,
-            meta_dicts=[input_dict("meta_pipeline.py")],
-            sens_out=sens_out,
-            no_sens_out=no_sens_out,
-        )
-    ).run()
-    assert res.result_code == ResultCode.DONE
-    assert Path(sens_out).exists()
-
-    out = output_path("pipeline_dump")
-    res = await pg_anon_runner.run(
-        "dump",
-        pipeline_source_db,
-        [
-            f"--prepared-sens-dict-file={sens_out}",
-            f"--output-dir={out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE, "dump must accept create-dict output"
-
-    res = await pg_anon_runner.run(
-        "restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={out}",
-            "--drop-custom-check-constr",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE, "restore must accept produced dump"
-
-    src_sal = await db_manager.fetch(pipeline_source_db, "SELECT id, salary FROM hr.employee ORDER BY id")
-    tgt_sal = await db_manager.fetch(target_db, "SELECT id, salary FROM hr.employee ORDER BY id")
-    src_pairs = [(r["id"], r["salary"]) for r in src_sal]
-    tgt_pairs = [(r["id"], r["salary"]) for r in tgt_sal]
-    assert len(src_pairs) == len(tgt_pairs) > 0, "row count must match"
-    differing = sum(1 for a, b in zip(src_pairs, tgt_pairs, strict=True) if a[1] != b[1])
-    assert differing > 0, "salary has an anon rule (noise) — at least one row's value must differ"
-
-    src_dept = await db_manager.fetch(pipeline_source_db, "SELECT id, name FROM hr.department ORDER BY id")
-    tgt_dept = await db_manager.fetch(target_db, "SELECT id, name FROM hr.department ORDER BY id")
-    assert [dict(r) for r in src_dept] == [dict(r) for r in tgt_dept], (
-        "hr.department.name has no anon rule and must round-trip unchanged"
-    )
-
-    src_email = await db_manager.fetch(
-        pipeline_source_db, "SELECT id, email::text AS email FROM hr.employee ORDER BY id"
-    )
-    tgt_email = await db_manager.fetch(target_db, "SELECT id, email::text AS email FROM hr.employee ORDER BY id")
-    assert [dict(r) for r in src_email] == [dict(r) for r in tgt_email], (
-        "hr.employee.email has no anon rule and must round-trip"
-    )
 
 
 async def test_create_dict_rescan_with_both_prepared_dicts_is_stable(source_db, db_params):

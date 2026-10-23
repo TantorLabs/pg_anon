@@ -22,14 +22,17 @@ from pg_anon.common.db_queries import (
 from pg_anon.common.db_utils import (
     check_db_is_empty,
     check_required_connections,
+    count_foreign_keys_of_tables,
     create_connection,
     create_pool,
     get_available_extensions_map,
     get_available_schemas,
     get_extensions,
+    get_foreign_descendants_map,
     get_invalid_partitioned_indexes,
     run_query_in_pool,
 )
+from pg_anon.common.dependencies import dependency_error, map_toc_entries
 from pg_anon.common.dto import Metadata
 from pg_anon.common.enums import AnonMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
@@ -37,26 +40,40 @@ from pg_anon.common.toc import (
     CUSTOM_OBJECTS_ENTRY_RE,
     entry_id,
     entry_ids,
+    entry_title,
     EXTENSION_ENTRY_RE,
     failed_entry_ids,
-    PUBLICATION_TABLE_ENTRY_RE,
+    is_table_entry,
+    OPERATOR_CLASS_ENTRY_RE,
+    PUBLIC_SCHEMA_ENTRY_RE,
+    read_toc_entries,
     read_toc_lines,
     schema_entry_patterns,
-    schema_name_from_entry,
     schemas_in_toc,
     table_entry_matches,
+    TABLE_LINK_DESCS,
+    TABLE_PART_DESCS,
     USER_MAPPING_ENTRY_RE,
     write_toc_list,
 )
 from pg_anon.common.utils import (
     build_pg_util_env,
     format_names_summary,
-    get_major_version,
+    get_major_version_parts,
     get_pg_util_version,
+    log_rules_for_parent_tables,
+    parse_version,
     resolve_schemas,
     save_dicts_info_file,
+    table_matches_rules,
+    warn_rules_without_tables,
 )
 from pg_anon.context import Context
+from pg_anon.version import __version__
+
+
+def _format_major(version: tuple[int, ...]) -> str:
+    return ".".join(str(part) for part in version)
 
 
 class RestoreMode:
@@ -66,6 +83,8 @@ class RestoreMode:
     metadata: Metadata
     metadata_file_name: str = "metadata.json"
     metadata_file_path: Path
+    structure_file_name: str = "structure.json"
+    structure_file_path: Path
 
     _toc_list_pre_data_file_name: str = "toc_pre_data_filtered.list"
     _toc_list_pre_data_file_path: Path | None = None
@@ -92,6 +111,11 @@ class RestoreMode:
     def _whitelist_active(self) -> bool:
         return bool(self.context.included_tables_rules)
 
+    @property
+    def _is_legacy_dump(self) -> bool:
+        """Dumps of pg_anon 1.12.0 and older have no version and no dependencies of objects."""
+        return self.metadata.pg_anon_version is None
+
     def __init__(self, context: Context) -> None:
         self.context = context
         self.input_dir = Path.cwd() / self.context.options.input_dir
@@ -115,9 +139,20 @@ class RestoreMode:
             or self.metadata.dbg_stage_3_validate_full
         )
         self._not_valid_fk: list[dict] = []
+        self._table_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
         self._excluded_schemas: set[str] = set()
+        self._dump_tables: set[tuple[str, str]] = set()
+        self._structure_tables: set[tuple[str, str]] = set()
+        self._excluded_tables: set[tuple[str, str]] = set()
+        self._tables_without_rows: set[tuple[str, str]] = set()
+        self._tables_with_new_rows: set[tuple[str, str]] = set()
+        self._toc_dependencies_cache: dict[str, tuple[dict[int, list[tuple[str, str]]], set[int]]] = {}
+        self._needed_tables: dict[tuple[str, str], set[tuple[str, str]]] | None = None
         self._dumped_rows: dict[tuple[str, str], int] = {
             (info["schema"], info["table"]): int(info.get("rows") or 0) for info in (self.metadata.files or {}).values()
+        }
+        self._partial_data_tables: set[tuple[str, str]] = {
+            (info["schema"], info["table"]) for info in (self.metadata.files or {}).values() if info.get("partial_data")
         }
 
         if self.context.options.mode == AnonMode.SYNC_DATA_RESTORE and self.context.options.pg_restore_options:
@@ -126,42 +161,102 @@ class RestoreMode:
                 "To limit what is restored, use partial dictionaries."
             )
 
-    def _load_metadata(self) -> None:
-        self.metadata_file_path = self.input_dir / self.metadata_file_name
-        self.metadata = Metadata()
-        self.metadata.load_from_file(self.metadata_file_path)
+    @staticmethod
+    def _read_dump_file(file_path: Path) -> dict | None:
+        if not file_path.exists():
+            return None
+        return json.loads(file_path.read_text(encoding="utf-8"))
 
-    def _generate_analyze_queries(self) -> list[str]:
+    def _load_metadata(self) -> None:
+        """Read the descriptions of the dump and stop when the mode needs a file that the dump does not have."""
+        self.metadata_file_path = self.input_dir / self.metadata_file_name
+        self.structure_file_path = self.input_dir / self.structure_file_name
+        self.metadata = Metadata()
+
+        data = self._read_dump_file(self.metadata_file_path)
+        structure = self._read_dump_file(self.structure_file_path)
+        self._has_structure = structure is not None
+        self._min_pg_anon_versions = {
+            file_path.name: content.get("min_pg_anon_version")
+            for file_path, content in ((self.structure_file_path, structure), (self.metadata_file_path, data))
+            if content is not None
+        }
+
+        if structure is None and data is not None and "pg_anon_version" not in data:
+            # a dump of pg_anon 1.12.0 or older keeps everything in metadata.json
+            self.metadata.load_from_file(self.metadata_file_path)
+            return
+
+        mode = self.context.options.mode
+        if structure is None and mode != AnonMode.SYNC_DATA_RESTORE:
+            msg = (
+                f"ERROR: {self.structure_file_name} is not found in {self.input_dir}. The mode {mode.value} needs "
+                f"the structure files of a dump: pre_data.backup, post_data.backup and {self.structure_file_name}."
+            )
+            self.context.logger.error(msg)
+            raise PgAnonError(ErrorCode.DUMP_STRUCTURE_NOT_FOUND, msg)
+
+        if mode != AnonMode.SYNC_STRUCT_RESTORE and not (data or {}).get("files"):
+            msg = (
+                f"ERROR: the dump in {self.input_dir} has no data: {self.metadata_file_name} is not found "
+                f"or lists no data files. The mode {mode.value} needs the data files of a dump: "
+                f"{self.metadata_file_name} and *.bin.gz. To restore only the structure, use sync-struct-restore."
+            )
+            self.context.logger.error(msg)
+            raise PgAnonError(ErrorCode.DUMP_DATA_NOT_FOUND, msg)
+
+        self.metadata.load_from_dump_files(structure, data)
+
+    def _generate_analyze_queries(self, foreign_parents: set[tuple[str, str]]) -> list[str]:
         analyze_queries = []
         for target in (self.metadata.files or {}).values():
             schema = target["schema"]
             table = target["table"]
-            if not self._is_table_restored(schema, table):
+            # ANALYZE of a parent table reads its foreign child tables, even with ONLY on PostgreSQL 18
+            if not self._is_table_restored(schema, table) or (schema, table) in foreign_parents:
                 continue
 
             analyze_queries.append(f'analyze "{schema}"."{table}"')
         return analyze_queries
 
+    async def _find_foreign_parents(self, connection: Connection) -> set[tuple[str, str]]:
+        """Find the restored tables with foreign child tables and warn about them."""
+        restored = {
+            (target["schema"], target["table"])
+            for target in (self.metadata.files or {}).values()
+            if self._is_table_restored(target["schema"], target["table"])
+        }
+        foreign_parents = set(await get_foreign_descendants_map(connection)) & restored
+        if foreign_parents:
+            self.context.logger.warning(
+                "Foreign child tables found under %s. Without a user mapping, queries to these tables without ONLY "
+                "fail. These tables are not analyzed and have no statistics.",
+                format_names_summary([f"{schema}.{table}" for schema, table in foreign_parents], "table"),
+            )
+        return foreign_parents
+
     def _check_utils_version_for_dump(self) -> None:
         if self.context.options.disable_checks:
             return
 
-        target_postgres_version = get_major_version(self.context.pg_version)
-        source_postgres_version = get_major_version(self.metadata.pg_version)
+        target_postgres_version = get_major_version_parts(self.context.pg_version)
+        source_postgres_version = get_major_version_parts(self.metadata.pg_version)
 
-        target_pg_restore_version = get_major_version(get_pg_util_version(self.context.pg_restore))
-        source_pg_dump_version = get_major_version(self.metadata.pg_dump_version)
+        target_pg_restore_version = get_major_version_parts(get_pg_util_version(self.context.pg_restore))
+        source_pg_dump_version = get_major_version_parts(self.metadata.pg_dump_version)
 
         if target_postgres_version < source_postgres_version:
             raise PgAnonError(
                 ErrorCode.VERSION_INCOMPATIBLE,
-                f"Target PostgreSQL major version {target_postgres_version} is below than source {source_postgres_version}!",
+                f"Target PostgreSQL major version {_format_major(target_postgres_version)} "
+                f"is below than source {_format_major(source_postgres_version)}!",
             )
 
         if target_pg_restore_version < source_pg_dump_version:
             raise PgAnonError(
                 ErrorCode.VERSION_INCOMPATIBLE,
-                f"pg_restore major version {target_pg_restore_version} is below than source pg_dump version {source_pg_dump_version}!",
+                f"pg_restore major version {_format_major(target_pg_restore_version)} "
+                f"is below than source pg_dump version {_format_major(source_pg_dump_version)}!",
             )
 
     async def _check_db_is_empty(self, connection: Connection) -> None:
@@ -214,7 +309,7 @@ class RestoreMode:
         self.context.logger.info("Restore includes %s of %s schemas", len(kept_schemas), len(dump_schemas))
 
     def _ddl_is_excluded_by_schema(self, ddl: str) -> bool:
-        """Check if a DDL statement of a partial dump creates its object in an excluded schema."""
+        """Check if a DDL statement of a 1.12.0 or older partial dump creates its object in an excluded schema."""
         for schema in self._excluded_schemas:
             # the dump quotes a name only when it has to, so both forms are matched
             quoted = '"' + schema.replace('"', '""') + '"'
@@ -239,6 +334,10 @@ class RestoreMode:
         """Check the table against the excluded schemas and the partial restore lists, black list first."""
         if schema in self._excluded_schemas:
             return False
+
+        if not self._is_legacy_dump and (schema, table) in self._dump_tables:
+            # a parent table that only a whitelisted child needs is created, but its own rows are not loaded
+            return (schema, table) not in self._excluded_tables and (schema, table) not in self._tables_without_rows
 
         if self.context.black_listed_tables and (schema, table) in self.context.black_listed_tables:
             return False
@@ -292,9 +391,8 @@ class RestoreMode:
             return
         if self.context.options.mode in (AnonMode.SYNC_DATA_RESTORE, AnonMode.SYNC_STRUCT_RESTORE):
             return
-        if self.context.black_listed_tables or self._whitelist_active:
-            return
 
+        # the lists choose tables of the dump, so a table that the dump does not have is extra with them too
         dumped_tables = {(info["schema"], info["table"]) for info in (self.metadata.files or {}).values()}
 
         target_tables = await self._fetch_target_tables(connection, only_roots=True)
@@ -315,7 +413,192 @@ class RestoreMode:
             "--clean-db would leave them untouched — aborting to avoid silent data loss.",
         )
 
-    def _make_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
+    def _common_toc_blacklist(self) -> list[re.Pattern[str]]:
+        """Patterns of the entries that no restore takes from the TOC: excluded schemas, extensions and the like."""
+        blacklist = schema_entry_patterns(self._excluded_schemas)
+
+        if self._restored_schemas:
+            blacklist.extend([re.compile(rf".*SCHEMA - {re.escape(schema)}") for schema in self._restored_schemas])
+
+        for trigger_name in self._excluded_event_triggers():
+            blacklist.append(re.compile(rf".*EVENT TRIGGER - {re.escape(trigger_name)}\b"))
+
+        # Extensions are always saved in metadata (even for full dumps)
+        # and created separately by _create_extensions.
+        # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
+        if self.metadata.extensions:
+            blacklist.append(EXTENSION_ENTRY_RE)
+
+        if self.context.options.keep_fdw_user_mappings:
+            self.context.logger.info("Keeping USER MAPPING in restore (--keep-fdw-user-mappings set)")
+        else:
+            blacklist.append(USER_MAPPING_ENTRY_RE)
+            self.context.logger.info(
+                "Removing USER MAPPING from restore by default "
+                "(FDW remote-server credentials; restore also fails without OPTIONS)"
+            )
+
+        return blacklist
+
+    def _make_filtered_toc_list(self) -> None:
+        if self._is_legacy_dump:
+            self._make_legacy_filtered_toc_list()
+        else:
+            self._make_filtered_toc_list_by_exclusions()
+
+    def _toc_dependencies(self, section: str) -> tuple[dict[int, list[tuple[str, str]]], set[int]]:
+        """Find the dump tables of each TOC entry of the section and the entries that the dump tells to skip."""
+        if section not in self._toc_dependencies_cache:
+            # the dump saves OIDs of the source objects, and the TOC keeps the same OIDs
+            entries = read_toc_entries(self.context.pg_restore, self.input_dir / f"{section}.backup")
+            self._toc_dependencies_cache[section] = map_toc_entries(
+                entries, self.metadata.dependencies or {}, set(self.metadata.dump_dependents_to_skip or [])
+            )
+        return self._toc_dependencies_cache[section]
+
+    def _make_filtered_toc_list_by_exclusions(self) -> None:
+        """Cut from the TOC the excluded tables, everything that depends on them, and the dump's own skip list."""
+        excluded = self._excluded_tables
+        blacklist = self._common_toc_blacklist()
+        blacklist.extend(self._not_valid_fk_patterns(excluded))
+        lost: list[str] = []
+        dropped_tables = set(excluded)
+        for section in ["pre_data", "post_data"]:
+            backup_path = self.input_dir / f"{section}.backup"
+            if section == "pre_data":
+                self._toc_list_pre_data_file_path = self.input_dir / self._toc_list_pre_data_file_name
+                toc_file_path = self._toc_list_pre_data_file_path
+            else:
+                self._toc_list_post_data_file_path = self.input_dir / self._toc_list_post_data_file_name
+                toc_file_path = self._toc_list_post_data_file_path
+
+            entry_tables, skipped_ids = self._toc_dependencies(section)
+            # names in the TOC text are not quoted, so the schema of an entry is asked from pg_restore
+            schema_ids = (
+                entry_ids(read_toc_lines(self.context.pg_restore, backup_path, schemas=sorted(self._excluded_schemas)))
+                if self._excluded_schemas
+                else set()
+            )
+
+            kept_lines: list[str] = []
+            for toc_line in read_toc_lines(self.context.pg_restore, backup_path):
+                entry = entry_id(toc_line)
+                tables = entry_tables.get(entry, [])
+                if entry in skipped_ids or any(table in excluded for table in tables):
+                    if entry not in schema_ids:
+                        self._note_lost_entry(toc_line, dropped_tables, lost)
+                    self.context.logger.debug('TOC: Skip entry of excluded table - "%s" ', toc_line)
+                    continue
+
+                if entry in schema_ids or any(pattern.search(toc_line) for pattern in blacklist):
+                    self.context.logger.debug('TOC: Skip by blacklist - "%s" ', toc_line)
+                    continue
+
+                # pg_dump before 11 writes SCHEMA public; --clean cannot drop it while extensions stay there
+                if self.context.options.clean_db and PUBLIC_SCHEMA_ENTRY_RE.match(toc_line):
+                    self.context.logger.debug('TOC: Skip the public schema, it is never dropped - "%s" ', toc_line)
+                    continue
+
+                kept_lines.append(toc_line)
+
+            write_toc_list(toc_file_path, kept_lines)
+
+        if lost:
+            self.context.logger.info(
+                "Objects that depend on %s and will not be restored: %s",
+                "excluded tables and schemas" if self._excluded_schemas else "excluded tables",
+                format_names_summary(lost, "object", limit=5),
+            )
+
+    @staticmethod
+    def _note_lost_entry(toc_line: str, dropped_tables: set[tuple[str, str]], lost: list[str]) -> None:
+        """Remember a skipped entry that is not a part of a skipped table, to name it in the log."""
+        if not (title := entry_title(toc_line)):
+            return
+        desc, schema, name = title
+        if is_table_entry(toc_line):
+            dropped_tables.add((schema, name))
+        elif desc in TABLE_LINK_DESCS:
+            # the tag of a key or a trigger starts with the name of its own table
+            if (schema, name.split(" ", 1)[0]) not in dropped_tables:
+                lost.append(f"{desc.lower()} {name.split(' ', 1)[-1]} on {schema}.{name.split(' ', 1)[0]}")
+        elif desc not in TABLE_PART_DESCS:
+            lost.append(f"{desc.lower()} {schema}.{name}" if schema != "-" else f"{desc.lower()} {name}")
+
+    def _not_valid_fk_patterns(self, excluded: set[tuple[str, str]]) -> list[re.Pattern[str]]:
+        """Collect the foreign keys that pg_anon creates itself after post-data and return the patterns of their TOC entries."""
+        patterns = []
+        skipped_lines, dependent_lines = self._fk_lines_cut_from_toc(excluded)
+        for constraint in (self.metadata.constraints or {}).values():
+            ref_table = (constraint["table_schema_to"], constraint["table_name_to"])
+            from_table = (constraint["table_schema_from"], constraint["table_name_from"])
+            ref_leaves = [tuple(leaf) for leaf in constraint.get("referenced_partition_leaves") or [ref_table]]
+            from_leaves = [tuple(leaf) for leaf in constraint.get("referrer_partition_leaves") or [from_table]]
+            if ref_table in excluded or from_table in excluded:
+                continue
+
+            pattern = (
+                rf".*FK CONSTRAINT {re.escape(constraint['table_schema_from'])} "
+                rf"{re.escape(constraint['table_name_from'])} "
+                rf"{re.escape(constraint['constraint_name'])}"
+            )
+            # the owner of the entry goes after the name of the key
+            entry_pattern = re.compile(pattern + r"\s")
+            skipped_by_dump = any(entry_pattern.match(line) for line in skipped_lines)
+            cut_by_lists = any(entry_pattern.match(line) for line in dependent_lines)
+            if self._fk_is_created_by_pg_anon(
+                constraint, ref_leaves, from_leaves, excluded, skipped_by_dump, cut_by_lists
+            ):
+                self._not_valid_fk.append(constraint)
+                patterns.append(re.compile(pattern))
+        return patterns
+
+    def _fk_lines_cut_from_toc(self, excluded: set[tuple[str, str]]) -> tuple[list[str], list[str]]:
+        """Return the FK CONSTRAINT entries that the dump tells to skip and the ones that depend on excluded tables."""
+        entry_tables, skipped_ids = self._toc_dependencies("post_data")
+        skipped_lines, dependent_lines = [], []
+        for toc_line in read_toc_lines(self.context.pg_restore, self.input_dir / "post_data.backup"):
+            if " FK CONSTRAINT " not in toc_line:
+                continue
+            entry = entry_id(toc_line)
+            if entry in skipped_ids:
+                skipped_lines.append(toc_line)
+            elif any(table in excluded for table in entry_tables.get(entry, [])):
+                dependent_lines.append(toc_line)
+        return skipped_lines, dependent_lines
+
+    def _fk_is_created_by_pg_anon(
+        self,
+        constraint: dict,
+        ref_leaves: list[tuple[str, str]],
+        from_leaves: list[tuple[str, str]],
+        excluded: set[tuple[str, str]],
+        skipped_by_dump: bool,
+        cut_by_lists: bool,
+    ) -> bool:
+        """Check that pg_restore may fail on the key: the referenced table lost a partition or has not all its rows."""
+        if self._skip_post_data_restore or constraint.get("contype") != "f" or not constraint.get("definition"):
+            return False
+
+        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
+            # the tables stay empty: pg_anon creates only the keys that pg_restore does not get
+            return skipped_by_dump or cut_by_lists
+
+        if not self._dumped_rows:
+            return False
+
+        # a structure dump has no mark for a key to a table with an excluded partition, only the skipped entry
+        if constraint.get("partition_excluded") or skipped_by_dump or any(leaf in excluded for leaf in ref_leaves):
+            return True
+
+        referenced_incomplete = any(
+            leaf not in self._dumped_rows or leaf in self._partial_data_tables for leaf in ref_leaves
+        )
+        referrer_with_rows = any(self._dumped_rows.get(leaf, 0) > 0 for leaf in from_leaves if leaf not in excluded)
+
+        return referenced_incomplete and referrer_with_rows
+
+    def _make_legacy_filtered_toc_list(self) -> None:  # noqa: C901, PLR0912, PLR0915
         whitelist: list[re.Pattern[str]] = []
         blacklist: list[re.Pattern[str]] = []
 
@@ -439,15 +722,10 @@ class RestoreMode:
                 if self._whitelist_active:
                     whitelist.append(fk_regex)
 
-        blacklist.extend(schema_entry_patterns(self._excluded_schemas))
+        blacklist.extend(self._common_toc_blacklist())
 
-        if self._restored_schemas:
-            blacklist.extend([re.compile(rf".*SCHEMA - {re.escape(schema)}") for schema in self._restored_schemas])
-
-        for trigger_name in self._excluded_event_triggers():
-            blacklist.append(re.compile(rf".*EVENT TRIGGER - {re.escape(trigger_name)}\b"))
-
-        has_custom_ddl = bool(
+        # backward compatibility: partial dumps of 1.12.0 and older keep these objects as DDL, not in the TOC
+        has_custom_ddl = self._is_legacy_dump and bool(
             self.metadata.partial_dump_types
             or self.metadata.partial_dump_domains
             or self.metadata.partial_dump_ranges
@@ -458,23 +736,6 @@ class RestoreMode:
         )
         if has_custom_ddl:
             blacklist.append(CUSTOM_OBJECTS_ENTRY_RE)
-
-        # Extensions are always saved in metadata (even for full dumps)
-        # and created separately by _create_extensions.
-        # Blacklist EXTENSION from TOC to avoid duplicates with metadata-based creation.
-        if self.metadata.extensions:
-            blacklist.append(EXTENSION_ENTRY_RE)
-
-        if self.context.options.keep_fdw_user_mappings:
-            self.context.logger.info("Keeping USER MAPPING in restore (--keep-fdw-user-mappings set)")
-        else:
-            blacklist.append(USER_MAPPING_ENTRY_RE)
-            self.context.logger.info(
-                "Removing USER MAPPING from restore by default "
-                "(FDW remote-server credentials; restore also fails without OPTIONS)"
-            )
-
-        available_schemas = set(self._restored_schemas)
 
         for section in ["pre_data", "post_data"]:
             backup_path = self.input_dir / f"{section}.backup"
@@ -503,19 +764,10 @@ class RestoreMode:
                     self.context.logger.debug('TOC: Skip by blacklist - "%s" ', toc_line)
                     continue
 
-                if entry_schema := schema_name_from_entry(toc_line):
-                    available_schemas.add(entry_schema)
-
-                pub_match = PUBLICATION_TABLE_ENTRY_RE.match(toc_line)
-                if pub_match and pub_match.group("schema") not in available_schemas:
-                    self.context.logger.debug(
-                        'TOC: Skip orphaned publication membership (schema not restored) - "%s" ',
-                        toc_line,
-                    )
-                    continue
-
                 is_skipped_by_whitelist = self._whitelist_active and not any(p.search(toc_line) for p in whitelist)
-                is_allowed_custom_object = not has_custom_ddl and CUSTOM_OBJECTS_ENTRY_RE.match(toc_line)
+                is_allowed_custom_object = (
+                    not has_custom_ddl and CUSTOM_OBJECTS_ENTRY_RE.match(toc_line)
+                ) or OPERATOR_CLASS_ENTRY_RE.match(toc_line)
                 if is_skipped_by_whitelist and not is_allowed_custom_object:
                     self.context.logger.debug('PARTIAL RESTORE MODE. TOC: Skip by whitelist - "%s" ', toc_line)
                     continue
@@ -657,7 +909,6 @@ class RestoreMode:
     async def _run_pg_restore_segment(self, section: str, parallelism: int, toc_override: Path | None = None) -> None:
         command = self._build_pg_restore_command(section, parallelism=parallelism, toc_override=toc_override)
 
-        self.context.logger.debug(str(command))
         stderr_text, returncode = self._invoke_pg_restore(command)
 
         for log_line in stderr_text.split("\n"):
@@ -690,7 +941,6 @@ class RestoreMode:
             parallelism=1,
             toc_override=retry_toc,
         )
-        self.context.logger.debug(str(retry_command))
         stderr_text, returncode = self._invoke_pg_restore(retry_command)
 
         for log_line in stderr_text.split("\n"):
@@ -720,11 +970,27 @@ class RestoreMode:
             self.context.logger.debug(query)
             await connection.execute(query)
         else:
+            target_sequences = {
+                (row[0], row[1])
+                for row in await connection.fetch(
+                    "SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relkind = 'S'"
+                )
+            }
             for sequence_data in (self.metadata.sequences_last_values or {}).values():
-                if sequence_data["is_excluded"]:
+                if sequence_data.get("is_excluded"):
                     continue
 
                 if not self._is_table_restored(sequence_data["schema"], sequence_data["table"]):
+                    continue
+
+                if (sequence_data["schema"], sequence_data["seq_name"]) not in target_sequences:
+                    # the structure of the dump can come without this sequence
+                    self.context.logger.warning(
+                        "Sequence %s.%s is not in the target database, its value is not set",
+                        sequence_data["schema"],
+                        sequence_data["seq_name"],
+                    )
                     continue
 
                 schema = sequence_data["schema"].replace("'", "''")
@@ -740,6 +1006,9 @@ class RestoreMode:
 
     async def _create_schemas(self, connection: Connection) -> None:
         self._restored_schemas = []
+        if not self._is_legacy_dump:
+            # the TOC is not filtered by a whitelist, so pg_restore creates the schemas itself
+            return
 
         if self.metadata.partial_dump_schemas:
             self._restored_schemas = copy(self.metadata.partial_dump_schemas)
@@ -870,6 +1139,10 @@ class RestoreMode:
             self._restored_schemas.append(schema)
 
     async def _create_objects_from_ddl(self, connection: Connection) -> None:  # noqa: C901
+        """Create custom objects from the DDL of a 1.12.0 or older partial dump, newer dumps have them in the TOC."""
+        if not self._is_legacy_dump:
+            return
+
         ddl_list = []
 
         if self.metadata.partial_dump_types:
@@ -895,6 +1168,15 @@ class RestoreMode:
 
         remaining = [query for query in ddl_list if not self._ddl_is_excluded_by_schema(query)]
 
+        # tables are created later by pg_restore, so function bodies must not be checked yet (as pg_dump does)
+        await connection.execute("SET check_function_bodies = off")
+        try:
+            await self._execute_ddl_with_retries(connection, remaining)
+        finally:
+            await connection.execute("RESET check_function_bodies")
+
+    async def _execute_ddl_with_retries(self, connection: Connection, remaining: list[str]) -> None:
+        """Run DDL statements again and again while at least one of them succeeds on each pass."""
         while remaining:
             failed = []
             for query in remaining:
@@ -936,13 +1218,25 @@ class RestoreMode:
 
         return referenced_without_data and referrer_with_rows
 
+    async def _try_query(self, connection: Connection, query: str) -> bool:
+        """Run the query and tell if the server accepted it."""
+        self.context.logger.info(query)
+        try:
+            await connection.execute(query)
+        except Exception as exc:  # noqa: BLE001
+            self.context.logger.info("The server did not accept the query: %s", exc)
+            return False
+        return True
+
     async def _create_not_valid_fk(self, connection: Connection) -> None:
-        """Create the collected foreign keys as NOT VALID, so the restore keeps them without checking old rows."""
+        """Create the collected foreign keys: in the usual way, then as NOT VALID if the usual way fails."""
         if not self._not_valid_fk:
             return
 
         target_tables = await self._fetch_target_tables(connection)
-        created: list[str] = []
+        not_valid_count = 0
+        # sync-struct-restore loads no rows, so the usual way cannot fail on the rows
+        struct_only = self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
 
         for constraint in self._not_valid_fk:
             schema_from, table_from = constraint["table_schema_from"], constraint["table_name_from"]
@@ -951,24 +1245,56 @@ class RestoreMode:
                 continue
 
             name = constraint["constraint_name"]
-            query = (
-                f'ALTER TABLE "{schema_from}"."{table_from}" '
-                f'ADD CONSTRAINT "{name}" {constraint["definition"]} NOT VALID'
-            )
-            try:
-                self.context.logger.info(query)
-                await connection.execute(query)
-            except Exception as exc:  # noqa: BLE001
-                self.context.logger.warning("Can't create foreign key %s.%s: %s", schema_from, name, exc)
+            add_query = f'ALTER TABLE "{schema_from}"."{table_from}" ADD CONSTRAINT "{name}" {constraint["definition"]}'
+            key = f"{schema_from}.{name} from {schema_from}.{table_from} to {schema_to}.{table_to}"
+
+            if struct_only:
+                await self._create_fk_on_empty_tables(connection, add_query, key)
                 continue
 
-            created.append(f"{schema_from}.{name}")
+            if await self._try_query(connection, add_query):
+                continue
 
-        if created:
+            if await self._try_query(connection, f"{add_query} NOT VALID"):
+                not_valid_count += 1
+                self.context.logger.warning(
+                    "Foreign key %s is created as NOT VALID: the dump does not have all rows of the referenced table.",
+                    key,
+                )
+                continue
+
             self.context.logger.warning(
-                "%s created as NOT VALID because the dump has no data for the referenced tables. "
-                "Load the missing data, then run: ALTER TABLE ... VALIDATE CONSTRAINT ...",
-                format_names_summary(created, "foreign key"),
+                "Foreign key %s is not created: the server did not accept it, also as NOT VALID. "
+                "Make the rows of these two tables match, then create the key.",
+                key,
+            )
+
+        if not_valid_count:
+            keys = "1 foreign key" if not_valid_count == 1 else f"{not_valid_count} foreign keys"
+            self.context.logger.warning(
+                "%s created as NOT VALID. Load the missing rows, then run for each of them: "
+                "ALTER TABLE ... VALIDATE CONSTRAINT ...",
+                keys,
+            )
+
+    async def _create_fk_on_empty_tables(self, connection: Connection, add_query: str, key: str) -> None:
+        """Create a foreign key in the usual way and stop when the server does not accept it."""
+        self.context.logger.info(add_query)
+        try:
+            await connection.execute(add_query)
+        except Exception as exc:
+            raise PgAnonError(ErrorCode.RESTORE_FAILED, f"Can't create foreign key {key}") from exc
+
+    async def _warn_unchecked_fk(self, connection: Connection) -> None:
+        """Tell how many foreign keys of the loaded tables sync-data-restore left without a new check."""
+        if self.context.options.mode != AnonMode.SYNC_DATA_RESTORE or not self._tables_with_new_rows:
+            return
+
+        count = await count_foreign_keys_of_tables(connection, sorted(self._tables_with_new_rows))
+        if count:
+            keys = "foreign key on the loaded tables was" if count == 1 else "foreign keys on the loaded tables were"
+            self.context.logger.warning(
+                "Data was loaded with foreign key checks turned off. %s %s not checked again.", count, keys
             )
 
     async def _drop_constraints(self, connection: Connection) -> None:
@@ -1014,7 +1340,10 @@ class RestoreMode:
                             format="binary",
                         )
 
-                    self.context.total_rows += int(re.findall(r"(\d+)", result)[0])
+                    loaded_rows = int(re.findall(r"(\d+)", result)[0])
+                    self.context.total_rows += loaded_rows
+                    if loaded_rows:
+                        self._tables_with_new_rows.add((schema_name, table_name))
                     await connection.execute("COMMIT;")
         except Exception as exc:
             self.context.logger.exception(
@@ -1169,15 +1498,93 @@ class RestoreMode:
 
         await connection.close()
 
+    def _tables_needed_by_tables(self) -> dict[tuple[str, str], set[tuple[str, str]]]:
+        """Return the tables that the structure files create, each with the dump tables it cannot exist without."""
+        if self._needed_tables is None:
+            entry_tables, _ = self._toc_dependencies("pre_data")
+            self._needed_tables = {}
+            for toc_line in read_toc_lines(self.context.pg_restore, self.input_dir / "pre_data.backup"):
+                tables = entry_tables.get(entry_id(toc_line), [])
+                # the table of a TABLE entry goes first in its list
+                if is_table_entry(toc_line) and tables:
+                    self._needed_tables[tables[0]] = set(tables[1:])
+        return self._needed_tables
+
     def _prepare_tables_lists(self) -> None:
-        if self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE:
+        struct_only = self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
+        if struct_only and self._is_legacy_dump:
             return
 
-        tables = [(table_info["schema"], table_info["table"]) for table_info in (self.metadata.files or {}).values()]
-        self.context.set_tables_lists(tables)
+        if struct_only:
+            # this mode does not read data files: the lists are matched with the tables of the structure
+            tables = sorted(self._tables_needed_by_tables())
+        else:
+            tables = [(info["schema"], info["table"]) for info in (self.metadata.files or {}).values()]
+        # structure.json describes the parents of the structure tables, metadata.json those of the data tables
+        described = [
+            *(self.metadata.partitions or []),
+            *(self.metadata.inherits or []),
+            *(self.metadata.files or {}).values(),
+        ]
+        self._table_ancestors = {
+            (info["schema"], info["table"]): [(ancestor[0], ancestor[1]) for ancestor in info["ancestors"]]
+            for info in described
+            if info.get("ancestors")
+        }
+        self.context.set_tables_lists(tables, self._table_ancestors)
 
         if self._whitelist_active and not self.context.white_listed_tables:
             raise PgAnonError(ErrorCode.NO_TABLES_FOR_RESTORE, "None of the requested tables match the dump contents")
+
+    def _prepare_excluded_tables(self) -> None:
+        """Turn the partial lists and the schema options into excluded tables; stop when a kept table needs one."""
+        if self._is_legacy_dump:
+            return
+
+        needed_tables = self._tables_needed_by_tables()
+        # sync-struct-restore loads no rows, so the data files of a full dump do not take part
+        struct_only = self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
+        data_tables = set() if struct_only else set(self._dumped_rows)
+        self._structure_tables = set(needed_tables)
+        self._dump_tables = data_tables | self._structure_tables
+        ancestors = self._table_ancestors
+        white_rules, black_rules = self.context.included_tables_rules, self.context.excluded_tables_rules
+        # tables without rows of their own follow the lists too; an entry for a parent table covers its child tables
+        black_listed = {table for table in self._dump_tables if table_matches_rules(black_rules, table, ancestors)}
+        kept = self._dump_tables - black_listed
+        if self._whitelist_active:
+            kept = {table for table in kept if table_matches_rules(white_rules, table, ancestors)}
+            # a partition or a child table cannot be created without its parents; the parents get no rows
+            parents = {parent for table in kept for parent in ancestors.get(table, [])} & self._dump_tables
+            self._tables_without_rows = (parents - kept) & data_tables
+            kept |= parents
+
+        # a rule for a parent table without its own data file covers its child tables too
+        rule_tables = self._dump_tables | {parent for table in self._dump_tables for parent in ancestors.get(table, [])}
+        warn_rules_without_tables(black_rules, rule_tables, "Exclude list", "the dump")
+        warn_rules_without_tables(white_rules, rule_tables, "Include list", "the dump")
+        log_rules_for_parent_tables(black_rules, self._dump_tables, ancestors, "excluded")
+        log_rules_for_parent_tables(white_rules, self._dump_tables - black_listed, ancestors, "included")
+
+        kept = {table for table in kept if table[0] not in self._excluded_schemas}
+        self._excluded_tables = self._dump_tables - kept
+        for table in self._tables_without_rows:
+            # foreign keys are handled as if the dump had no rows of these tables
+            self._dumped_rows.pop(table, None)
+            self._partial_data_tables.discard(table)
+
+        broken = {table: needed & self._excluded_tables for table, needed in needed_tables.items() if table in kept}
+        broken = {table: needed for table, needed in broken.items() if needed}
+        if not broken:
+            if white_rules or black_rules or self._excluded_schemas:
+                self.context.logger.info("Restore includes %s of %s tables", len(kept), len(self._dump_tables))
+            return
+
+        only_schemas = all(table[0] in self._excluded_schemas for needed in broken.values() for table in needed)
+        raise dependency_error(
+            ErrorCode.EXCLUDED_SCHEMA_DEPENDENCY if only_schemas else ErrorCode.EXCLUDED_TABLE_DEPENDENCY,
+            [f"{schema}.{table}" for schema, table in broken],
+        )
 
     def _save_input_dicts_to_run_dir(self) -> None:
         if not self.context.options.save_dicts:
@@ -1213,12 +1620,14 @@ class RestoreMode:
             max_size=self.context.options.db_connections_per_process,
         )
 
-        queries = self._generate_analyze_queries()
         loop = asyncio.get_event_loop()
         tasks: set[asyncio.Task[None]] = set()
 
         try:
-            for query in queries:
+            async with pool.acquire() as connection:
+                foreign_parents = await self._find_foreign_parents(connection)
+
+            for query in self._generate_analyze_queries(foreign_parents):
                 if len(tasks) >= self.context.options.db_connections_per_process:
                     done, tasks = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                     self._raise_first_task_exception(done, pending=tasks)
@@ -1284,6 +1693,71 @@ class RestoreMode:
         context.logger.info("<------------- Finished validate_restore")
         return
 
+    def _check_dump_version(self) -> None:
+        """Stop when a file of the dump needs a newer pg_anon than this one."""
+        current = parse_version(__version__)
+        for file_name, min_version in self._min_pg_anon_versions.items():
+            required = parse_version(min_version)
+            if required is None or current is None or required <= current:
+                continue
+
+            raise PgAnonError(
+                ErrorCode.DUMP_VERSION_NOT_SUPPORTED,
+                f"This dump needs pg_anon {min_version} or newer, and this is pg_anon {__version__}. "
+                "Update pg_anon to restore it.",
+            )
+
+    def _check_archive_matches_structure(self) -> None:
+        """Stop when pre_data.backup and structure.json are not from the same dump."""
+        if self._is_legacy_dump or not self._has_structure:
+            return
+
+        entry_tables, skipped_ids = self._toc_dependencies("pre_data")
+        table_lines = [
+            toc_line
+            for toc_line in read_toc_lines(self.context.pg_restore, self.input_dir / "pre_data.backup")
+            if is_table_entry(toc_line) and entry_id(toc_line) not in skipped_ids
+        ]
+        # OIDs of two databases can be equal by chance, so the name of the table is compared too
+        unknown = [
+            toc_line
+            for toc_line in table_lines
+            if not (tables := entry_tables.get(entry_id(toc_line))) or not table_entry_matches(toc_line, *tables[0])
+        ]
+        if not unknown:
+            return
+
+        msg = (
+            f"ERROR: pre_data.backup and {self.structure_file_name} in {self.input_dir} are not from the same dump: "
+            f"{self.structure_file_name} does not describe {len(unknown)} of {len(table_lines)} tables of the archive. "
+            f"Take pre_data.backup, post_data.backup and {self.structure_file_name} from one dump."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.DUMP_STRUCTURE_MISMATCH, msg)
+
+    def _check_data_tables_in_structure(self) -> None:
+        """Stop when the dump has data for a table that its structure files do not create."""
+        if self._is_legacy_dump or self.context.options.mode != AnonMode.RESTORE or self._skip_pre_data_restore:
+            return
+
+        missing = [
+            f"{info['schema']}.{info['table']}"
+            for info in (self.metadata.files or {}).values()
+            if (info["schema"], info["table"]) not in self._structure_tables
+            and not info.get("extension_table")
+            and self._is_table_restored(info["schema"], info["table"])
+        ]
+        if not missing:
+            return
+
+        msg = (
+            f"ERROR: the dump has data for {format_names_summary(missing, 'table')}, but its structure files "
+            "do not create them. Exclude these tables with a partial dictionary, or use the structure files "
+            "that have them."
+        )
+        self.context.logger.error(msg)
+        raise PgAnonError(ErrorCode.DUMP_DATA_TABLES_NOT_IN_STRUCTURE, msg)
+
     async def run(self) -> None:
         """Run the restore mode to import data into the target database."""
         self.context.logger.info("-------------> Started restore")
@@ -1291,7 +1765,16 @@ class RestoreMode:
 
         try:
             self._save_input_dicts_to_run_dir()
+            self._check_dump_version()
             self._check_utils_version_for_dump()
+            self._check_archive_matches_structure()
+
+            # the lists are checked against the dump before --drop-db changes the target
+            self.context.read_partial_tables_dicts()
+            self._prepare_tables_lists()
+            self._resolve_schemas()
+            self._prepare_excluded_tables()
+            self._check_data_tables_in_structure()
 
             await self._drop_database()
             connection = await create_connection(
@@ -1304,10 +1787,6 @@ class RestoreMode:
 
             await self._check_db_is_empty(connection)
             await self._check_no_extra_tables_in_target(connection)
-
-            self.context.read_partial_tables_dicts()
-            self._prepare_tables_lists()
-            self._resolve_schemas()
 
             await self._create_schemas(connection)
             await self._create_extensions(connection)
@@ -1327,6 +1806,7 @@ class RestoreMode:
 
             await self.run_analyze()
             self._remove_toc_lists()
+            await self._warn_unchecked_fk(connection)
 
             self.context.logger.info("<------------- Finished restore")
         finally:

@@ -5,6 +5,7 @@ from tests.infrastructure.sizes import SMALL
 
 from .conftest import input_dict, output_path
 from pg_anon.common.enums import ResultCode
+from pg_anon.common.errors import ErrorCode
 
 
 async def _init_env(fixtures, pg_anon_runner, db_name, rows):
@@ -85,3 +86,4 @@ async def test_clean_db_fails_when_target_has_extra_tables(
 
     res = await _restore_clean(pg_anon_runner, db_params, target_db, out)
     assert res.result_code == ResultCode.FAIL
+    assert res.exception.code == ErrorCode.TARGET_HAS_EXTRA_TABLES

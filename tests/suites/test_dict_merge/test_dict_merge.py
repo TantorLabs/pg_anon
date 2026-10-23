@@ -160,15 +160,6 @@ class TestPreparedSensMerge:
             {"schema": "public", "table": "orders"},
         ]
 
-    def test_dictionary_contents_records_all_files(self, write_dict, make_context):
-        file_a = write_dict({"dictionary": [{"schema": "public", "table": "customers", "fields": {"phone": "A"}}]})
-        file_b = write_dict({"dictionary": [{"schema": "public", "table": "orders", "fields": {"address": "B"}}]})
-
-        ctx = make_context(prepared_sens_dict_files=[file_a, file_b])
-        ctx.read_prepared_dict()
-
-        assert set(ctx.prepared_dictionary_contents.keys()) == {file_a, file_b}
-
 
 class TestMetaDictMerge:
     def test_list_sections_accumulate(self, write_dict, make_context):

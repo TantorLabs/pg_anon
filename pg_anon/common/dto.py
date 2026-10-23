@@ -256,12 +256,44 @@ class ConnectionParams:
         return self.__dict__
 
 
+DUMP_INFO_KEYS = (
+    "pg_anon_version",
+    "min_pg_anon_version",
+    "created",
+    "pg_version",
+    "pg_dump_version",
+    "dbg_stage_2_validate_data",
+    "dbg_stage_3_validate_full",
+)
+STRUCTURE_FILE_KEYS = (
+    *DUMP_INFO_KEYS,
+    "schemas",
+    "extensions",
+    "event_triggers",
+    "excluded_event_triggers",
+    "constraints",
+    "indexes",
+    "partitions",
+    "inherits",
+    "dump_dependents_to_skip",
+)
+DATA_FILE_KEYS = (
+    *DUMP_INFO_KEYS,
+    "prepared_sens_dict_files",
+    "seq_lastvals",
+    "files",
+    "total_rows",
+    "db_size",
+)
+
+
 class Metadata:
     def __init__(self) -> None:
+        self.pg_anon_version: str | None = None
+        self.min_pg_anon_version: str | None = None
         self.created: str = ""
         self.pg_version: str = ""
         self.pg_dump_version: str = ""
-        self.dictionary_content_hash: dict[str, str] = {}
         self.prepared_sens_dict_files: str = ""
         self.dbg_stage_2_validate_data: bool = False
         self.dbg_stage_3_validate_full: bool = False
@@ -277,6 +309,7 @@ class Metadata:
         # only in black and white lists cases
         self.partial_dump_schemas: list[str] | None = None
         self.extensions: dict[str, dict[str, Any]] | None = None
+        # backward compatibility: DDL of custom objects, only partial dumps of 1.12.0 and older have it
         self.partial_dump_types: list[str] | None = None
         self.partial_dump_domains: list[str] | None = None
         self.partial_dump_ranges: list[str] | None = None
@@ -286,79 +319,53 @@ class Metadata:
         self.partial_dump_aggregates: list[str] | None = None
         self.event_triggers: dict[str, dict[str, Any]] | None = None
         self.excluded_event_triggers: list[str] | None = None
+        # object ("catalog OID:object OID") -> dump tables it depends on; dumps of 1.12.0 and older have none
+        self.dependencies: dict[str, list[list[str]]] | None = None
+        self.dump_dependents_to_skip: list[str] | None = None
+        # partitioned tables and partitions of the dump with the partitioned tables above them, closest first
+        self.partitions: list[dict[str, Any]] | None = None
+        # INHERITS child tables of the dump with all the parent tables above them, closest first
+        self.inherits: list[dict[str, Any]] | None = None
 
-    def _serialize_data(self) -> dict:  # noqa: C901, PLR0912
-        data = {
+    def _serialize_dump_info(self) -> dict:
+        return {
+            "pg_anon_version": self.pg_anon_version,
+            "min_pg_anon_version": self.min_pg_anon_version,
             "created": self.created,
             "pg_version": self.pg_version,
             "pg_dump_version": self.pg_dump_version,
-            "dictionary_content_hash": self.dictionary_content_hash,
-            "prepared_sens_dict_files": self.prepared_sens_dict_files,
             "dbg_stage_2_validate_data": self.dbg_stage_2_validate_data,
             "dbg_stage_3_validate_full": self.dbg_stage_3_validate_full,
-            "seq_lastvals": self.sequences_last_values,
-            "views": self.views,
-            "indexes": self.indexes,
-            "constraints": self.constraints,
-            "files": self.files,
-            "schemas": self.schemas,
-            "total_rows": self.total_rows,
-            "db_size": self.db_size,
-            "partial_dump_schemas": self.partial_dump_schemas,
-            "extensions": self.extensions,
-            "partial_dump_types": self.partial_dump_types,
-            "partial_dump_domains": self.partial_dump_domains,
-            "partial_dump_ranges": self.partial_dump_ranges,
-            "partial_dump_functions": self.partial_dump_functions,
-            "partial_dump_casts": self.partial_dump_casts,
-            "partial_dump_operators": self.partial_dump_operators,
-            "partial_dump_aggregates": self.partial_dump_aggregates,
-            "event_triggers": self.event_triggers,
-            "excluded_event_triggers": self.excluded_event_triggers,
         }
 
-        if self.sequences_last_values is None:
-            del data["seq_lastvals"]
-        if self.views is None:
-            del data["views"]
-        if self.indexes is None:
-            del data["indexes"]
-        if self.constraints is None:
-            del data["constraints"]
+    def _serialize_structure(self) -> dict:
+        from pg_anon.common.dependencies import pack_dependencies  # noqa: PLC0415
 
-        if self.files is None:
-            del data["files"]
-        if self.schemas is None:
-            del data["schemas"]
-        if self.total_rows is None:
-            del data["total_rows"]
-        if self.db_size is None:
-            del data["db_size"]
-
-        if self.partial_dump_schemas is None:
-            del data["partial_dump_schemas"]
-        if self.extensions is None:
-            del data["extensions"]
-        if self.partial_dump_types is None:
-            del data["partial_dump_types"]
-        if self.partial_dump_domains is None:
-            del data["partial_dump_domains"]
-        if self.partial_dump_ranges is None:
-            del data["partial_dump_ranges"]
-        if self.partial_dump_functions is None:
-            del data["partial_dump_functions"]
-        if self.partial_dump_casts is None:
-            del data["partial_dump_casts"]
-        if self.partial_dump_operators is None:
-            del data["partial_dump_operators"]
-        if self.partial_dump_aggregates is None:
-            del data["partial_dump_aggregates"]
-        if self.event_triggers is None:
-            del data["event_triggers"]
-        if self.excluded_event_triggers is None:
-            del data["excluded_event_triggers"]
-
+        data = {
+            **self._serialize_dump_info(),
+            "schemas": self.schemas,
+            "extensions": self.extensions,
+            "event_triggers": self.event_triggers,
+            "constraints": self.constraints,
+            "indexes": self.indexes,
+            "partitions": self.partitions,
+            "inherits": self.inherits,
+            "dependencies": pack_dependencies(self.dependencies or {}),
+            "dump_dependents_to_skip": self.dump_dependents_to_skip or [],
+        }
+        if self.excluded_event_triggers is not None:
+            data["excluded_event_triggers"] = self.excluded_event_triggers
         return data
+
+    def _serialize_data(self) -> dict:
+        return {
+            **self._serialize_dump_info(),
+            "prepared_sens_dict_files": self.prepared_sens_dict_files,
+            "seq_lastvals": self.sequences_last_values,
+            "files": self.files,
+            "total_rows": self.total_rows,
+            "db_size": self.db_size,
+        }
 
     def _serialize_tables(self) -> dict:
         if not self.files:
@@ -367,11 +374,12 @@ class Metadata:
         return {"tables": data}
 
     def _deserialize_data(self, data: dict) -> None:
+        self.pg_anon_version = data.get("pg_anon_version")
+        self.min_pg_anon_version = data.get("min_pg_anon_version")
         self.created = data.get("created", "")
         self.pg_version = data.get("pg_version", "")
         self.pg_dump_version = data.get("pg_dump_version", "")
         self.db_size = data.get("db_size")
-        self.dictionary_content_hash = data.get("dictionary_content_hash", {})
         self.prepared_sens_dict_files = data.get("prepared_sens_dict_files", "")
         self.dbg_stage_2_validate_data = data.get("dbg_stage_2_validate_data", False)
         self.dbg_stage_3_validate_full = data.get("dbg_stage_3_validate_full", False)
@@ -396,12 +404,22 @@ class Metadata:
         self.partial_dump_aggregates = data.get("partial_dump_aggregates")
         self.event_triggers = data.get("event_triggers")
         self.excluded_event_triggers = data.get("excluded_event_triggers")
+        self.dependencies = data.get("dependencies")
+        self.dump_dependents_to_skip = data.get("dump_dependents_to_skip")
+        self.partitions = data.get("partitions")
+        self.inherits = data.get("inherits")
 
     def save_into_file(self, file_path: Path) -> None:
-        """Serialize and save metadata to a JSON file."""
+        """Save the description of the dumped data to a JSON file."""
         from pg_anon.common.utils import save_json_file  # noqa: PLC0415
 
         save_json_file(file_path, self._serialize_data())
+
+    def save_structure_into_file(self, file_path: Path) -> None:
+        """Save the description of the dumped structure to a JSON file without indents."""
+        from pg_anon.common.utils import save_json_file  # noqa: PLC0415
+
+        save_json_file(file_path, self._serialize_structure(), compact=True)
 
     def save_dumped_tables_into_file(self, file_path: Path) -> None:
         """Save the list of dumped tables to a JSON file."""
@@ -409,8 +427,18 @@ class Metadata:
 
         save_json_file(file_path, self._serialize_tables())
 
+    def load_from_dump_files(self, structure: dict | None, data: dict | None) -> None:
+        """Load a dump of the current format: each file gives only its own keys."""
+        from pg_anon.common.dependencies import unpack_dependencies  # noqa: PLC0415
+
+        merged = {key: value for key, value in (data or {}).items() if key in DATA_FILE_KEYS}
+        merged.update({key: value for key, value in (structure or {}).items() if key in STRUCTURE_FILE_KEYS})
+        self._deserialize_data(merged)
+        if structure is not None:
+            self.dependencies = unpack_dependencies(structure["dependencies"])
+
     def load_from_file(self, file_name: str | Path) -> None:
-        """Load metadata from a JSON file."""
+        """Load metadata of a dump of pg_anon 1.12.0 or older from its only JSON file."""
         file_name = Path(file_name)
         with file_name.open() as metadata_file:
             data = json.loads(metadata_file.read())

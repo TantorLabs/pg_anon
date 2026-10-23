@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import pytest
+
 from tests.infrastructure.assertions import check_rows, checksum_tables
 
 from .conftest import input_dict, output_path
 from pg_anon.common.enums import ResultCode
 
 
-async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, *, name):
-    out = output_path(name)
+@pytest.fixture(scope="module")
+async def masked_db(source_db, db_manager, db_params, pg_anon_runner):
+    """One dump with mask.py and one restore, shared by the tests that only read the result."""
+    name = "pg_anon_mask_shared"
+    out = output_path("mask")
     res = await pg_anon_runner.run(
         "dump",
         source_db,
@@ -20,9 +25,10 @@ async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, *, 
     )
     assert res.result_code == ResultCode.DONE
 
+    await db_manager.create_db(name)
     res = await pg_anon_runner.run(
         "restore",
-        target_db,
+        name,
         [
             f"--db-connections-per-process={db_params.db_connections_per_process}",
             f"--input-dir={out}",
@@ -30,81 +36,56 @@ async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, *, 
         ],
     )
     assert res.result_code == ResultCode.DONE
+    yield name
+    await db_manager.drop_db(name)
 
 
 async def test_mask_replaces_constants_in_hr_and_billing(
     source_db,
-    target_db,
+    masked_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(
-        pg_anon_runner,
-        db_params,
-        source_db,
-        target_db,
-        name="replace_constants",
-    )
-
     employees = await db_manager.fetch(
-        target_db,
+        masked_db,
         "SELECT DISTINCT email::text, phone, salary FROM hr.employee ORDER BY 1 LIMIT 3",
     )
+    assert employees
     assert all(r["email"] == "masked@example.com" for r in employees)
     assert all(r["phone"] == "+70000000000" for r in employees)
     assert all(r["salary"] == 0 for r in employees)
 
     cards = await db_manager.fetch(
-        target_db,
+        masked_db,
         "SELECT cardholder_name, pan_last4 FROM billing.payment_card LIMIT 3",
     )
+    assert cards
     assert all(r["cardholder_name"] == "ANON" for r in cards)
     assert all(r["pan_last4"] == "0000" for r in cards)
 
     customers = await db_manager.fetch(
-        target_db,
+        masked_db,
         "SELECT name, tax_id FROM billing.customer LIMIT 3",
     )
+    assert customers
     assert all(r["name"] == "CUSTOMER" for r in customers)
     assert all(r["tax_id"] == "0000000000" for r in customers)
 
 
 async def test_mask_raw_sql_overrides_entire_row(
     source_db,
-    target_db,
+    masked_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(
-        pg_anon_runner,
-        db_params,
-        source_db,
-        target_db,
-        name="raw_sql",
-    )
-
-    rows = await db_manager.fetch(target_db, "SELECT body FROM ecommerce.review LIMIT 20")
+    rows = await db_manager.fetch(masked_db, "SELECT body FROM ecommerce.review LIMIT 20")
     assert rows, "review table should be non-empty after restore"
     assert all(r["body"] == "REDACTED" for r in rows)
 
 
 async def test_mask_does_not_touch_unrelated_tables(
     source_db,
-    target_db,
+    masked_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(
-        pg_anon_runner,
-        db_params,
-        source_db,
-        target_db,
-        name="untouched",
-    )
-
     untouched = [
         ("hr", "department"),
         ("hr", "salary_history"),
@@ -113,33 +94,23 @@ async def test_mask_does_not_touch_unrelated_tables(
         ("ecommerce", "category"),
     ]
     src = await checksum_tables(db_manager, source_db, untouched)
-    tgt = await checksum_tables(db_manager, target_db, untouched)
+    tgt = await checksum_tables(db_manager, masked_db, untouched)
     for key in untouched:
         assert src[key] == tgt[key], f"{key}: source {src[key]} != target {tgt[key]}"
 
 
 async def test_mask_leaves_non_masked_columns_of_masked_table_intact(
     source_db,
-    target_db,
+    masked_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(
-        pg_anon_runner,
-        db_params,
-        source_db,
-        target_db,
-        name="partial_columns",
-    )
-
     src_row = await db_manager.fetch(
         source_db,
         "SELECT first_name, last_name, ssn, birth_date, hire_date FROM hr.employee WHERE id = 1",
     )
     assert await check_rows(
         db_manager,
-        target_db,
+        masked_db,
         "hr",
         "employee",
         ["first_name", "last_name", "ssn", "birth_date", "hire_date"],

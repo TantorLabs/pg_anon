@@ -36,9 +36,11 @@ async def create_server(db_manager, db_name: str) -> None:
         db_name,
         f"""
         CREATE EXTENSION IF NOT EXISTS postgres_fdw;
-        CREATE SERVER IF NOT EXISTS {SERVER_NAME}
-            FOREIGN DATA WRAPPER postgres_fdw
-            OPTIONS (host 'localhost', dbname 'postgres', port '5432');
+        DO $$ BEGIN
+            CREATE SERVER {SERVER_NAME}
+                FOREIGN DATA WRAPPER postgres_fdw
+                OPTIONS (host 'localhost', dbname 'postgres', port '5432');
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$;
         """,
     )
 

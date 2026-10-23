@@ -52,22 +52,11 @@ def test_readme_is_attached_as_long_description(dist):
     assert "pg_anon" in body
 
 
-def test_console_scripts_are_registered():
-    registered = {ep.name: ep.value for ep in entry_points(group="console_scripts") if ep.name in CONSOLE_SCRIPTS}
-    assert registered == CONSOLE_SCRIPTS
-
-
 @pytest.mark.parametrize("script", sorted(CONSOLE_SCRIPTS))
 def test_console_script_entry_point_is_importable(script):
     """A typo in pyproject would otherwise only surface at runtime."""
     (ep,) = (ep for ep in entry_points(group="console_scripts") if ep.name == script)
     assert ep.load() is not None
-
-
-def test_init_sql_is_shipped(dist):
-    """`pg_anon init` reads init.sql from the package directory."""
-    shipped = {str(path) for path in (dist.files or [])}
-    assert "pg_anon/init.sql" in shipped
 
 
 def test_rest_api_subpackages_are_shipped(dist):

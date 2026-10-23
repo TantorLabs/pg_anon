@@ -1,9 +1,31 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, UTC
 
+import aiohttp
+import pytest
+
 from .conftest import input_dict_text
-from .helpers import build_dump_request, uuid_short
+from .helpers import build_dump_request, run_dump_via_api, uuid_short
+
+
+@pytest.fixture(scope="module")
+def saved_dump(api_base_url, _api_source_db_setup, db_params) -> dict:
+    """One dump with save_dicts, shared by the tests that only read the operation."""
+
+    async def _run() -> dict:
+        async with aiohttp.ClientSession(base_url=api_base_url, timeout=aiohttp.ClientTimeout(total=180)) as session:
+            return await run_dump_via_api(
+                session,
+                db_params=db_params,
+                db_name=_api_source_db_setup,
+                sens_dict=input_dict_text("sens_dict.py"),
+                output_path=f"/ops_{uuid_short()}",
+                extra={"save_dicts": True},
+            )
+
+    return asyncio.run(_run())
 
 
 async def _dump_with_save(api_client, api_source_db, db_params, webhook_recorder) -> dict:
@@ -22,14 +44,8 @@ async def _dump_with_save(api_client, api_source_db, db_params, webhook_recorder
     return terminal
 
 
-async def test_operations_list_includes_saved_run(
-    api_client,
-    api_source_db,
-    db_params,
-    webhook_recorder,
-):
-    success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
-    op_id = success["internal_operation_id"]
+async def test_operations_list_includes_saved_run(api_client, saved_dump):
+    op_id = saved_dump["internal_operation_id"]
 
     resp = await api_client.get("/operation")
     assert resp.status == 200
@@ -46,14 +62,8 @@ async def test_operations_list_date_filter_validation(api_client):
     assert resp.status == 422
 
 
-async def test_operation_details_returns_run_options_and_dictionaries(
-    api_client,
-    api_source_db,
-    db_params,
-    webhook_recorder,
-):
-    success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
-    op_id = success["internal_operation_id"]
+async def test_operation_details_returns_run_options_and_dictionaries(api_client, saved_dump):
+    op_id = saved_dump["internal_operation_id"]
 
     resp = await api_client.get(f"/operation/{op_id}")
     assert resp.status == 200
@@ -69,14 +79,8 @@ async def test_operation_details_404_for_unknown_id(api_client):
     assert resp.status == 404
 
 
-async def test_operation_logs_returns_tail(
-    api_client,
-    api_source_db,
-    db_params,
-    webhook_recorder,
-):
-    success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
-    op_id = success["internal_operation_id"]
+async def test_operation_logs_returns_tail(api_client, saved_dump):
+    op_id = saved_dump["internal_operation_id"]
 
     resp = await api_client.get(f"/operation/{op_id}/logs?tail_lines=20")
     assert resp.status == 200
@@ -85,14 +89,8 @@ async def test_operation_logs_returns_tail(
     assert lines
 
 
-async def test_operation_logs_invalid_tail_lines_422(
-    api_client,
-    api_source_db,
-    db_params,
-    webhook_recorder,
-):
-    success = await _dump_with_save(api_client, api_source_db, db_params, webhook_recorder)
-    op_id = success["internal_operation_id"]
+async def test_operation_logs_invalid_tail_lines_422(api_client, saved_dump):
+    op_id = saved_dump["internal_operation_id"]
     resp = await api_client.get(f"/operation/{op_id}/logs?tail_lines=0")
     assert resp.status == 422
 

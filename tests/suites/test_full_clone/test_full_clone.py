@@ -3,106 +3,44 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 
-from tests.infrastructure.assertions import checksum_tables, diff_catalog, diff_schema, list_tables
+import pytest
 
-from .conftest import input_dict, output_path
+from tests.infrastructure.assertions import checksum_tables, diff_catalog, list_tables, sequence_params
+
+from .conftest import input_dict, output_path, restore
 from pg_anon.common.db_utils import create_connection, get_invalid_partitioned_indexes
 from pg_anon.common.enums import ResultCode
 
 
-async def _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, out):
-    res = await pg_anon_runner.run(
-        "dump",
-        source_db,
-        [
-            f"--prepared-sens-dict-file={input_dict('empty.py')}",
-            f"--output-dir={out}",
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            "--clear-output-dir",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE, "dump with empty dict must succeed"
-
-    res = await pg_anon_runner.run(
-        "restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={out}",
-            "--drop-custom-check-constr",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE, "restore must succeed"
-
-
-async def test_full_clone_preserves_every_table(
-    source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_tables"))
-    missing = await diff_schema(db_manager, source_db, target_db)
-    assert not missing, f"columns missing in target: {missing}"
-
-
 async def test_full_clone_preserves_catalog_objects(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_catalog"))
-    diffs = await diff_catalog(db_manager, source_db, target_db)
+    diffs = await diff_catalog(db_manager, source_db, clone_db)
     assert not diffs, f"catalog differences (source→target): {diffs}"
 
 
 async def test_full_clone_preserves_row_content(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_rows"))
-
     tables = await list_tables(db_manager, source_db)
     src = await checksum_tables(db_manager, source_db, tables)
-    tgt = await checksum_tables(db_manager, target_db, tables)
+    tgt = await checksum_tables(db_manager, clone_db, tables)
 
     diffs = {k: (src[k], tgt.get(k)) for k in src if src[k] != tgt.get(k)}
     assert not diffs, f"content differs on tables: {diffs}"
 
 
-async def test_full_clone_preserves_data_types_round_trip(
-    source_db,
-    target_db,
-    db_manager,
-    db_params,
-    pg_anon_runner,
-):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_types"))
-
-    src = await db_manager.fetch(source_db, "SELECT * FROM data_types.sample ORDER BY id")
-    tgt = await db_manager.fetch(target_db, "SELECT * FROM data_types.sample ORDER BY id")
-    assert len(src) == len(tgt)
-    for s_row, t_row in zip(src, tgt, strict=True):
-        assert dict(s_row) == dict(t_row), f"row differs: {dict(s_row)} vs {dict(t_row)}"
-
-
 async def test_full_clone_preserves_data_type_edge_cases(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_edge_cases"))
-
     src = await db_manager.fetch(source_db, "SELECT * FROM data_types.edge_cases ORDER BY id", text_dates=True)
-    tgt = await db_manager.fetch(target_db, "SELECT * FROM data_types.edge_cases ORDER BY id", text_dates=True)
+    tgt = await db_manager.fetch(clone_db, "SELECT * FROM data_types.edge_cases ORDER BY id", text_dates=True)
     assert len(src) == len(tgt)
 
     def _is_nan(x):
@@ -127,78 +65,58 @@ async def test_full_clone_preserves_data_type_edge_cases(
 
 async def test_full_clone_restores_circular_fk_tables(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("circular_fk"))
-
     src_a = await db_manager.fetch(source_db, "SELECT id, peer_id FROM circular_fk.a ORDER BY id")
-    tgt_a = await db_manager.fetch(target_db, "SELECT id, peer_id FROM circular_fk.a ORDER BY id")
+    tgt_a = await db_manager.fetch(clone_db, "SELECT id, peer_id FROM circular_fk.a ORDER BY id")
     src_b = await db_manager.fetch(source_db, "SELECT id, peer_id FROM circular_fk.b ORDER BY id")
-    tgt_b = await db_manager.fetch(target_db, "SELECT id, peer_id FROM circular_fk.b ORDER BY id")
+    tgt_b = await db_manager.fetch(clone_db, "SELECT id, peer_id FROM circular_fk.b ORDER BY id")
     assert [dict(r) for r in src_a] == [dict(r) for r in tgt_a]
     assert [dict(r) for r in src_b] == [dict(r) for r in tgt_b]
 
 
 async def test_full_clone_preserves_table_variants(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_variants"))
-
     src_ident = await db_manager.fetch(source_db, "SELECT id, label, seq_val FROM variants.with_identity ORDER BY id")
-    tgt_ident = await db_manager.fetch(target_db, "SELECT id, label, seq_val FROM variants.with_identity ORDER BY id")
+    tgt_ident = await db_manager.fetch(clone_db, "SELECT id, label, seq_val FROM variants.with_identity ORDER BY id")
     assert [dict(r) for r in src_ident] == [dict(r) for r in tgt_ident]
 
-    src_seq = await db_manager.fetch(
-        source_db,
-        "SELECT increment_by, min_value, max_value, cache_size "
-        "FROM pg_sequences WHERE schemaname='variants' AND sequencename='custom_seq'",
-    )
-    tgt_seq = await db_manager.fetch(
-        target_db,
-        "SELECT increment_by, min_value, max_value, cache_size "
-        "FROM pg_sequences WHERE schemaname='variants' AND sequencename='custom_seq'",
-    )
-    assert [dict(r) for r in src_seq] == [dict(r) for r in tgt_seq], "custom sequence params must round-trip"
+    src_seq = await sequence_params(db_manager, source_db, "variants", "custom_seq")
+    tgt_seq = await sequence_params(db_manager, clone_db, "variants", "custom_seq")
+    assert src_seq == tgt_seq, "custom sequence params must round-trip"
 
     src_unl = await db_manager.fetch(
         source_db,
         "SELECT relpersistence FROM pg_class WHERE relname='session_cache' AND relnamespace='variants'::regnamespace",
     )
     tgt_unl = await db_manager.fetch(
-        target_db,
+        clone_db,
         "SELECT relpersistence FROM pg_class WHERE relname='session_cache' AND relnamespace='variants'::regnamespace",
     )
     assert src_unl[0]["relpersistence"] == tgt_unl[0]["relpersistence"], "UNLOGGED persistence flag must be preserved"
 
     src_mammal = await db_manager.fetch(source_db, "SELECT name, legs FROM variants.mammal ORDER BY name")
-    tgt_mammal = await db_manager.fetch(target_db, "SELECT name, legs FROM variants.mammal ORDER BY name")
+    tgt_mammal = await db_manager.fetch(clone_db, "SELECT name, legs FROM variants.mammal ORDER BY name")
     assert [dict(r) for r in src_mammal] == [dict(r) for r in tgt_mammal]
 
     src_rule = await db_manager.fetch(
         source_db, "SELECT rulename FROM pg_rules WHERE schemaname='variants' AND tablename='active_animals'"
     )
     tgt_rule = await db_manager.fetch(
-        target_db, "SELECT rulename FROM pg_rules WHERE schemaname='variants' AND tablename='active_animals'"
+        clone_db, "SELECT rulename FROM pg_rules WHERE schemaname='variants' AND tablename='active_animals'"
     )
     assert {r["rulename"] for r in src_rule} == {r["rulename"] for r in tgt_rule}
 
 
 async def test_full_clone_preserves_privileges(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_privileges"))
-
     # Table-level ACLs on privs.public_facing.
     src_acl = await db_manager.fetch(
         source_db,
@@ -208,18 +126,18 @@ async def test_full_clone_preserves_privileges(
     """,
     )
     tgt_acl = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT relacl::text AS acl FROM pg_class
         WHERE relname = 'public_facing' AND relnamespace = 'privs'::regnamespace
     """,
     )
-    if src_acl and src_acl[0]["acl"]:
-        assert src_acl[0]["acl"] == tgt_acl[0]["acl"], (
-            f"table-level ACL differs: src={src_acl[0]['acl']} tgt={tgt_acl[0]['acl']}"
-        )
+    assert src_acl and src_acl[0]["acl"], "fixture sanity: privs.public_facing must have ACL entries on source"
+    assert src_acl[0]["acl"] == tgt_acl[0]["acl"], (
+        f"table-level ACL differs: src={src_acl[0]['acl']} tgt={tgt_acl[0]['acl']}"
+    )
 
-    # Column-level ACL on secret_payload (REVOKE SELECT for anon_tester_reader).
+    # Column-level ACL on secret_payload (GRANT UPDATE to anon_tester_reader).
     src_col_acl = await db_manager.fetch(
         source_db,
         """
@@ -231,7 +149,7 @@ async def test_full_clone_preserves_privileges(
     """,
     )
     tgt_col_acl = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT a.attacl::text AS acl FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
@@ -240,10 +158,10 @@ async def test_full_clone_preserves_privileges(
           AND a.attname = 'secret_payload'
     """,
     )
-    if src_col_acl and src_col_acl[0]["acl"]:
-        assert src_col_acl[0]["acl"] == tgt_col_acl[0]["acl"], (
-            f"column-level ACL differs: src={src_col_acl[0]['acl']} tgt={tgt_col_acl[0]['acl']}"
-        )
+    assert src_col_acl and src_col_acl[0]["acl"], "fixture sanity: secret_payload must have a column ACL on source"
+    assert src_col_acl[0]["acl"] == tgt_col_acl[0]["acl"], (
+        f"column-level ACL differs: src={src_col_acl[0]['acl']} tgt={tgt_col_acl[0]['acl']}"
+    )
 
     # DEFAULT PRIVILEGES entry for schema privs.
     src_def = await db_manager.fetch(
@@ -255,42 +173,34 @@ async def test_full_clone_preserves_privileges(
     """,
     )
     tgt_def = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT defaclacl::text AS acl FROM pg_default_acl d
         JOIN pg_namespace n ON n.oid = d.defaclnamespace
         WHERE n.nspname = 'privs' AND d.defaclobjtype = 'r'
     """,
     )
-    if src_def:
-        assert [dict(r) for r in src_def] == [dict(r) for r in tgt_def], "DEFAULT PRIVILEGES not preserved"
+    assert src_def, "fixture sanity: schema privs must have DEFAULT PRIVILEGES on source"
+    assert [dict(r) for r in src_def] == [dict(r) for r in tgt_def], "DEFAULT PRIVILEGES not preserved"
 
 
+@pytest.mark.min_pg(100000)
 async def test_full_clone_preserves_publications(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("preserve_publications"))
-
+    pub_columns = "pubname, puballtables, pubinsert, pubupdate, pubdelete"
     src_pubs = await db_manager.fetch(
         source_db,
-        """
-        SELECT pubname, puballtables, pubinsert, pubupdate, pubdelete, pubtruncate
-        FROM pg_publication ORDER BY pubname
-    """,
+        f"SELECT {pub_columns} FROM pg_publication ORDER BY pubname",
     )
     tgt_pubs = await db_manager.fetch(
-        target_db,
-        """
-        SELECT pubname, puballtables, pubinsert, pubupdate, pubdelete, pubtruncate
-        FROM pg_publication ORDER BY pubname
-    """,
+        clone_db,
+        f"SELECT {pub_columns} FROM pg_publication ORDER BY pubname",
     )
-    if src_pubs:
-        assert [dict(r) for r in src_pubs] == [dict(r) for r in tgt_pubs], "PUBLICATION metadata not preserved"
+    assert src_pubs, "fixture sanity: source must have publications"
+    assert [dict(r) for r in src_pubs] == [dict(r) for r in tgt_pubs], "PUBLICATION metadata not preserved"
 
     # FOR TABLE pubs.feed mapping must round-trip on pub_for_feed.
     src_rel = await db_manager.fetch(
@@ -305,7 +215,7 @@ async def test_full_clone_preserves_publications(
     """,
     )
     tgt_rel = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT p.pubname, c.relname, n.nspname
         FROM pg_publication_rel pr
@@ -315,10 +225,24 @@ async def test_full_clone_preserves_publications(
         WHERE p.pubname = 'pub_for_feed'
     """,
     )
-    if src_rel:
-        assert [dict(r) for r in src_rel] == [dict(r) for r in tgt_rel], "PUBLICATION → table mapping not preserved"
+    assert src_rel, "fixture sanity: pub_for_feed must publish a table on source"
+    assert [dict(r) for r in src_rel] == [dict(r) for r in tgt_rel], "PUBLICATION → table mapping not preserved"
 
 
+@pytest.mark.min_pg(110000)
+async def test_full_clone_preserves_publication_truncate_flag(
+    source_db,
+    clone_db,
+    db_manager,
+):
+    query = "SELECT pubname, pubtruncate FROM pg_publication ORDER BY pubname"
+    src_pubs = await db_manager.fetch(source_db, query)
+    tgt_pubs = await db_manager.fetch(clone_db, query)
+    assert src_pubs, "fixture sanity: source must have publications"
+    assert [dict(r) for r in src_pubs] == [dict(r) for r in tgt_pubs], "PUBLICATION truncate flag not preserved"
+
+
+@pytest.mark.min_pg(100000)
 async def test_full_clone_with_no_publications_strips_them(
     source_db,
     target_db,
@@ -353,59 +277,50 @@ async def test_full_clone_with_no_publications_strips_them(
 
     src_pubs = await db_manager.fetch(source_db, "SELECT pubname FROM pg_publication ORDER BY pubname")
     tgt_pubs = await db_manager.fetch(target_db, "SELECT pubname FROM pg_publication ORDER BY pubname")
-    if src_pubs:
-        assert tgt_pubs == [], (
-            f"--no-publications must strip publications; target still has: {[r['pubname'] for r in tgt_pubs]}"
-        )
+    assert src_pubs, "fixture sanity: source must have publications"
+    assert tgt_pubs == [], (
+        f"--no-publications must strip publications; target still has: {[r['pubname'] for r in tgt_pubs]}"
+    )
 
 
 async def test_full_clone_with_drop_db_is_idempotent(
-    source_db,
+    full_dump,
     target_db,
     db_params,
     pg_anon_runner,
 ):
-    out = output_path("idempotent")
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, out)
-
-    res = await pg_anon_runner.run(
-        "restore",
-        target_db,
-        [
-            f"--db-connections-per-process={db_params.db_connections_per_process}",
-            f"--input-dir={out}",
-            "--drop-custom-check-constr",
-            "--drop-db",
-        ],
-    )
-    assert res.result_code == ResultCode.DONE
+    for extra in ([], ["--drop-db"]):
+        res = await restore(pg_anon_runner, db_params, target_db, full_dump, extra)
+        assert res.result_code == ResultCode.DONE, f"restore failed: {res.error_message}"
 
 
 async def test_full_clone_resets_sequence_for_special_char_schema(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
     schema = "_SCHM.$complex#имя;@&* a'"
     table = "_TBL.$complex#имя;@&* a'"
-
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("seq_reset_special"))
 
     src_max = await db_manager.fetch(source_db, f'SELECT max(id) AS m FROM "{schema}"."{table}"')
     src_max_id = src_max[0]["m"]
     assert src_max_id is not None, "source table must have data to anchor the assertion"
 
-    inserted = await db_manager.fetch(
-        target_db,
-        f"""
-        INSERT INTO "{schema}"."{table}" (fld_key, "_FLD.$complex#имя;@&* a'")
-        VALUES ('post_restore_probe', 'value')
-        RETURNING id
-    """,
-    )
-    new_id = inserted[0]["id"]
+    # the clone is shared by the module, so the probe row is rolled back
+    connection = await create_connection(db_manager._connection_params(clone_db))  # noqa: SLF001
+    try:
+        transaction = connection.transaction()
+        await transaction.start()
+        new_id = await connection.fetchval(
+            f"""
+            INSERT INTO "{schema}"."{table}" (fld_key, "_FLD.$complex#имя;@&* a'")
+            VALUES ('post_restore_probe', 'value')
+            RETURNING id
+        """
+        )
+        await transaction.rollback()
+    finally:
+        await connection.close()
     assert new_id > src_max_id, (
         f"sequence not advanced past source max: max(src.id)={src_max_id}, new id from target after restore={new_id}"
     )
@@ -413,13 +328,9 @@ async def test_full_clone_resets_sequence_for_special_char_schema(
 
 async def test_full_clone_preserves_index_quirks(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("index_quirks"))
-
     expected_index_names = {
         "events_user_hash",
         "events_payload_spgist",
@@ -439,7 +350,7 @@ async def test_full_clone_preserves_index_quirks(
     """,
     )
     tgt_idx = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT indexname, indexdef FROM pg_indexes
         WHERE schemaname = 'index_quirks'
@@ -470,7 +381,7 @@ async def test_full_clone_preserves_index_quirks(
     """,
     )
     tgt_methods = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT i.relname AS indexname, am.amname
         FROM pg_index ix
@@ -484,8 +395,15 @@ async def test_full_clone_preserves_index_quirks(
         "access method (amname) per index must round-trip"
     )
 
+
+@pytest.mark.min_pg(110000)
+async def test_full_clone_preserves_covering_index_include_columns(
+    source_db,
+    clone_db,
+    db_manager,
+):
     cover = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT ix.indnkeyatts, ix.indnatts
         FROM pg_index ix
@@ -501,15 +419,12 @@ async def test_full_clone_preserves_index_quirks(
     )
 
 
+@pytest.mark.min_pg(120000)
 async def test_full_clone_preserves_constraint_quirks(
     source_db,
-    target_db,
+    clone_db,
     db_manager,
-    db_params,
-    pg_anon_runner,
 ):
-    await _dump_and_restore(pg_anon_runner, db_params, source_db, target_db, output_path("constraint_quirks"))
-
     src_inh = await db_manager.fetch(
         source_db,
         """
@@ -522,7 +437,7 @@ async def test_full_clone_preserves_constraint_quirks(
     """,
     )
     tgt_inh = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT child.relname AS child, parent.relname AS parent
         FROM pg_inherits i
@@ -535,7 +450,7 @@ async def test_full_clone_preserves_constraint_quirks(
     assert [dict(r) for r in src_inh] == [dict(r) for r in tgt_inh], "sub-partition tree must round-trip"
 
     tgt_partitioned = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT relname FROM pg_class
         WHERE relnamespace = 'constraints_quirks'::regnamespace
@@ -553,7 +468,7 @@ async def test_full_clone_preserves_constraint_quirks(
         "evt_attachment_evt_fk": ("f", True),
     }
     tgt_cs = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT conname, contype::text AS contype, convalidated
         FROM pg_constraint
@@ -576,7 +491,7 @@ async def test_full_clone_preserves_constraint_quirks(
     """,
     )
     tgt_clones = await db_manager.fetch(
-        target_db,
+        clone_db,
         """
         SELECT count(*) AS c FROM pg_constraint
         WHERE conrelid = 'constraints_quirks.evt_attachment'::regclass
@@ -589,12 +504,12 @@ async def test_full_clone_preserves_constraint_quirks(
     assert tgt_clones[0]["c"] >= 3, f"expected at least 3 per-leaf FK clones on target, got {tgt_clones[0]['c']}"
 
     src_rows = await db_manager.fetch(source_db, "SELECT count(*) AS c FROM constraints_quirks.subpart_root")
-    tgt_rows = await db_manager.fetch(target_db, "SELECT count(*) AS c FROM constraints_quirks.subpart_root")
+    tgt_rows = await db_manager.fetch(clone_db, "SELECT count(*) AS c FROM constraints_quirks.subpart_root")
     assert src_rows[0]["c"] == tgt_rows[0]["c"]
 
     try:
         await db_manager.execute(
-            target_db,
+            clone_db,
             """
             INSERT INTO constraints_quirks.booking (room_id, period)
             VALUES (1, tstzrange('2026-01-02', '2026-01-04'))
@@ -607,7 +522,7 @@ async def test_full_clone_preserves_constraint_quirks(
 
     try:
         await db_manager.execute(
-            target_db,
+            clone_db,
             """
             INSERT INTO constraints_quirks.evt_attachment (evt_id, tenant_id, occurred_at, note)
             VALUES (9999, 1, '2025-01-15 10:00+00', 'orphan probe')
@@ -619,6 +534,7 @@ async def test_full_clone_preserves_constraint_quirks(
     assert fk_raised, "FK on partitioned parent must reject orphan rows on target"
 
 
+@pytest.mark.min_pg(110000)
 async def test_invalid_partitioned_index_is_reported(db_manager, target_db):
     """The guard that runs after post-data must notice a partitioned index left invalid."""
     await db_manager.execute(

@@ -62,7 +62,7 @@ async def user_types(db_manager, db_name: str) -> set[str]:
 async def test_partial_restore_skips_objects_of_excluded_schemas(
     objects_db, target_db, db_params, pg_anon_runner, db_manager
 ):
-    """A partial dump keeps types and domains in metadata, the restore must not create those of excluded schemas."""
+    """A partial dump keeps types and domains in the TOC, the restore must not create those of excluded schemas."""
     out = output_path("partial_objects")
     res = await dump(
         pg_anon_runner,
@@ -73,9 +73,10 @@ async def test_partial_restore_skips_objects_of_excluded_schemas(
         extra=[f"--partial-tables-exclude-dict-file={input_dict('exclude_skip_me.py')}"],
     )
     assert res.result_code == ResultCode.DONE
-    metadata = json.loads((Path(out) / "metadata.json").read_text())
-    assert any('"Old Types".tone' in ddl for ddl in metadata["partial_dump_types"])
-    assert any("plain_types.positive" in ddl for ddl in metadata["partial_dump_domains"])
+    for file_name in ("structure.json", "metadata.json"):
+        metadata = json.loads((Path(out) / file_name).read_text())
+        assert "partial_dump_types" not in metadata
+        assert "partial_dump_domains" not in metadata
 
     res = await restore(
         pg_anon_runner,
@@ -121,7 +122,7 @@ async def test_event_trigger_of_schema_excluded_on_dump_is_left_out(
         pg_anon_runner, db_params, objects_db, "event_trigger", ["--exclude-schema-name=audit"]
     )
 
-    metadata = json.loads((Path(out) / "metadata.json").read_text())
+    metadata = json.loads((Path(out) / "structure.json").read_text())
     assert metadata["event_triggers"] == {
         "audit_ddl": {"trigger_name": "audit_ddl", "function_schema": "audit", "is_excluded": True}
     }
@@ -135,7 +136,7 @@ async def test_event_trigger_of_schema_excluded_on_restore_is_left_out(
 ):
     out = await event_trigger_dump(pg_anon_runner, db_params, objects_db, "event_trigger_full", [])
 
-    metadata = json.loads((Path(out) / "metadata.json").read_text())
+    metadata = json.loads((Path(out) / "structure.json").read_text())
     assert metadata["event_triggers"]["audit_ddl"]["is_excluded"] is False
     assert "excluded_event_triggers" not in metadata
 
@@ -151,7 +152,7 @@ async def test_old_dump_drops_event_triggers_by_the_old_key(
     out = await event_trigger_dump(
         pg_anon_runner, db_params, objects_db, "event_trigger_old", ["--exclude-schema-name=audit"]
     )
-    metadata_path = Path(out) / "metadata.json"
+    metadata_path = Path(out) / "structure.json"
     metadata = json.loads(metadata_path.read_text())
     del metadata["event_triggers"]
     metadata_path.write_text(json.dumps(metadata))

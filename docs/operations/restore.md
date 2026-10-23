@@ -20,6 +20,8 @@ Restores both the database structure and data.
 - Dump or [partial dump](dump.md#create-partial-dump) created by pg_anon in [full dump (`dump`) mode](dump.md#full-dump-dump-mode).
 - The target database must be empty, or the `--clean-db` / `--drop-db` options can be used.
 
+Some foreign keys may be created as `NOT VALID` or not created: see [Foreign keys](#foreign-keys).
+
 ### Run example
 ```commandline
 pg_anon restore \
@@ -64,6 +66,10 @@ Restores data only.
   - [Data dump (`sync-data-dump`) mode](dump.md#data-dump-sync-data-dump-mode)
 - The target database must already contain the required schema for restoring data.
 
+If a sequence of the dump is not in the target, its value is not set, and the log shows a warning.
+
+Foreign keys of the target are not checked against the loaded rows: see [Foreign keys](#foreign-keys).
+
 ### Run example
 ```commandline
 pg_anon sync-data-restore \
@@ -89,6 +95,16 @@ Partial restore can be run in all restore modes:
 Partial restores use a tables dictionary containing a list of tables.  
 This dictionary can act as either a whitelist (only listed tables are restored) or a blacklist (listed tables are excluded).
 See [tables dictionary](../dicts/tables-dictionary.md).
+
+- A rule for a parent table also covers its partitions and child tables. A kept child table keeps all its parents,
+  without their own rows. See [Parent and child tables](../dicts/tables-dictionary.md#parent-and-child-tables).
+- Objects that depend on a left-out table are not restored: for example, views, foreign keys of other tables and
+  functions that use its row type.
+- A function that reads a left-out table only in its body text is restored, and it fails when you call it.
+  PostgreSQL does not see this dependency.
+- If a kept table needs a left-out table, for example as a column type, the restore stops with the error
+  `EXCLUDED_TABLE_DEPENDENCY`. Leave out the dependent table too, or keep the table it needs.
+- Foreign keys to a table that lost some rows: see [Foreign keys](#foreign-keys).
 
 ### Run example
 #### Restore only need tables (whitelist)
@@ -137,7 +153,7 @@ are not restored either.
 > ⚠️ **Note**
 >
 > If a table of a kept schema uses a type from an excluded schema, or is a partition or a child of a table
-> there, the restore fails. Exclude such schemas on dump instead: the dump checks this case before it starts.
+> there, the restore stops with the error `EXCLUDED_SCHEMA_DEPENDENCY`. Exclude these tables too, or keep the schema.
 
 ### Run example
 ```commandline
@@ -152,13 +168,52 @@ pg_anon restore \
 
 ---
 
+## Foreign keys
+
+In all restore modes, data is loaded with foreign key checks turned off.
+
+`restore` creates foreign keys after the data is loaded. A key can point to a table that does not have all its rows
+in the dump:
+
+- the table has no data in the dump, for example, it is in `dictionary_exclude`;
+- some partitions of the table are left out;
+- the table is dumped with `sql_condition` or `raw_sql`.
+
+Then the rows may not match the key, and `pg_anon` creates such a key in this order:
+
+1. As usual. If all rows match, it is a usual checked key.
+2. If the server does not accept it, as `NOT VALID`: the server checks only new rows. The log shows a warning.
+3. If the server does not accept this too, the key is not created. The log shows a warning.
+
+What to do:
+
+- `NOT VALID` key: load the missing rows, then run `ALTER TABLE ... VALIDATE CONSTRAINT ...`.
+- Key that is not created: make the rows of the two tables match, then create the key by hand.
+
+PostgreSQL 11–17 cannot create a `NOT VALID` foreign key on a partitioned table. So if the rows do not match, such
+a key is not created. On PostgreSQL 18 it is created as `NOT VALID`.
+
+`sync-data-restore` loads data into tables that already have their keys, and does not check these keys again. The
+loaded rows may not match them. The log shows a warning with the number of such keys. To check a key without changes
+in the database, add a copy of it in a transaction and roll it back:
+
+```sql
+BEGIN;
+ALTER TABLE app.orders ADD CONSTRAINT orders_client_fk_check
+    FOREIGN KEY (client_id) REFERENCES app.clients (id);
+ROLLBACK;
+```
+
+If the rows do not match, `ALTER TABLE` fails and shows the first row that does not match.
+
+---
+
 ## Checks during restore
 
 - **Missing tables.** Before data loading, `pg_anon` checks that the target has all tables to restore. If not,
-  the restore stops and no data is loaded. Without `--clean-db`, extra tables in the target are fine.
-- **Foreign keys to tables without data.** If the dump has no data for the table that a foreign key points to,
-  but the table with the key has rows, the key is created as `NOT VALID`: new rows are checked, old rows are not. The log lists such keys. Load the
-  missing data and run `ALTER TABLE ... VALIDATE CONSTRAINT ...`.
+  the restore stops and no data is loaded.
+- **Extra tables.** Without `--clean-db`, extra tables in the target are fine. With `--clean-db`, `restore` stops
+  with `TARGET_HAS_EXTRA_TABLES`: `--clean-db` does not drop tables that are not in the dump.
 
 ---
 
