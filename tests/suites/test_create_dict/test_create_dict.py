@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .conftest import input_dict, output_dict
+from .conftest import input_dict, output_dict, output_path
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
 from pg_anon.common.constants import SAVED_DICTS_INFO_FILE_NAME
@@ -151,6 +151,52 @@ async def test_create_dict_default_func_covers_all_sens_types(source_db, db_para
     for rule in sens["dictionary"]:
         for func in rule.get("fields", {}).values():
             assert "default" in func, f"rule {rule} did not use default func"
+
+
+async def test_create_dict_case_when_func_masks_data_in_dump(source_db, db_manager, db_params, pg_anon_runner):
+    sens_out = output_dict("case_when_func.json")
+    res = await PgAnonApp(
+        _options(db_params, source_db, meta_dicts=[input_dict("meta_case_when_func.py")], sens_out=sens_out)
+    ).run()
+    assert res.result_code == ResultCode.DONE
+    assert _has_rule(_load_json(sens_out), "hr", "employee", "phone")
+
+    out = output_path("case_when_func")
+    res = await pg_anon_runner.run(
+        "dump",
+        source_db,
+        [
+            f"--prepared-sens-dict-file={sens_out}",
+            f"--output-dir={out}",
+            f"--db-connections-per-process={db_params.db_connections_per_process}",
+            "--clear-output-dir",
+        ],
+    )
+    assert res.result_code == ResultCode.DONE
+
+    target = "pg_anon_create_dict_case_tgt"
+    await db_manager.create_db(target)
+    try:
+        res = await pg_anon_runner.run(
+            "restore",
+            target,
+            [
+                f"--db-connections-per-process={db_params.db_connections_per_process}",
+                f"--input-dir={out}",
+                "--drop-custom-check-constr",
+            ],
+        )
+        assert res.result_code == ResultCode.DONE
+
+        query = "SELECT id, phone FROM hr.employee ORDER BY id"
+        expected = [
+            (r["id"], None if r["phone"] is None else r["phone"][:2] + "0000000000" + r["phone"][-2:])
+            for r in await db_manager.fetch(source_db, query)
+        ]
+        assert any(phone is None for _, phone in expected), "fixture sanity: some phones must be NULL"
+        assert [(r["id"], r["phone"]) for r in await db_manager.fetch(target, query)] == expected
+    finally:
+        await db_manager.drop_db(target)
 
 
 async def test_create_dict_rescan_with_prepared_no_sens_skips_known_safe(source_db, db_params):

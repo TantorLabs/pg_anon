@@ -689,8 +689,7 @@ class CreateDictMode:
             else:
                 hash_func = meta_dictionary_obj["funcs"].get("default", DEFAULT_HASH_FUNC)
 
-        if hash_func.find("%s") != -1:
-            hash_func = hash_func % field_info.column_name
+        hash_func = hash_func.replace("%s", field_info.column_name)
 
         if field_info.tbl_id not in prepared_sens_dict_rules:
             prepared_sens_dict_rules[field_info.tbl_id] = {
