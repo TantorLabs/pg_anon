@@ -102,7 +102,8 @@ def read_toc_entries(pg_restore: str, backup_path: str | Path, env: dict[str, st
         for raw_line in proc.stdout:
             line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
             if match := _TOC_ENTRY_HEADER_RE.match(line):
-                entries.append(TocEntry(*(int(value) for value in match.groups())))
+                toc_id, classid, objid = map(int, match.groups())
+                entries.append(TocEntry(toc_id, classid, objid))
             elif entries and (match := _TOC_DEPENDENCIES_RE.match(line)):
                 entries[-1].dependencies = [int(value) for value in match.group(1).split()]
 
@@ -125,6 +126,12 @@ def entry_id(line: str) -> int | None:
     """Read the id of a TOC entry."""
     match = _ENTRY_ID_RE.match(line)
     return int(match.group(1)) if match else None
+
+
+def entry_tables_of(entry_tables: dict[int, list[tuple[str, str]]], line: str) -> list[tuple[str, str]]:
+    """Return the dump tables of a TOC entry line."""
+    entry = entry_id(line)
+    return entry_tables.get(entry, []) if entry is not None else []
 
 
 def entry_ids(lines: Iterable[str]) -> set[int]:

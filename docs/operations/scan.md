@@ -33,6 +33,25 @@ pg_anon create-dict \
 
 ---
 
+## Scan modes
+
+**Partial mode** (`--scan-mode partial`, default) reads the first `--scan-partial-rows` rows where the field is not NULL.
+It reads rows in the order of table storage. On unchanged data, each run reads the same rows.
+
+**Full mode** (`--scan-mode full`) reads all values of each field.
+
+New rows are often at the end of a big table. Partial mode can miss them.
+Use full mode when you need a full check.
+
+For an automated pipeline:
+- Pass the previous sensitive dictionary as `--prepared-sens-dict-file`. Then fields found earlier are not lost.
+- Run a full scan from time to time.
+
+Tables and fields in the output dictionaries are sorted. Tables are sorted by schema and table name.
+Fields are sorted by column position.
+
+---
+
 ## Options
 
 ### Common pg_anon options:

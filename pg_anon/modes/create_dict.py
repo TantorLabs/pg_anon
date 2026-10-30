@@ -30,6 +30,10 @@ from pg_anon.common.utils import (
 from pg_anon.context import Context
 
 
+def _field_sort_key(field_info: FieldInfo) -> tuple[str, str, int]:
+    return field_info.nspname, field_info.relname, field_info.attnum
+
+
 class CreateDictMode:
     def __init__(self, context: Context) -> None:
         self.context = context
@@ -529,7 +533,20 @@ class CreateDictMode:
         base_field_type = get_base_field_type(field_info)
         return base_field_type in dictionary_obj["sens_pg_types"]
 
-    async def _scan_obj_func(
+    async def _scan_partial_data(
+        self, connection: Connection, name: str, dictionary_obj: dict, field_info: FieldInfo, query: str
+    ) -> dict:
+        fld_data = await connection.fetch(query)
+        return await self._check_sensitive_data_in_fld(
+            connection=connection,
+            name=name,
+            dictionary_obj=dictionary_obj,
+            create_dict_matches=self.context.create_dict_sens_matches,
+            field_info=field_info,
+            fld_data=setof_to_list(fld_data),
+        )
+
+    async def _scan_obj_func(  # noqa: C901
         self,
         name: str,
         pool: Pool,
@@ -568,15 +585,13 @@ class CreateDictMode:
                     query = get_data_from_field_query(
                         field_info=field_info, limit=scan_partial_rows, condition=condition
                     )
-                    fld_data = await db_conn.fetch(query)
-                    res = await self._check_sensitive_data_in_fld(
-                        connection=db_conn,
-                        name=name,
-                        dictionary_obj=dictionary_obj,
-                        create_dict_matches=self.context.create_dict_sens_matches,
-                        field_info=field_info,
-                        fld_data=setof_to_list(fld_data),
-                    )
+                    if condition:
+                        # A parallel plan under LIMIT returns rows in random order
+                        async with db_conn.transaction():
+                            await db_conn.execute("SET LOCAL max_parallel_workers_per_gather = 0")
+                            res = await self._scan_partial_data(db_conn, name, dictionary_obj, field_info, query)
+                    else:
+                        res = await self._scan_partial_data(db_conn, name, dictionary_obj, field_info, query)
                 elif scan_mode == ScanMode.FULL:
                     async with db_conn.transaction(isolation="repeatable_read", readonly=True):
                         query = get_data_from_field_query(field_info=field_info, condition=condition)
@@ -614,9 +629,14 @@ class CreateDictMode:
     async def _run_scan_tasks(self, fields_info_list: list[FieldInfo]) -> list:  # noqa: C901
         self.context.logger.info("Using %s concurrent connections", self.context.options.db_connections_per_process)
 
+        server_settings = self.context.server_settings
+        if self.context.options.scan_mode == ScanMode.PARTIAL:
+            # Keeps the first rows of a big table the same for all scan tasks
+            server_settings = {**server_settings, "synchronize_seqscans": "off"}
+
         pool = await create_pool(
             connection_params=self.context.connection_params,
-            server_settings=self.context.server_settings,
+            server_settings=server_settings,
             min_size=self.context.options.db_connections_per_process,
             max_size=self.context.options.db_connections_per_process,
         )
@@ -717,12 +737,11 @@ class CreateDictMode:
         if not fields_info:
             raise PgAnonError(ErrorCode.NO_OBJECTS_FOR_SCAN, "No objects for scan!")
 
-        self._scan_fields_by_names(
-            fields_info
-        )  # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
+        # fill self.context.create_dict_sens_matches and self.context.create_dict_no_sens_matches
+        self._scan_fields_by_names(fields_info)
 
-        # create output dict
         prepared_sens_dict_rules: dict = {}
+        scanned_sens_fields: list[FieldInfo] = []
         need_prepare_no_sens_dict: bool = bool(self.context.options.output_no_sens_dict_file)
 
         if fields_info:
@@ -731,16 +750,15 @@ class CreateDictMode:
             # Fill results based on scan tasks
             for res in scan_results:
                 for field_info in res.values():
-                    prepared_sens_dict_rules = self._prepare_sens_dict_rule(
-                        self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
-                    )
+                    scanned_sens_fields.append(field_info)
                     if need_prepare_no_sens_dict:
                         del fields_info[field_info.obj_id]
 
         # ============================================================================================
         # Fill results based on check_sensitive_fld_names
         # ============================================================================================
-        for field_info in self.context.create_dict_sens_matches.values():
+        sens_fields = scanned_sens_fields + list(self.context.create_dict_sens_matches.values())
+        for field_info in sorted(sens_fields, key=_field_sort_key):
             prepared_sens_dict_rules = self._prepare_sens_dict_rule(
                 self.context.meta_dictionary_obj, field_info, prepared_sens_dict_rules
             )
@@ -758,10 +776,8 @@ class CreateDictMode:
         if need_prepare_no_sens_dict:
             prepared_no_sens_dict_rules: dict = {}
 
-            for field_info in self.context.create_dict_no_sens_matches.values():
-                prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(field_info, prepared_no_sens_dict_rules)
-
-            for field_info in fields_info.values():
+            no_sens_fields = list(self.context.create_dict_no_sens_matches.values()) + list(fields_info.values())
+            for field_info in sorted(no_sens_fields, key=_field_sort_key):
                 prepared_no_sens_dict_rules = self._prepare_no_sens_dict_rule(field_info, prepared_no_sens_dict_rules)
 
             output_no_sens_dict = {"no_sens_dictionary": list(prepared_no_sens_dict_rules.values())}

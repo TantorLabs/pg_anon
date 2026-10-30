@@ -9,7 +9,7 @@ from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
 
 
-def _options(db_params, db_name, *, meta_dicts, sens_out, no_sens_out=None):
+def _options(db_params, db_name, *, meta_dicts, sens_out, no_sens_out=None, scan_mode="full", db_connections=None):
     args = [
         "create-dict",
         f"--db-host={db_params.test_db_host}",
@@ -18,10 +18,10 @@ def _options(db_params, db_name, *, meta_dicts, sens_out, no_sens_out=None):
         f"--db-port={db_params.test_db_port}",
         f"--db-user-password={db_params.test_db_user_password}",
         f"--config={db_params.test_config}",
-        "--scan-mode=full",
+        f"--scan-mode={scan_mode}",
         f"--meta-dict-file={','.join(meta_dicts)}",
         f"--output-sens-dict-file={sens_out}",
-        f"--db-connections-per-process={db_params.db_connections_per_process}",
+        f"--db-connections-per-process={db_connections or db_params.db_connections_per_process}",
         "--scan-partial-rows=5000",
         "--debug",
     ]
@@ -267,3 +267,93 @@ async def test_variant_type_aliases_complex_handles_whitespace_and_precision(sou
     assert used & complex_markers, (
         f"no complex-alias func picked up — normalization likely broken; observed markers: {used}"
     )
+
+
+async def test_variant_partial_scan_turns_off_synchronized_seqscans(source_db, db_params):
+    def options(scan_mode, sens_out):
+        return _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_seqscan_sync.py")],
+            sens_out=sens_out,
+            scan_mode=scan_mode,
+        )
+
+    partial_out = output_dict("variant_seqscan_sync_partial.json")
+    res = await PgAnonApp(options("partial", partial_out)).run()
+    assert res.result_code == ResultCode.DONE
+    partial_idx = _rules_index(_load(partial_out))
+    assert "email" in partial_idx.get(("hr", "employee"), {}), "partial scan must run with synchronize_seqscans = off"
+
+    full_out = output_dict("variant_seqscan_sync_full.json")
+    res = await PgAnonApp(options("full", full_out)).run()
+    assert res.result_code == ResultCode.DONE
+    assert not _rules_index(_load(full_out)), "full scan must keep the default synchronize_seqscans"
+
+
+async def test_variant_partial_scan_data_sql_condition_turns_off_parallel_plan(source_db, db_params):
+    sens_out = output_dict("variant_parallel_off_condition.json")
+    res = await PgAnonApp(
+        _options(
+            db_params,
+            source_db,
+            meta_dicts=[input_dict("meta_parallel_off_condition.py")],
+            sens_out=sens_out,
+            scan_mode="partial",
+        )
+    ).run()
+    assert res.result_code == ResultCode.DONE
+
+    idx = _rules_index(_load(sens_out))
+    assert "phone" in idx.get(("hr", "employee"), {}), (
+        "table with data_sql_condition must scan without parallel workers"
+    )
+    assert ("billing", "customer") not in idx, "table without data_sql_condition must keep the default parallel setting"
+
+
+async def test_variant_partial_scan_output_is_sorted_and_same_for_any_connections(source_db, db_manager, db_params):
+    outputs = {}
+    for connections in (1, 4):
+        sens_out = output_dict(f"variant_sorted_sens_{connections}.json")
+        no_sens_out = output_dict(f"variant_sorted_no_sens_{connections}.json")
+        res = await PgAnonApp(
+            _options(
+                db_params,
+                source_db,
+                meta_dicts=[input_dict("meta_basic.py")],
+                sens_out=sens_out,
+                no_sens_out=no_sens_out,
+                scan_mode="partial",
+                db_connections=connections,
+            )
+        ).run()
+        assert res.result_code == ResultCode.DONE
+        outputs[connections] = (Path(sens_out).read_bytes(), Path(no_sens_out).read_bytes())
+
+    assert outputs[1][0] == outputs[4][0], "sens dict must not depend on --db-connections-per-process"
+    assert outputs[1][1] == outputs[4][1], "no-sens dict must not depend on --db-connections-per-process"
+
+    attnums = {
+        (r["nspname"], r["relname"], r["attname"]): r["attnum"]
+        for r in await db_manager.fetch(
+            source_db,
+            """
+            SELECT n.nspname, c.relname, a.attname, a.attnum
+              FROM pg_attribute a
+              JOIN pg_class c ON c.oid = a.attrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE a.attnum > 0 AND NOT a.attisdropped
+            """,
+        )
+    }
+    sens_rules = json.loads(outputs[1][0])["dictionary"]
+    no_sens_rules = json.loads(outputs[1][1])["no_sens_dictionary"]
+    assert any(len(rule["fields"]) > 1 for rule in sens_rules), "fixture sanity: a table must have several sens fields"
+
+    for rules in (sens_rules, no_sens_rules):
+        tables = [(rule["schema"], rule["table"]) for rule in rules]
+        assert tables == sorted(tables), "tables must be sorted by schema and table"
+        for rule in rules:
+            fields = list(rule["fields"])
+            by_attnum = sorted(fields, key=lambda f: attnums[(rule["schema"], rule["table"], f)])
+            assert fields == by_attnum, f"fields of {rule['schema']}.{rule['table']} must be sorted by attnum"

@@ -40,6 +40,7 @@ from pg_anon.common.toc import (
     CUSTOM_OBJECTS_ENTRY_RE,
     entry_id,
     entry_ids,
+    entry_tables_of,
     entry_title,
     EXTENSION_ENTRY_RE,
     failed_entry_ids,
@@ -483,7 +484,7 @@ class RestoreMode:
             kept_lines: list[str] = []
             for toc_line in read_toc_lines(self.context.pg_restore, backup_path):
                 entry = entry_id(toc_line)
-                tables = entry_tables.get(entry, [])
+                tables = entry_tables_of(entry_tables, toc_line)
                 if entry in skipped_ids or any(table in excluded for table in tables):
                     if entry not in schema_ids:
                         self._note_lost_entry(toc_line, dropped_tables, lost)
@@ -563,7 +564,7 @@ class RestoreMode:
             entry = entry_id(toc_line)
             if entry in skipped_ids:
                 skipped_lines.append(toc_line)
-            elif any(table in excluded for table in entry_tables.get(entry, [])):
+            elif any(table in excluded for table in entry_tables_of(entry_tables, toc_line)):
                 dependent_lines.append(toc_line)
         return skipped_lines, dependent_lines
 
@@ -1504,7 +1505,7 @@ class RestoreMode:
             entry_tables, _ = self._toc_dependencies("pre_data")
             self._needed_tables = {}
             for toc_line in read_toc_lines(self.context.pg_restore, self.input_dir / "pre_data.backup"):
-                tables = entry_tables.get(entry_id(toc_line), [])
+                tables = entry_tables_of(entry_tables, toc_line)
                 # the table of a TABLE entry goes first in its list
                 if is_table_entry(toc_line) and tables:
                     self._needed_tables[tables[0]] = set(tables[1:])
@@ -1696,7 +1697,7 @@ class RestoreMode:
     def _check_dump_version(self) -> None:
         """Stop when a file of the dump needs a newer pg_anon than this one."""
         current = parse_version(__version__)
-        for file_name, min_version in self._min_pg_anon_versions.items():
+        for _, min_version in self._min_pg_anon_versions.items():
             required = parse_version(min_version)
             if required is None or current is None or required <= current:
                 continue
@@ -1722,7 +1723,7 @@ class RestoreMode:
         unknown = [
             toc_line
             for toc_line in table_lines
-            if not (tables := entry_tables.get(entry_id(toc_line))) or not table_entry_matches(toc_line, *tables[0])
+            if not (tables := entry_tables_of(entry_tables, toc_line)) or not table_entry_matches(toc_line, *tables[0])
         ]
         if not unknown:
             return

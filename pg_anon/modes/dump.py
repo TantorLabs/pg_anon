@@ -827,7 +827,7 @@ class DumpMode:
             return
 
         self._graph = await get_dependency_graph(connection)
-        kept_tables, excluded_tables = self._split_tables()
+        kept_tables, excluded_tables = self._split_tables(self._graph)
         self._dump_tables = self._graph.table_nodes(kept_tables)
 
         dependents = set()
@@ -897,10 +897,10 @@ class DumpMode:
             format_names_summary(names, "object", limit=5),
         )
 
-    def _split_tables(self) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]:
+    def _split_tables(self, graph: DependencyGraph) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]:
         """Split the tables into kept and excluded ones; a list entry for a parent table covers its child tables."""
-        tables = {table for table in self._graph.tables().values() if table[0] not in self.context.exclude_schemas}
-        partitioned = {(schema, name) for kind, schema, name in self._graph.relations.values() if kind == "p"}
+        tables = {table for table in graph.tables().values() if table[0] not in self.context.exclude_schemas}
+        partitioned = {(schema, name) for kind, schema, name in graph.relations.values() if kind == "p"}
         ancestors = {table: self._table_ancestors[table] for table in tables if table in self._table_ancestors}
         white_rules, black_rules = self.context.included_tables_rules, self.context.excluded_tables_rules
         kept, black_listed, white_listed = filter_db_tables(sorted(tables), white_rules, black_rules, ancestors)
@@ -909,7 +909,7 @@ class DumpMode:
         parents = {parent for table in white_listed for parent in ancestors.get(table, [])}
         kept_tables |= parents & tables
 
-        all_tables = set(self._graph.tables().values())
+        all_tables = set(graph.tables().values())
         warn_rules_without_tables(black_rules, all_tables, "Exclude list", "the database")
         warn_rules_without_tables(white_rules, all_tables, "Include list", "the database")
         log_rules_for_parent_tables(black_rules, tables, ancestors, "excluded")

@@ -142,6 +142,22 @@ class Fixtures:
                 );
             END;
             $fn$ LANGUAGE plpgsql;
+
+            CREATE OR REPLACE FUNCTION anon_ext.is_seqscan_sync_off(
+                schema_name TEXT, table_name TEXT, field_name TEXT, field_type TEXT
+            ) RETURNS boolean AS $fn$
+            BEGIN
+                RETURN current_setting('synchronize_seqscans') = 'off';
+            END;
+            $fn$ LANGUAGE plpgsql;
+
+            CREATE OR REPLACE FUNCTION anon_ext.is_parallel_scan_off(
+                schema_name TEXT, table_name TEXT, field_name TEXT, field_type TEXT
+            ) RETURNS boolean AS $fn$
+            BEGIN
+                RETURN current_setting('max_parallel_workers_per_gather') = '0';
+            END;
+            $fn$ LANGUAGE plpgsql;
         """,
         )
 
