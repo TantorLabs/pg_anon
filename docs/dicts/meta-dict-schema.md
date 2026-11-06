@@ -32,18 +32,33 @@ To make it easier to navigate, each section of the meta-dictionary is described 
 
 ## Scan priority
 
-| Priority | Meta-dictionary section                                                                                                                               | Required | Description                                                               |
-|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|----------|---------------------------------------------------------------------------|
-| 1        | [skip_rules](#1-section-skip_rules) + [include_rules](#2-section-include_rules)                                                                       | No       | Narrow the set of fields to be scanned                                    |
-| 2        | Fields from [sensitive dictionary](sens-dict-schema.md) + [field](#3-section-field) + fields from [non-sensitive Dictionary](non-sens-dict-schema.md) | No       | Match by field names. Does not inspect data inside tables                 |
-| 3        | [sens_pg_types](#4-section-sens_pg_types)                                                                                                             | No       | Match by field type. Types not included in this section are ignored       |
-| 4        | [data_sql_condition](#5-section-data_sql_condition)                                                                                                   | No       | Narrow the dataset to be scanned for specific tables using SQL conditions |
-| 5        | [data_func](#6-section-data_func)                                                                                                                     | No       | Match data by custom data-scanning functions                              |
-| 6        | [data_const](#7-section-data_const)                                                                                                                   | No       | Match data by constant values                                             |
-| 7        | [data_regex](#8-section-data_regex)                                                                                                                   | No       | Match data by regular expressions                                         |
-| 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign masking functions according to detected data type            |
+| Priority | Meta-dictionary section                                                                                                                               | Required | Description                                                                    |
+|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------------------------------------------------------------------------------|
+| 1        | [skip_rules](#1-section-skip_rules) + [include_rules](#2-section-include_rules)                                                                       | No       | Narrow the set of fields to be scanned                                         |
+| 2        | Fields from [sensitive dictionary](sens-dict-schema.md) + [field](#3-section-field) + fields from [non-sensitive Dictionary](non-sens-dict-schema.md) | No       | Match by field names. Does not inspect data inside tables                      |
+| 3        | [sens_pg_types](#4-section-sens_pg_types)                                                                                                             | No       | Match by field type. Types not included in this section are ignored            |
+| 4        | [data_sql_condition](#5-section-data_sql_condition)                                                                                                   | No       | Narrow the dataset to be scanned for specific tables using SQL conditions      |
+| 5        | [data_func](#6-section-data_func)                                                                                                                     | No       | Match data by custom data-scanning functions                                   |
+| 6        | [data_const](#7-section-data_const)                                                                                                                   | No       | Match data by constant values                                                  |
+| 7        | [data_regex](#8-section-data_regex)                                                                                                                   | No       | Match data by regular expressions                                              |
+| 8        | [funcs](#9-section-funcs)                                                                                                                             | No       | Assign masking functions by field type, if the matched rule has no `anon_func` |
 
 ![scan_workflow.png](../../images/scan_workflow.png)
+
+---
+
+## Search rules: string or object
+
+In [field](#3-section-field), [data_const](#7-section-data_const) and [data_regex](#8-section-data_regex)
+each item of a rule list is a string or an object:
+
+| Item form                                   | Masking function of the found field               |
+|---------------------------------------------|---------------------------------------------------|
+| `"<rule>"`                                  | from [funcs](#9-section-funcs) by field type      |
+| `{"rule": "<rule>", "anon_func": "<func>"}` | `anon_func`; `%s` is replaced with the field name |
+
+1. In an object both keys are required, other keys are not allowed. `anon_func` must be a non-empty string
+2. If an item is not valid, or a rule list is not a list, the scan stops with the error `INVALID_META_DICT`
 
 ---
 
@@ -236,18 +251,21 @@ Useful when already known fields contains sensitive data (e.g., email, password)
     "field": {
         "rules": [
             "<field_name_regex: string>",
+            {"rule": "<field_name_regex: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ],
         "constants": [
             "<field_name: string>",
+            {"rule": "<field_name: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     }
 }
 ```
 | Key          | Meaning                                                                                      |
 |--------------|----------------------------------------------------------------------------------------------|
-| `rules`      | List of regex patterns. Field names matching these patterns are always considered sensitive. |
+| `rules`      | List of regular expressions. Field names matching these expressions are always considered sensitive. |
 | `constants`  | Exact field names to be treated as sensitive.                                                |
 
+Items of `rules` and `constants` are [search rules](#search-rules-string-or-object): `rule` is a regular expression in `rules` and an exact field name in `constants`.
 
 ### ⚙️ Using this section
 
@@ -257,11 +275,11 @@ Useful when already known fields contains sensitive data (e.g., email, password)
     "field": {
         "rules": [
             "^client_",
-            ".*phone.*"
+            {"rule": ".*phone.*", "anon_func": "anon_funcs.partial(\"%s\",1,'******',2)"}
         ],
         "constants": [
             "password",
-            "email"
+            {"rule": "email", "anon_func": "anon_funcs.partial_email(\"%s\")"}
         ]
     }
 }
@@ -514,9 +532,11 @@ Detect sensitive fields by matching full or partial constants.
     "data_const": {
         "constants": [
             "<field_value_full: string>",
+            {"rule": "<field_value_full: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ],
         "partial_constants": [
             "<field_value_partial: string>",
+            {"rule": "<field_value_partial: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     }
 }
@@ -530,6 +550,8 @@ Detect sensitive fields by matching full or partial constants.
 > 
 > Must be specified one of `constants` or `partial_constants` 
 
+Items of `constants` and `partial_constants` are [search rules](#search-rules-string-or-object): `rule` is a full field value in `constants` and a substring in `partial_constants`.
+
 ### ⚙️ Using this section
 
 **📘 Example meta-dictionary**
@@ -540,7 +562,7 @@ Detect sensitive fields by matching full or partial constants.
             "done",
         ],
         "partial_constants": [
-            "@example.com",
+            {"rule": "@example.com", "anon_func": "anon_funcs.partial_email(\"%s\")"},
         ]
     }
 }
@@ -579,10 +601,13 @@ Detect sensitive data by scanning field values using regular expressions.
     "data_regex": {
         "rules": [
             "<regex_rule: string>",
+            {"rule": "<regex_rule: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     }
 }
 ```
+Items of `rules` are [search rules](#search-rules-string-or-object): `rule` is a regular expression.
+
 
 ### ⚙️ Using this section
 
@@ -592,7 +617,7 @@ Detect sensitive data by scanning field values using regular expressions.
     "data_regex": {
         "rules": [
             """[A-Za-z0-9]+([._-][A-Za-z0-9]+)*@[A-Za-z0-9-]+(\.[A-Za-z]{2,})+""",  # email
-            "^(7?\d{10})$",				# phone 7XXXXXXXXXX
+            {"rule": "^(7?\d{10})$", "anon_func": "anon_funcs.partial(\"%s\",1,'******',2)"},  # phone 7XXXXXXXXXX
         ]
     }
 }
@@ -690,9 +715,11 @@ Configure masking functions per PostgreSQL type.
     "field": {
         "rules": [
             "<field_name_regex: string>",
+            {"rule": "<field_name_regex: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ],
         "constants": [
             "<field_name: string>",
+            {"rule": "<field_name: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     },
     "sens_pg_types": [
@@ -726,14 +753,17 @@ Configure masking functions per PostgreSQL type.
     "data_const": {
         "constants": [
             "<field_value_full: string>",
+            {"rule": "<field_value_full: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ],
         "partial_constants": [
             "<field_value_partial: string>",
+            {"rule": "<field_value_partial: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     },
     "data_regex": {
         "rules": [
             "<regex_rule: string>",
+            {"rule": "<regex_rule: string>", "anon_func": "<masking_rule_template_for_field: string>"},
         ]
     },
     "funcs": {

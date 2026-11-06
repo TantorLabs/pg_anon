@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from pg_anon.common.constants import (
@@ -10,7 +11,7 @@ from pg_anon.common.constants import (
     SERVER_SETTINGS,
     TRANSACTIONS_SERVER_SETTINGS,
 )
-from pg_anon.common.dto import ConnectionParams, RunOptions
+from pg_anon.common.dto import ConnectionParams, RunOptions, SearchRule
 from pg_anon.common.enums import AnonMode, VerboseOptions
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
@@ -23,6 +24,68 @@ from pg_anon.common.utils import (
     split_constants_to_words_and_phrases,
 )
 from pg_anon.logger import get_logger, logger_add_file_handler, logger_set_log_level
+
+
+def _parse_search_rules(items: object, section: str) -> list[SearchRule]:
+    """Read a list of search rules: strings or objects with "rule" and "anon_func"."""
+    if not isinstance(items, list | tuple | set):
+        raise PgAnonError(ErrorCode.INVALID_META_DICT, f'Meta dict section "{section}" must be a list')
+
+    rules = []
+    for item in items:
+        if isinstance(item, str):
+            rules.append(SearchRule(item))
+        elif (
+            isinstance(item, dict)
+            and item.keys() == {"rule", "anon_func"}
+            and isinstance(item["rule"], str)
+            and isinstance(item["anon_func"], str)
+            and item["anon_func"].strip()
+        ):
+            rules.append(SearchRule(item["rule"], item["anon_func"]))
+        else:
+            raise PgAnonError(
+                ErrorCode.INVALID_META_DICT,
+                f'Meta dict section "{section}" has a wrong item: {item!r}. '
+                'Use a string or an object {"rule": "<string>", "anon_func": "<string>"}',
+            )
+    return rules
+
+
+def _next_rule(previous: SearchRule | None, rule: str | re.Pattern, anon_func: str | None) -> SearchRule:
+    """Make a rule that goes right after the previous rule of the same list."""
+    if previous is None:
+        return SearchRule(rule, anon_func)
+
+    other_func_above = previous.position if previous.anon_func != anon_func else previous.other_func_above
+    return SearchRule(rule, anon_func, previous.position + 1, other_func_above)
+
+
+def _extend_rules(target: list[SearchRule], rules: list[SearchRule], compile_flags: int | None = None) -> None:
+    """Add rules to the end of the list; compile them as regular expressions when flags are given."""
+    for rule in rules:
+        value = rule.rule if compile_flags is None else safe_compile(rule.rule, compile_flags)
+        target.append(_next_rule(target[-1] if target else None, value, rule.anon_func))
+
+
+def _extend_constant_rules(target: dict[str, SearchRule], rules: dict[str, SearchRule]) -> None:
+    """Add constants to the end of the ordered map."""
+    last = next(reversed(target.values()), None)
+    for key, rule in rules.items():
+        # A repeated constant never wins over its first place
+        if key not in target:
+            last = _next_rule(last, key, rule.anon_func)
+            target[key] = last
+
+
+def _make_constant_rules(rules: list[SearchRule], normalize: Callable[[str], str]) -> dict[str, SearchRule]:
+    """Map normalized constants to their rules; the first place of a constant wins."""
+    result: dict[str, SearchRule] = {}
+    for rule in rules:
+        key = normalize(rule.rule)
+        if key not in result:
+            result[key] = SearchRule(key, rule.anon_func)
+    return result
 
 
 class Context:
@@ -80,7 +143,8 @@ class Context:
             and isinstance(meta_dict["data_regex"]["rules"], list)
             and isinstance(meta_dict["data_const"]["constants"]["words"], set)
             and isinstance(meta_dict["data_const"]["constants"]["phrases"], set)
-            and isinstance(meta_dict["data_const"]["partial_constants"], set)
+            and isinstance(meta_dict["data_const"]["constant_rules"], dict)
+            and isinstance(meta_dict["data_const"]["partial_constant_rules"], dict)
             and isinstance(meta_dict["data_func"], dict)
             and isinstance(meta_dict["data_sql_condition"], list)
             and isinstance(meta_dict["sens_pg_types"], list)
@@ -91,42 +155,52 @@ class Context:
 
     def _make_meta_dict(self, meta_dict_data: dict | None = None) -> dict:
         """Make meta dict in expected format, from meta dict data."""
-        constants = (meta_dict_data or {}).get("data_const", {}).get("constants", [])
-        constants_words, constants_phrases = split_constants_to_words_and_phrases(constants)
+        data = meta_dict_data or {}
+        field = data.get("field", {})
+        data_const = data.get("data_const", {})
+
+        constant_rules = _make_constant_rules(
+            _parse_search_rules(data_const.get("constants", []), "data_const.constants"),
+            lambda v: v.strip().lower(),
+        )
+        partial_constant_rules = _make_constant_rules(
+            _parse_search_rules(data_const.get("partial_constants", []), "data_const.partial_constants"),
+            str.lower,
+        )
+        constants_words, constants_phrases = split_constants_to_words_and_phrases(list(constant_rules))
 
         return {
             "field": {
-                "rules": (meta_dict_data or {}).get("field", {}).get("rules", []),
-                "constants": (meta_dict_data or {}).get("field", {}).get("constants", []),
+                "rules": _parse_search_rules(field.get("rules", []), "field.rules"),
+                "constants": _parse_search_rules(field.get("constants", []), "field.constants"),
             },
-            "skip_rules": (meta_dict_data or {}).get("skip_rules", []),
-            "include_rules": (meta_dict_data or {}).get("include_rules", []),
+            "skip_rules": data.get("skip_rules", []),
+            "include_rules": data.get("include_rules", []),
             "data_regex": {
-                "rules": (meta_dict_data or {}).get("data_regex", {}).get("rules", []),
+                "rules": _parse_search_rules(data.get("data_regex", {}).get("rules", []), "data_regex.rules"),
             },
             "data_const": {
                 "constants": {
                     "words": constants_words,
                     "phrases": constants_phrases,
                 },
-                "partial_constants": set((meta_dict_data or {}).get("data_const", {}).get("partial_constants", [])),
+                # Order of constants for the search: constant -> rule with its position and anon_func
+                "constant_rules": constant_rules,
+                "partial_constant_rules": partial_constant_rules,
             },
-            "data_func": (meta_dict_data or {}).get("data_func", {}),
-            "data_sql_condition": (meta_dict_data or {}).get("data_sql_condition", []),
-            "sens_pg_types": (meta_dict_data or {}).get("sens_pg_types", []),
-            "funcs": (meta_dict_data or {}).get("funcs", {}),
-            "no_sens_dictionary": (meta_dict_data or {}).get("no_sens_dictionary", []),
+            "data_func": data.get("data_func", {}),
+            "data_sql_condition": data.get("data_sql_condition", []),
+            "sens_pg_types": data.get("sens_pg_types", []),
+            "funcs": data.get("funcs", {}),
+            "no_sens_dictionary": data.get("no_sens_dictionary", []),
         }
 
     def _append_meta_dict(self, meta_dict: dict) -> None:  # noqa: C901, PLR0912
         """Append meta dict to existing meta dict."""
         self._check_meta_dict_types(meta_dict)
 
-        if meta_dict["field"]["rules"]:
-            self.meta_dictionary_obj["field"]["rules"].extend([safe_compile(v) for v in meta_dict["field"]["rules"]])
-
-        if meta_dict["field"]["constants"]:
-            self.meta_dictionary_obj["field"]["constants"].extend(meta_dict["field"]["constants"])
+        _extend_rules(self.meta_dictionary_obj["field"]["rules"], meta_dict["field"]["rules"], compile_flags=0)
+        _extend_rules(self.meta_dictionary_obj["field"]["constants"], meta_dict["field"]["constants"])
 
         if meta_dict["skip_rules"]:
             self.meta_dictionary_obj["skip_rules"].extend(meta_dict["skip_rules"])
@@ -134,11 +208,8 @@ class Context:
         if meta_dict["include_rules"]:
             self.meta_dictionary_obj["include_rules"].extend(meta_dict["include_rules"])
 
-        if meta_dict["data_regex"]["rules"]:
-            # re.DOTALL using for searching in text with \n
-            self.meta_dictionary_obj["data_regex"]["rules"].extend(
-                [safe_compile(v, re.DOTALL) for v in meta_dict["data_regex"]["rules"]]
-            )
+        # re.DOTALL using for searching in text with \n
+        _extend_rules(self.meta_dictionary_obj["data_regex"]["rules"], meta_dict["data_regex"]["rules"], re.DOTALL)
 
         if meta_dict["data_const"]["constants"]["words"]:
             self.meta_dictionary_obj["data_const"]["constants"]["words"].update(
@@ -153,10 +224,13 @@ class Context:
                 meta_dict["data_const"]["constants"]["phrases"]
             )
 
-        if meta_dict["data_const"]["partial_constants"]:
-            self.meta_dictionary_obj["data_const"]["partial_constants"].update(
-                [v.lower() for v in meta_dict["data_const"]["partial_constants"]]
-            )
+        _extend_constant_rules(
+            self.meta_dictionary_obj["data_const"]["constant_rules"], meta_dict["data_const"]["constant_rules"]
+        )
+        _extend_constant_rules(
+            self.meta_dictionary_obj["data_const"]["partial_constant_rules"],
+            meta_dict["data_const"]["partial_constant_rules"],
+        )
 
         if meta_dict["data_func"]:
             normalized_data_func_rules = {

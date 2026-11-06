@@ -2,7 +2,10 @@ import asyncio
 import json
 import re
 import shutil
+import sys
 import time
+from collections.abc import Callable
+from itertools import chain
 from pathlib import Path
 
 from asyncpg import Connection, Pool
@@ -17,8 +20,8 @@ from pg_anon.common.db_utils import (
     exec_data_scan_func_query,
     get_scan_fields_list,
 )
-from pg_anon.common.dto import FieldInfo
-from pg_anon.common.enums import ScanMode
+from pg_anon.common.dto import FieldInfo, SearchRule
+from pg_anon.common.enums import MatchSource, ScanMode
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
     get_base_field_type,
@@ -32,6 +35,27 @@ from pg_anon.context import Context
 
 def _field_sort_key(field_info: FieldInfo) -> tuple[str, str, int]:
     return field_info.nspname, field_info.relname, field_info.attnum
+
+
+def _first_rule_by_values(
+    fld_data: list, find_rule: Callable[[str, int], SearchRule | None]
+) -> tuple[SearchRule, str] | None:
+    """Find the first rule of the list that matches at least one value; return it with the matched value."""
+    found = None
+    bound = sys.maxsize
+    for value in fld_data:
+        if value is None:
+            continue
+
+        # find_rule gives the matched rule with the smallest position below the bound
+        rule = find_rule(value, bound)
+        if rule is not None:
+            found = rule, value
+            # Rules below the nearest rule with another anon_func can not change the result
+            bound = rule.other_func_above + 1
+            if bound == 0:
+                break
+    return found
 
 
 class CreateDictMode:
@@ -169,16 +193,17 @@ class CreateDictMode:
                 continue
 
             for rule in self.context.meta_dictionary_obj["field"]["constants"]:
-                if rule == field_info.column_name:
+                if rule.rule == field_info.column_name:
                     if obj_id in fields_info:
                         self.context.logger.debug(
                             '------> Field %s.%s.%s is SENSITIVE by rule "%s"',
                             field_info.nspname,
                             field_info.relname,
                             field_info.column_name,
-                            rule,
+                            rule.rule,
                         )
                         del fields_info[obj_id]
+                        field_info.rule = rule.anon_func
                         self.context.create_dict_sens_matches[obj_id] = field_info
                     matched = True
                     break
@@ -187,16 +212,17 @@ class CreateDictMode:
                 continue
 
             for rule in self.context.meta_dictionary_obj["field"]["rules"]:
-                if re.search(rule, field_info.column_name) is not None:
+                if rule.rule.search(field_info.column_name) is not None:
                     if obj_id in fields_info:
                         self.context.logger.debug(
                             '------> Field %s.%s.%s is SENSITIVE by rule "%s"',
                             field_info.nspname,
                             field_info.relname,
                             field_info.column_name,
-                            rule,
+                            rule.rule,
                         )
                         del fields_info[obj_id]
+                        field_info.rule = rule.anon_func
                         self.context.create_dict_sens_matches[obj_id] = field_info
                     matched = True
                     break
@@ -222,11 +248,14 @@ class CreateDictMode:
                         self.context.create_dict_no_sens_matches[obj_id] = field_info
                     break
 
-    def _check_data_by_constants(self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list) -> bool:
+    def _check_data_by_constants(
+        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
+    ) -> SearchRule | None:
         words = dictionary_obj["data_const"]["constants"]["words"]
         phrases = dictionary_obj["data_const"]["constants"]["phrases"]
+        rules = dictionary_obj["data_const"]["constant_rules"]
         if not words and not phrases:
-            return False
+            return None
 
         self.context.logger.debug(
             "========> Process[%s]: checking by constants data of field %s.%s.%s",
@@ -235,34 +264,31 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
+        min_length = self.context.data_const_constants_min_length or 0
 
-        for value in fld_data:
-            if value is None:
-                continue
+        def find_rule(value: str, bound: int) -> SearchRule | None:
+            found = None
+            lower_value = value.lower()
+            value_words = (word.lower() for word in value.split() if len(word) >= min_length)
+            constants = chain((w for w in value_words if w in words), (p for p in phrases if p in lower_value))
+            for constant in constants:
+                rule = rules[constant]
+                if rule.position < bound and (found is None or rule.position < found.position):
+                    if rule.other_func_above < 0:
+                        return rule
+                    found = rule
+            return found
 
-            for word in value.split():
-                if len(word) >= (self.context.data_const_constants_min_length or 0) and word.lower() in words:
-                    self.context.logger.debug(
-                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
-                        name,
-                        field_info.nspname,
-                        field_info.relname,
-                        field_info.column_name,
-                        word,
-                    )
-                    return True
-
-            for phrase in phrases:
-                if phrase in value.lower():
-                    self.context.logger.debug(
-                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
-                        name,
-                        field_info.nspname,
-                        field_info.relname,
-                        field_info.column_name,
-                        phrase,
-                    )
-                    return True
+        if matched := _first_rule_by_values(fld_data, find_rule):
+            self.context.logger.debug(
+                "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
+                name,
+                field_info.nspname,
+                field_info.relname,
+                field_info.column_name,
+                matched[0].rule,
+            )
+            return matched[0]
 
         self.context.logger.debug(
             "========> Process[%s]: No one constants matched in data of field %s.%s.%s",
@@ -271,13 +297,14 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
-        return False
+        return None
 
     def _check_data_by_partial_constants(
         self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
-    ) -> bool:
-        if not dictionary_obj["data_const"]["partial_constants"]:
-            return False
+    ) -> SearchRule | None:
+        rules = dictionary_obj["data_const"]["partial_constant_rules"]
+        if not rules:
+            return None
 
         self.context.logger.debug(
             "========> Process[%s]: checking by partial constants data of field %s.%s.%s",
@@ -287,22 +314,25 @@ class CreateDictMode:
             field_info.column_name,
         )
 
-        for value in fld_data:
-            if value is None:
-                continue
-
+        def find_rule(value: str, bound: int) -> SearchRule | None:
             lower_value = value.lower()
-            for partial_constant in dictionary_obj["data_const"]["partial_constants"]:
-                if partial_constant in lower_value:
-                    self.context.logger.debug(
-                        "========> Process[%s]: Field %s.%s.%s is SENSITIVE by partial constant %s",
-                        name,
-                        field_info.nspname,
-                        field_info.relname,
-                        field_info.column_name,
-                        partial_constant,
-                    )
-                    return True
+            for rule in rules.values():
+                if rule.position >= bound:
+                    break
+                if rule.rule in lower_value:
+                    return rule
+            return None
+
+        if matched := _first_rule_by_values(fld_data, find_rule):
+            self.context.logger.debug(
+                "========> Process[%s]: Field %s.%s.%s is SENSITIVE by partial constant %s",
+                name,
+                field_info.nspname,
+                field_info.relname,
+                field_info.column_name,
+                matched[0].rule,
+            )
+            return matched[0]
 
         self.context.logger.debug(
             "========> Process[%s]: No one partial constants matched in data of field %s.%s.%s",
@@ -311,13 +341,13 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
-        return False
+        return None
 
     async def _check_data_by_functions(  # noqa: C901, PLR0912
         self, connection: Connection, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
-    ) -> bool:
+    ) -> SearchRule | None:
         if not dictionary_obj["data_func"]:
-            return False
+            return None
 
         self.context.logger.debug(
             "========> Process[%s]: checking by functions data of field %s.%s.%s (type = %s)",
@@ -343,7 +373,7 @@ class CreateDictMode:
                 field_info.column_name,
                 field_info.type,
             )
-            return False
+            return None
 
         scan_func_per_field_rules = []
         scan_func_rules = []
@@ -359,7 +389,6 @@ class CreateDictMode:
             if await exec_data_scan_func_per_field_query(
                 connection=connection, scan_func_per_field=rule["scan_func_per_field"], field_info=field_info
             ):
-                field_info.rule = rule["anon_func"]
                 self.context.logger.debug(
                     "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func per field %s",
                     name,
@@ -368,7 +397,7 @@ class CreateDictMode:
                     field_info.column_name,
                     rule["scan_func_per_field"],
                 )
-                return True
+                return SearchRule(rule["scan_func_per_field"], rule["anon_func"])
 
         for rule in scan_func_rules:
             matched_count = 0
@@ -384,7 +413,6 @@ class CreateDictMode:
                     matched_count += 1
 
                     if matched_count == rule_expected_matches_count:
-                        field_info.rule = rule["anon_func"]
                         self.context.logger.debug(
                             "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func %s",
                             name,
@@ -393,7 +421,7 @@ class CreateDictMode:
                             field_info.column_name,
                             rule["scan_func"],
                         )
-                        return True
+                        return SearchRule(rule["scan_func"], rule["anon_func"])
 
         self.context.logger.debug(
             "========> Process[%s]: No one data functions found sensitive data in field %s.%s.%s",
@@ -403,13 +431,13 @@ class CreateDictMode:
             field_info.column_name,
         )
 
-        return False
+        return None
 
     def _check_data_by_regexp(
         self, name: str, dictionary_obj: dict, create_dict_matches: dict, field_info: FieldInfo, fld_data: list
-    ) -> bool:
+    ) -> SearchRule | None:
         if field_info.obj_id in create_dict_matches:
-            return False
+            return None
 
         self.context.logger.debug(
             "========> Process[%s]: checking by regexp data of field %s.%s.%s",
@@ -418,21 +446,27 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
+        rules = dictionary_obj["data_regex"]["rules"]
 
-        if dictionary_obj["data_regex"]["rules"]:
-            for value in fld_data:
-                for rule in dictionary_obj["data_regex"]["rules"]:
-                    if value is not None and re.search(rule, value) is not None:
-                        self.context.logger.debug(
-                            "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data_regex (regex=%s; value=%s)",
-                            name,
-                            field_info.nspname,
-                            field_info.relname,
-                            field_info.column_name,
-                            rule,
-                            value,
-                        )
-                        return True
+        def find_rule(value: str, bound: int) -> SearchRule | None:
+            for rule in rules:
+                if rule.position >= bound:
+                    break
+                if rule.rule.search(value) is not None:
+                    return rule
+            return None
+
+        if rules and (matched := _first_rule_by_values(fld_data, find_rule)):
+            self.context.logger.debug(
+                "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data_regex (regex=%s; value=%s)",
+                name,
+                field_info.nspname,
+                field_info.relname,
+                field_info.column_name,
+                matched[0].rule,
+                matched[1],
+            )
+            return matched[0]
 
         self.context.logger.debug(
             "========> Process[%s]: No one regexp rules found sensitive data in field %s.%s.%s",
@@ -441,7 +475,7 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
-        return False
+        return None
 
     async def _check_sensitive_data_in_fld(
         self,
@@ -470,52 +504,29 @@ class CreateDictMode:
             field_info.column_name,
             len(fld_data),
         )
-        result = {field_info.obj_id: field_info}
-        matched = False
 
-        if not matched and await self._check_data_by_functions(
-            connection=connection,
-            name=name,
-            dictionary_obj=dictionary_obj,
-            field_info=field_info,
-            fld_data=fld_data,
-        ):
-            matched = True
+        for source in MatchSource:
+            match source:
+                case MatchSource.DATA_FUNC:
+                    rule = await self._check_data_by_functions(connection, name, dictionary_obj, field_info, fld_data)
+                case MatchSource.DATA_CONST:
+                    rule = self._check_data_by_constants(name, dictionary_obj, field_info, fld_data)
+                case MatchSource.DATA_PARTIAL_CONST:
+                    rule = self._check_data_by_partial_constants(name, dictionary_obj, field_info, fld_data)
+                case MatchSource.DATA_REGEX:
+                    rule = self._check_data_by_regexp(name, dictionary_obj, create_dict_matches, field_info, fld_data)
 
-        if self._check_data_by_constants(
-            name=name,
-            dictionary_obj=dictionary_obj,
-            field_info=field_info,
-            fld_data=fld_data,
-        ):
-            matched = True
-
-        if not matched and self._check_data_by_partial_constants(
-            name=name,
-            dictionary_obj=dictionary_obj,
-            field_info=field_info,
-            fld_data=fld_data,
-        ):
-            matched = True
-
-        if not matched and self._check_data_by_regexp(
-            name=name,
-            dictionary_obj=dictionary_obj,
-            create_dict_matches=create_dict_matches,
-            field_info=field_info,
-            fld_data=fld_data,
-        ):
-            matched = True
-
-        if matched:
-            self.context.logger.debug(
-                "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is SENSITIVE",
-                name,
-                field_info.nspname,
-                field_info.relname,
-                field_info.column_name,
-            )
-            return result
+            if rule is not None:
+                field_info.rule = rule.anon_func
+                self.context.logger.debug(
+                    "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is SENSITIVE by %s",
+                    name,
+                    field_info.nspname,
+                    field_info.relname,
+                    field_info.column_name,
+                    source.value,
+                )
+                return {field_info.obj_id: field_info}
 
         self.context.logger.debug(
             "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is INSENSITIVE",

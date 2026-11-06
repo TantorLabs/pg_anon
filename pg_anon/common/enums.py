@@ -29,3 +29,12 @@ class AnonMode(Enum):
 class ScanMode(Enum):
     FULL = "full"
     PARTIAL = "partial"
+
+
+class MatchSource(Enum):
+    """Sections of the data search, in the order of checks."""
+
+    DATA_FUNC = "data_func"
+    DATA_CONST = "data_const.constants"
+    DATA_PARTIAL_CONST = "data_const.partial_constants"
+    DATA_REGEX = "data_regex"

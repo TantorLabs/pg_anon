@@ -9,7 +9,17 @@ from pg_anon.cli import build_run_options
 from pg_anon.common.enums import ResultCode
 
 
-def _options(db_params, db_name, *, meta_dicts, sens_out, no_sens_out=None, scan_mode="full", db_connections=None):
+def _options(
+    db_params,
+    db_name,
+    *,
+    meta_dicts,
+    sens_out,
+    no_sens_out=None,
+    scan_mode="full",
+    db_connections=None,
+    prepared_sens=None,
+):
     args = [
         "create-dict",
         f"--db-host={db_params.test_db_host}",
@@ -27,6 +37,8 @@ def _options(db_params, db_name, *, meta_dicts, sens_out, no_sens_out=None, scan
     ]
     if no_sens_out is not None:
         args.append(f"--output-no-sens-dict-file={no_sens_out}")
+    if prepared_sens is not None:
+        args.append(f"--prepared-sens-dict-file={prepared_sens}")
     return build_run_options(args)
 
 
@@ -357,3 +369,86 @@ async def test_variant_partial_scan_output_is_sorted_and_same_for_any_connection
             fields = list(rule["fields"])
             by_attnum = sorted(fields, key=lambda f: attnums[(rule["schema"], rule["table"], f)])
             assert fields == by_attnum, f"fields of {rule['schema']}.{rule['table']} must be sorted by attnum"
+
+
+def _funcs_of(path, schema, table):
+    return _rules_index(_load(path)).get((schema, table), {})
+
+
+async def test_rule_objects_set_function_in_every_search_section(source_db, db_params):
+    sens_out = output_dict("rule_objects.json")
+    res = await PgAnonApp(
+        _options(db_params, source_db, meta_dicts=[input_dict("meta_rule_objects.py")], sens_out=sens_out)
+    ).run()
+    assert res.result_code == ResultCode.DONE
+
+    employee = _funcs_of(sens_out, "hr", "employee")
+    assert "'type_salt'" in employee["first_name"], "string rule in a mixed list must use the function by type"
+    assert "'field_rule'" in employee["last_name"], "field.rules object, and field name goes before data_regex"
+    assert "'field_constant'" in employee["ssn"], "field.constants object"
+    assert "'regex_email'" in employee["email"], "data_regex object"
+    assert "'regex_phone'" in employee["phone"], "data_regex object after a rule of other column in the list"
+
+    assert "'const_word'" in _funcs_of(sens_out, "hr", "department")["name"], "data_const.constants word"
+    assert "'const_phrase'" in _funcs_of(sens_out, "hr", "performance_review")["notes"], "data_const.constants phrase"
+    assert "'partial_const'" in _funcs_of(sens_out, "hr", "salary_history")["reason"], "data_const.partial_constants"
+
+
+async def test_rule_higher_in_the_list_wins_when_column_matches_several_regexes(source_db, db_params):
+    sens_out = output_dict("first_regex_wins.json")
+    res = await PgAnonApp(
+        _options(db_params, source_db, meta_dicts=[input_dict("meta_first_regex_wins.py")], sens_out=sens_out)
+    ).run()
+    assert res.result_code == ResultCode.DONE
+
+    assert "'regex_first'" in _funcs_of(sens_out, "hr", "employee")["phone"]
+
+
+async def test_same_rule_in_two_files_uses_the_first_one(source_db, db_params):
+    sens_out = output_dict("same_rule_two_files.json")
+    meta_dicts = [input_dict("meta_same_rule_first_file.py"), input_dict("meta_same_rule_second_file.py")]
+    res = await PgAnonApp(_options(db_params, source_db, meta_dicts=meta_dicts, sens_out=sens_out)).run()
+    assert res.result_code == ResultCode.DONE
+
+    email = _funcs_of(sens_out, "hr", "employee")["email"]
+    assert "'type_salt'" in email, "the string rule from the first file wins, so the function is chosen by type"
+    assert "'second_file'" not in email
+
+
+async def test_prepared_sens_dict_goes_before_anon_func_of_rule(source_db, db_params, tmp_path):
+    prepared = tmp_path / "prepared_sens.json"
+    prepared_funcs = {
+        "email": "anon_funcs.digest(\"email\"::text, 'prepared', 'md5')::citext",
+        "last_name": "anon_funcs.digest(\"last_name\", 'prepared', 'md5')",
+    }
+    prepared.write_text(
+        json.dumps({"dictionary": [{"schema": "hr", "table": "employee", "fields": prepared_funcs}]}),
+        encoding="utf-8",
+    )
+    sens_out = output_dict("prepared_before_rule_func.json")
+    options = _options(
+        db_params,
+        source_db,
+        meta_dicts=[input_dict("meta_rule_objects.py")],
+        sens_out=sens_out,
+        prepared_sens=str(prepared),
+    )
+    res = await PgAnonApp(options).run()
+    assert res.result_code == ResultCode.DONE
+
+    employee = _funcs_of(sens_out, "hr", "employee")
+    assert employee["email"] == prepared_funcs["email"], "data_regex object must not replace the prepared function"
+    assert employee["last_name"] == prepared_funcs["last_name"], "field.rules object must not replace it either"
+    assert "'regex_phone'" in employee["phone"], "fields out of the prepared dict still use the function of the rule"
+
+
+async def test_function_of_data_func_goes_before_anon_func_of_data_const(source_db, db_params):
+    sens_out = output_dict("data_func_before_const.json")
+    res = await PgAnonApp(
+        _options(db_params, source_db, meta_dicts=[input_dict("meta_data_func_before_const.py")], sens_out=sens_out)
+    ).run()
+    assert res.result_code == ResultCode.DONE
+
+    email = _funcs_of(sens_out, "hr", "employee")["email"]
+    assert "'data_func'" in email
+    assert "'partial_const'" not in email

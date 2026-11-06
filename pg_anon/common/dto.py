@@ -218,6 +218,16 @@ class FieldInfo:
     dict_file_name: str | None = None  # uses for --mode=view-fields
 
 
+@dataclass(frozen=True, slots=True)
+class SearchRule:
+    """Search rule of the meta dict with its own masking function."""
+
+    rule: Any  # compiled regular expression, constant or scan function
+    anon_func: str | None = None
+    position: int = 0
+    other_func_above: int = -1  # position of the nearest rule above with another anon_func
+
+
 class ConnectionParams:
     def __init__(  # noqa: PLR0913
         self,

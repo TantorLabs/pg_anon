@@ -186,11 +186,11 @@ class TestMetaDictMerge:
         ctx.read_meta_dict()
         meta = ctx.meta_dictionary_obj
 
-        assert {p.pattern for p in meta["field"]["rules"]} == {"^a_", "^b_"}
-        assert meta["field"]["constants"] == ["email", "password"]
+        assert {r.rule.pattern for r in meta["field"]["rules"]} == {"^a_", "^b_"}
+        assert [r.rule for r in meta["field"]["constants"]] == ["email", "password"]
         assert meta["skip_rules"] == [{"schema": "tmp_a"}, {"schema": "tmp_b"}]
         assert meta["include_rules"] == [{"schema": "inc_a"}, {"schema": "inc_b"}]
-        assert {p.pattern for p in meta["data_regex"]["rules"]} == {"a-regex", "b-regex"}
+        assert {r.rule.pattern for r in meta["data_regex"]["rules"]} == {"a-regex", "b-regex"}
         assert meta["data_sql_condition"] == [
             {"schema": "public", "table": "t_a", "sql_condition": "WHERE a"},
             {"schema": "public", "table": "t_b", "sql_condition": "WHERE b"},
@@ -205,7 +205,7 @@ class TestMetaDictMerge:
         const = ctx.meta_dictionary_obj["data_const"]
 
         assert {"alpha", "beta"} <= const["constants"]["words"]
-        assert const["partial_constants"] == {"@a.com", "@b.com"}
+        assert list(const["partial_constant_rules"]) == ["@a.com", "@b.com"]
 
     def test_funcs_same_type_overwritten_other_types_kept(self, write_dict, make_context):
         file_a = write_dict({"funcs": {"text": "FUNC_TEXT_A", "integer": "FUNC_INT_A"}})
@@ -273,7 +273,7 @@ class TestMetaDictMerge:
         ctx = make_context(meta_dict_files=[meta_file], prepared_no_sens_dict_files=[no_sens_file])
         ctx.read_meta_dict()
 
-        assert {p.pattern for p in ctx.meta_dictionary_obj["field"]["rules"]} == {"^secret_"}
+        assert {r.rule.pattern for r in ctx.meta_dictionary_obj["field"]["rules"]} == {"^secret_"}
         assert ctx.meta_dictionary_obj["no_sens_dictionary"] == [{"schema": "public", "table": "t1", "fields": ["id"]}]
 
 
