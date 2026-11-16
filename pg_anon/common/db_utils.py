@@ -1,10 +1,10 @@
 import hashlib
 import re
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, NamedTuple
 
 import asyncpg
-from asyncpg import Connection, Pool
+from asyncpg import Connection, Pool, Record
 
 from pg_anon.common.constants import ANON_UTILS_DB_SCHEMA_NAME, SERVER_SETTINGS
 from pg_anon.common.db_queries import (
@@ -20,7 +20,6 @@ from pg_anon.common.db_queries import (
 from pg_anon.common.dependencies import DependencyGraph, PG_NAMESPACE, TABLE_KINDS
 from pg_anon.common.dto import ConnectionParams, FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import get_dict_rule_for_table
 from pg_anon.context import Context
 from pg_anon.logger import get_logger
 
@@ -198,10 +197,14 @@ async def get_legacy_inheritance_parents(
 
 
 async def get_rows_count(
-    connection_params: ConnectionParams, schema_name: str, table_name: str, server_settings: dict = SERVER_SETTINGS
+    connection_params: ConnectionParams,
+    schema_name: str,
+    table_name: str,
+    server_settings: dict = SERVER_SETTINGS,
+    only: bool = False,
 ) -> int:
-    """Get the row count for a table."""
-    query = get_count_query(schema_name=schema_name, table_name=table_name)
+    """Get the row count for a table; `only` leaves out the rows of INHERITS children."""
+    query = get_count_query(schema_name=schema_name, table_name=table_name, only=only)
     db_conn = await create_connection(connection_params, server_settings=server_settings)
     count = await db_conn.fetchval(query)
     await db_conn.close()
@@ -283,6 +286,73 @@ async def get_partition_ancestors_map(
         key = (r["start_schema"], r["start_table"])
         result.setdefault(key, []).append((r["ancestor_schema"], r["ancestor_table"]))
     return result
+
+
+async def get_partitioned_tables(connection: Connection) -> set[tuple[str, str]]:
+    """Return all partitioned tables of the database."""
+    rows = await connection.fetch(
+        """
+        SELECT n.nspname, c.relname
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind = 'p'
+        """
+    )
+    return {(row["nspname"], row["relname"]) for row in rows}
+
+
+async def get_tables_columns(connection: Connection) -> dict[tuple[str, str], set[str]]:
+    """Return the columns of all tables, partitioned tables and foreign tables of the user schemas."""
+    rows = await connection.fetch(
+        f"""
+        SELECT n.nspname, c.relname, a.attname
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+         WHERE c.relkind IN ('r', 'p', 'f')
+           AND {schemas_filter("n.nspname")}
+        """  # noqa: S608
+    )
+    result: dict[tuple[str, str], set[str]] = {}
+    for row in rows:
+        columns = result.setdefault((row["nspname"], row["relname"]), set())
+        if row["attname"] is not None:
+            columns.add(row["attname"])
+    return result
+
+
+class InheritedColumn(NamedTuple):
+    child_schema: str
+    child_table: str
+    column: str
+    parent_schema: str
+    parent_table: str
+
+
+async def get_inherited_columns(connection: Connection) -> list[InheritedColumn]:
+    """Pair each column that a table inherits with the same column of each of its direct parents."""
+    rows = await connection.fetch(
+        """
+        SELECT cn.nspname AS child_schema,
+               c.relname  AS child_table,
+               ca.attname AS column_name,
+               pn.nspname AS parent_schema,
+               p.relname  AS parent_table
+          FROM pg_inherits inh
+          JOIN pg_class c ON c.oid = inh.inhrelid
+          JOIN pg_namespace cn ON cn.oid = c.relnamespace
+          JOIN pg_class p ON p.oid = inh.inhparent
+          JOIN pg_namespace pn ON pn.oid = p.relnamespace
+          JOIN pg_attribute ca ON ca.attrelid = c.oid AND ca.attnum > 0 AND NOT ca.attisdropped AND ca.attinhcount > 0
+          JOIN pg_attribute pa ON pa.attrelid = p.oid AND pa.attname = ca.attname AND NOT pa.attisdropped
+        """
+    )
+    return [
+        InheritedColumn(
+            row["child_schema"], row["child_table"], row["column_name"], row["parent_schema"], row["parent_table"]
+        )
+        for row in rows
+    ]
 
 
 async def get_table_ancestors_map(connection: Connection) -> dict[tuple[str, str], list[tuple[str, str]]]:
@@ -861,6 +931,82 @@ def _strip_leading_where(condition: str) -> str:
     return re.sub(r"^\s*where\b\s*", "", condition, flags=re.IGNORECASE)
 
 
+def _column_expression(column_info: Record, table_rule: dict | None) -> str:
+    """Build the select expression of a column: its masking function or the column as is."""
+    column_name = column_info["column_name"]
+    field_anon_rule = table_rule.get("fields", {}).get(column_name) if table_rule else None
+    if not field_anon_rule:
+        return f'"{column_name}" as "{column_name}"'
+    if field_anon_rule.find("SQL:") == 0:
+        return f'({field_anon_rule[4:]}) as "{column_name}"'
+    # Schema-qualify the cast target type so user-defined types (e.g. bank.passport) resolve regardless of search_path.
+    return f'{field_anon_rule}::"{column_info["udt_schema"]}"."{column_info["udt_name"]}" as "{column_name}"'
+
+
+class PartitionRule(NamedTuple):
+    schema: str
+    table: str
+    rule: dict | None
+
+
+def get_partitions_view_query(fields_list: list[Record], partitions: list[PartitionRule]) -> str:
+    """Build the query that shows the rows of partitions, each masked by its rule, in the columns of their root."""
+    columns = [column for column in fields_list if column["is_generated"] != "ALWAYS"]
+    sort_columns = [column["column_name"] for column in columns if column["is_nullable"].lower() == "yes"]
+    names = ", ".join(f'"{column["column_name"]}"' for column in columns)
+
+    sort_aliases = [f'"pg_anon_sort_{i}"' for i in range(len(sort_columns))]
+
+    parts = []
+    for schema, table, table_rule in partitions:
+        table_name_full = f'"{schema}"."{table}"'
+        if table_rule and "raw_sql" in table_rule:
+            null_sort_keys = [f"NULL AS {alias}" for alias in sort_aliases]
+            parts.append(f"SELECT {', '.join([names, *null_sort_keys])} FROM ({table_rule['raw_sql']}) AS raw_rows")
+            continue
+        expressions = [_column_expression(column, table_rule) for column in columns]
+        # sort by the values before masking, as for one table
+        for name, alias in zip(sort_columns, sort_aliases, strict=True):
+            expressions.append(f'{table_name_full}."{name}" AS {alias}')
+        part = f"SELECT {', '.join(expressions)}\nFROM {table_name_full}"
+        sql_condition = table_rule.get("sql_condition") if table_rule else None
+        if sql_condition:
+            part += f"\nWHERE {_strip_leading_where(sql_condition)}"
+        parts.append(part)
+
+    query = f"SELECT {names}\nFROM (\n" + "\nUNION ALL\n".join(parts) + "\n) AS partition_rows"
+    if sort_columns:
+        query += " ORDER BY " + ", ".join(f"{alias} NULLS LAST" for alias in sort_aliases)
+    return query
+
+
+async def get_partition_leaves(connection: Connection, schema: str, table: str) -> list[tuple[str, str]]:
+    """Return the leaf partitions under a partitioned table, at any depth, sorted by schema and name."""
+    rows = await connection.fetch(
+        """
+        WITH RECURSIVE tree(oid) AS (
+            SELECT c.oid
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'p'
+            UNION ALL
+            SELECT inh.inhrelid
+              FROM pg_inherits inh
+              JOIN tree ON tree.oid = inh.inhparent
+        )
+        SELECT n.nspname, c.relname
+          FROM tree
+          JOIN pg_class c ON c.oid = tree.oid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE c.relkind = 'r'
+         ORDER BY n.nspname, c.relname
+        """,
+        schema,
+        table,
+    )
+    return [(row["nspname"], row["relname"]) for row in rows]
+
+
 async def get_dump_query(  # noqa: C901, PLR0912
     ctx: Context,
     table_schema: str,
@@ -870,6 +1016,7 @@ async def get_dump_query(  # noqa: C901, PLR0912
     files: dict | None = None,
     fields_cache: dict | None = None,
     legacy_inherits_parents: set[tuple[str, str]] | None = None,
+    excluded: bool = False,
 ) -> str | None:
     """Build the SELECT query used to dump a table with optional masking rules."""
     table_name_full = f'"{table_schema}"."{table_name}"'
@@ -889,17 +1036,9 @@ async def get_dump_query(  # noqa: C901, PLR0912
         ctx.logger.info("Skipping dump data of table: %s", table_name_full)
         return None
 
-    # dictionary_exclude has third priority
-    if "dictionary_exclude" in ctx.prepared_dictionary_obj:
-        exclude_rule = get_dict_rule_for_table(
-            dictionary_rules=ctx.prepared_dictionary_obj["dictionary_exclude"],
-            schema=table_schema,
-            table=table_name,
-        )
-
-        if exclude_rule is not None and table_rule is None:
-            ctx.logger.info("Skipping: %s", table_name_full)
-            return None
+    if excluded:
+        ctx.logger.info("Skipping: %s", table_name_full)
+        return None
 
     hashed_name = hashlib.md5(  # noqa: S324
         (table_schema + "_" + table_name).encode()
@@ -935,26 +1074,11 @@ async def get_dump_query(  # noqa: C901, PLR0912
             table_name=table_name,
         )
 
-    fields = []
-
-    for column_info in fields_list:
-        column_name = column_info["column_name"]
-        udt_name = column_info["udt_name"]
-        # Schema-qualify the cast target type so user-defined types (e.g. bank.passport) resolve regardless of search_path.
-        udt_schema = column_info["udt_schema"]
-        field_anon_rule = table_rule["fields"].get(column_name) if table_rule else None
-
-        if column_info["is_generated"] == "ALWAYS":
-            continue
-
-        if field_anon_rule:
-            if field_anon_rule.find("SQL:") == 0:
-                fields.append(f'({field_anon_rule[4:]}) as "{column_name}"')
-            else:
-                fields.append(f'{field_anon_rule}::"{udt_schema}"."{udt_name}" as "{column_name}"')
-        else:
-            # field "as is"
-            fields.append(f'"{column_name}" as "{column_name}"')
+    fields = [
+        _column_expression(column_info, table_rule)
+        for column_info in fields_list
+        if column_info["is_generated"] != "ALWAYS"
+    ]
 
     fields_expr = ",\n".join(fields)
     query = f"SELECT {fields_expr}\nFROM {from_clause_target}"

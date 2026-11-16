@@ -5,6 +5,16 @@
 
 This mode displays masked table data without creating a dump.
 
+The rows are masked in the same way as in the dump:
+- A partition uses its own rule merged with the rules of the partitioned tables above it.
+- A partitioned table shows the rows of all its partitions, each partition with its own rule. Partitions that the
+  dump takes without data (`dictionary_exclude`) give no rows. If all partitions are taken without data, the mode
+  stops with the error `TABLE_EXCLUDED`, as for a table taken without data.
+- A parent with `INHERITS` shows only its own rows, without the rows of its child tables. The row count also counts
+  only its own rows.
+
+See [Partitioned tables and tables with `INHERITS`](../dicts/sens-dict-schema.md#partitioned-tables-and-tables-with-inherits).
+
 ## Prerequisites
 - The `anon_funcs` schema with masking functions must already exist. See [init mode](init.md).
 - A sensitive dictionary containing data about database fields and their masking rules must be prepared beforehand. See [create-dict (scan) mode](scan.md).

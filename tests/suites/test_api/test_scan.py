@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from .conftest import input_dict_text
-from .helpers import build_scan_request
+from .helpers import build_scan_request, dict_entry
 
 
 async def test_scan_full_sends_two_webhooks_and_returns_dict(
@@ -123,3 +127,33 @@ async def test_scan_extra_headers_reach_webhook(
     await webhook_recorder.wait_for_terminal(max_wait=180)
     headers = webhook_recorder.headers[0]
     assert headers.get("x-trace-id", headers.get("X-Trace-Id")) == "trace-007"
+
+
+@pytest.mark.parametrize("keep", [True, None], ids=["keep-unmatched", "default"])
+async def test_scan_keeps_prepared_rules_of_missing_tables_only_on_request(
+    api_client, api_source_db, db_params, webhook_recorder, keep
+):
+    sens_dict = {
+        "dictionary": [
+            {"schema": "sp_crm", "table": "lead", "fields": {"info": 'md5("info")'}},
+            {"schema": "sp_crm", "table": "person", "fields": {"name": "'P'"}},
+        ]
+    }
+    body = build_scan_request(
+        db_params=db_params,
+        db_name=api_source_db,
+        meta_dict=input_dict_text("meta_dict.py"),
+        webhook_url=webhook_recorder.url,
+        sens_dicts=[dict_entry("sens_dict.py", repr(sens_dict))],
+    )
+    if keep is not None:
+        body["keep_unmatched_prepared_rules"] = keep
+    resp = await api_client.post("/api/stateless/scan", json=body)
+    assert resp.status == 201
+
+    terminal = await webhook_recorder.wait_for_terminal(max_wait=180)
+    assert terminal["status"] == "success", terminal
+    tables = {(rule["schema"], rule["table"]) for rule in json.loads(terminal["sens_dict_content"])["dictionary"]}
+    assert ("sp_crm", "person") in tables
+    assert (("sp_crm", "lead") in tables) is bool(keep)
+    assert terminal["run_options"]["keep_unmatched_prepared_rules"] is bool(keep)

@@ -21,5 +21,6 @@ async def source_db(db_manager, pg_anon_runner, fixtures):
     res = await pg_anon_runner.run("init", SOURCE_DB)
     assert res.result_code == ResultCode.DONE
     await fixtures.build_minimal_env(SOURCE_DB, rows=50)
+    await fixtures.build_scan_partitions(SOURCE_DB)
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)

@@ -19,11 +19,11 @@ def get_limit_query(limit: int | None) -> str:
     return f"LIMIT {limit}" if limit is not None and limit > 0 else ""
 
 
-def get_count_query(schema_name: str, table_name: str) -> str:
+def get_count_query(schema_name: str, table_name: str, only: bool = False) -> str:
     """Build a SQL query to count rows in the given table."""
     return f"""
         SELECT count(*)
-        FROM \"{schema_name}\".\"{table_name}\"
+        FROM {"ONLY " if only else ""}\"{schema_name}\".\"{table_name}\"
     """
 
 
@@ -110,9 +110,13 @@ def get_tables_with_fields_query(schema: str, limit: int = 10, offset: int = 0, 
 
 
 def get_data_from_field_query(
-    field_info: FieldInfo, limit: int | None = None, condition: str | None = None, not_null: bool = True
+    field_info: FieldInfo,
+    limit: int | None = None,
+    condition: str | None = None,
+    not_null: bool = True,
+    only: bool = False,
 ) -> str:
-    """Build a query for receiving data from a table."""
+    """Build a query for receiving data from a table; `only` leaves out the rows of INHERITS children."""
     conditions = []
     query_condition = ""
 
@@ -133,7 +137,7 @@ def get_data_from_field_query(
     SELECT distinct t1._field
     FROM (
         SELECT (substring(\"{field_info.column_name}\"::text, 1, 8196)) as _field
-        FROM \"{field_info.nspname}\".\"{field_info.relname}\"
+        FROM {"ONLY " if only else ""}\"{field_info.nspname}\".\"{field_info.relname}\"
         {query_condition}
         {query_limit}
     ) as t1
@@ -196,7 +200,7 @@ def get_sequences_query(excluded_schemas: list[str] | None = None) -> str:
 
 
 def get_check_constraint_query() -> str:
-    """Build a SQL query to find check constraints referencing custom functions."""
+    """Build a SQL query to find not inherited check constraints referencing custom functions."""
     return rf"""
     SELECT DISTINCT
         nsp.nspname,
@@ -214,6 +218,7 @@ def get_check_constraint_query() -> str:
         FROM regexp_matches(pc.conbin::text, ':funcid\s+\d+', 'g') AS m
     ) f ON true
     WHERE pc.contype = 'c'
+        AND pc.coninhcount = 0
         AND f.func_oid IN (
             SELECT p.oid
             FROM pg_proc p
@@ -242,7 +247,7 @@ def get_sequences_max_value_init_query() -> str:
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relkind = 'r'
+            WHERE c.relkind IN ('r', 'p')
               AND a.attnum > 0
               AND NOT a.attisdropped
               AND {schemas_filter("n.nspname")}

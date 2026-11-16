@@ -3,10 +3,10 @@ from pathlib import Path
 
 from prettytable import PrettyTable, TableStyle
 
-from pg_anon.common.db_utils import get_scan_fields_list
+from pg_anon.common.db_utils import create_connection, get_partition_ancestors_map, get_scan_fields_list
 from pg_anon.common.dto import FieldInfo
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import get_dict_rule_for_table
+from pg_anon.common.utils import get_dict_rule_for_table, resolve_table_rule
 from pg_anon.context import Context
 
 ORM_SCHEMA_KEY = "schema"
@@ -112,6 +112,7 @@ class ViewFieldsMode:
         self.fields_cut_by_limits: bool = False
         self.empty_data_filler: str = "---"
         self._orm_index: dict[str, tuple[str, dict[str, str]]] | None = None
+        self._partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
         self._init_filter_dict_rule()
 
     def _init_filter_dict_rule(self) -> None:
@@ -182,30 +183,41 @@ class ViewFieldsMode:
             f" Use --fields-count to limit the output, or --json for machine-readable output."
         )
 
+    async def _load_partition_ancestors(self) -> None:
+        tables = list(dict.fromkeys((field.nspname, field.relname) for field in self.fields or []))
+        connection = await create_connection(
+            self.context.connection_params, server_settings=self.context.server_settings
+        )
+        try:
+            self._partition_ancestors = await get_partition_ancestors_map(connection, tables)
+        finally:
+            await connection.close()
+
     def _prepare_fields_for_view(self) -> None:
         fields_with_find_rules = []
+        table_rules: dict[tuple[str, str], tuple[dict | None, bool]] = {}
 
         for field in (self.fields or []).copy():
-            include_rule = get_dict_rule_for_table(
-                dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
-                schema=field.nspname,
-                table=field.relname,
-            )
-
-            if "dictionary_exclude" in self.context.prepared_dictionary_obj:
-                exclude_rule = get_dict_rule_for_table(
-                    dictionary_rules=self.context.prepared_dictionary_obj["dictionary_exclude"],
-                    schema=field.nspname,
-                    table=field.relname,
+            table = (field.nspname, field.relname)
+            if table not in table_rules:
+                table_rules[table] = resolve_table_rule(
+                    table,
+                    self.context.prepared_dictionary_obj["dictionary"],
+                    self.context.prepared_dictionary_obj.get("dictionary_exclude"),
+                    self._partition_ancestors,
                 )
+            include_rule, excluded = table_rules[table]
 
-                if exclude_rule is not None and include_rule is None:
-                    continue
+            if excluded:
+                continue
 
             if include_rule:
                 if field.column_name in include_rule.get("fields", {}):
                     field.rule = include_rule["fields"][field.column_name]
-                    field.dict_file_name = include_rule["dict_file_name"]
+                    # a merged rule knows the file of each field
+                    field.dict_file_name = include_rule.get("field_dict_file_names", {}).get(
+                        field.column_name, include_rule["dict_file_name"]
+                    )
                     fields_with_find_rules.append(field)
                     continue
                 if include_rule.get("raw_sql"):
@@ -274,6 +286,7 @@ class ViewFieldsMode:
     async def _output_fields(self) -> None:
         self.fields = await self._get_fields_for_view()
         if self.fields:
+            await self._load_partition_ancestors()
             self._prepare_fields_for_view()
 
             self._apply_output_limit()

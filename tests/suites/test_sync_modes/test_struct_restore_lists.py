@@ -17,20 +17,12 @@ PARENT_RULES = {
             "4 child tables are excluded too."
         ],
     ),
-    "white_list_on_parent_with_one_child": (
-        Filters(include=tables("ilist", "sms_notifications")),
-        [
-            'The rule {"schema": "ilist", "table": "sms_notifications"} matches a parent table: '
-            "1 child table is included too."
-        ],
-    ),
+    "white_list_on_parent_with_one_child": (Filters(include=tables("ilist", "sms_notifications")), []),
     "both_lists_on_parents": (
         Filters(include=tables("ilist", "notifications"), exclude=tables("ilist", "sms_notifications")),
         [
             'The rule {"schema": "ilist", "table": "sms_notifications"} matches a parent table: '
-            "1 child table is excluded too.",
-            'The rule {"schema": "ilist", "table": "notifications"} matches a parent table: '
-            "2 child tables are included too.",
+            "1 child table is excluded too."
         ],
     ),
     "lists_on_tables_without_children": (

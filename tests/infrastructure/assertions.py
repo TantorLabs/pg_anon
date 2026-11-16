@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -71,6 +72,36 @@ async def check_rows_count(
             failed.append((schema, table, expected, actual))
             print(f"check_rows_count: {schema}.{table} expected={expected} actual={actual}")
     return not failed
+
+
+NO_ROWS = "0 rows"
+
+
+def value_kind(value: str, original: str) -> str:
+    """Name a masked value: "as is", "md5" of the original value, or the value itself."""
+    if value == original:
+        return "as is"
+    if value == hashlib.md5(original.encode()).hexdigest():  # noqa: S324
+        return "md5"
+    return value
+
+
+async def masking(
+    db_manager: DBManager, source_db: str, target_db: str, table: str, columns: tuple[str, ...], key: str = "id"
+) -> dict | str:
+    """Describe each column of a restored table as "md5", "as is" or the set of values; "0 rows" for no data."""
+    select = f"SELECT {', '.join([f'{key} AS key', *columns])} FROM ONLY {table}"
+    target = {row["key"]: row for row in await db_manager.fetch(target_db, select)}
+    if not target:
+        return NO_ROWS
+    source = {row["key"]: row for row in await db_manager.fetch(source_db, select)}
+    assert target.keys() == source.keys(), f"{table}: the restored rows differ from the source rows"
+
+    result = {}
+    for column in columns:
+        kinds = {value_kind(row[column], source[key_value][column]) for key_value, row in target.items()}
+        result[column] = kinds.pop() if len(kinds) == 1 else kinds
+    return result
 
 
 # --------------------------------------------------------------------------

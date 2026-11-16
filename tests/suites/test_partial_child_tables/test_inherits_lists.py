@@ -1,4 +1,6 @@
-"""A list entry that names an INHERITS parent means this table with all its child tables, on dump and on restore."""
+"""On dump and on restore a white list entry for an INHERITS parent means only this table; a black list entry also
+means all its child tables, and a white list entry for a child table brings the structure of its parents.
+"""
 
 from __future__ import annotations
 
@@ -46,22 +48,12 @@ SCENARIOS = {
     ),
     "include_middle_parent": (
         {"include": ["sms_notifications"]},
-        {"notifications": 0, "sms_notifications": 4, "sms_urgent": 3},
+        {"notifications": 0, "sms_notifications": 4},
     ),
-    "include_parent": (
-        {"include": ["notifications"]},
-        {
-            "notifications": 10,
-            "email_notifications": 5,
-            "sms_notifications": 4,
-            "sms_urgent": 3,
-            "marks": 0,
-            "marked_email": 1,
-        },
-    ),
+    "include_parent": ({"include": ["notifications"]}, {"notifications": 10}),
     "black_list_wins_over_white_list": (
-        {"include": ["notifications"], "exclude": ["sms_notifications"]},
-        {"notifications": 10, "email_notifications": 5, "marks": 0, "marked_email": 1},
+        {"include": ["sms_urgent", "accounts"], "exclude": ["notifications"]},
+        {"accounts": 3},
     ),
     "black_list_on_child_wins_over_white_list_on_child": (
         {"include": ["sms_notifications", "sms_urgent"], "exclude": ["sms_urgent"]},
@@ -70,10 +62,6 @@ SCENARIOS = {
     "include_child_and_table_with_key_to_parent": (
         {"include": ["sms_urgent", "reads"]},
         {"notifications": 0, "sms_notifications": 0, "sms_urgent": 3, "reads": 4},
-    ),
-    "only_parent": (
-        {"include": ["notifications"], "exclude": ["email_notifications", "sms_notifications"]},
-        {"notifications": 10},
     ),
 }
 

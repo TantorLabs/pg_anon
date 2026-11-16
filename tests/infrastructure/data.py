@@ -2134,6 +2134,84 @@ class Fixtures:
             """,
         )
 
+    async def build_scan_partitions(self, db_name: str) -> None:
+        """Schemas sp, sp_archive (partitions, PG 10+) and sp_crm (INHERITS, two parents), with personal data."""
+        version_num = await self.db.server_version_num(db_name)
+        await self.db.execute(
+            db_name,
+            r"""
+            CREATE SCHEMA sp_crm;
+            CREATE FUNCTION sp_crm.valid_name(value text) RETURNS boolean AS $$ SELECT value <> '' $$
+                LANGUAGE sql IMMUTABLE;
+            CREATE FUNCTION sp_crm.valid_code(value text) RETURNS boolean AS $$ SELECT value ~ '^\d+$' $$
+                LANGUAGE sql IMMUTABLE;
+
+            CREATE TABLE sp_crm.contact (
+                id serial,
+                name text CONSTRAINT contact_name_check CHECK (sp_crm.valid_name(name)),
+                info text
+            );
+            CREATE TABLE sp_crm.vendor (
+                code text PRIMARY KEY,
+                CONSTRAINT vendor_code_check CHECK (sp_crm.valid_code(code)) NO INHERIT
+            );
+            CREATE TABLE sp_crm.person () INHERITS (sp_crm.contact);
+            CREATE TABLE sp_crm.company (inn text) INHERITS (sp_crm.contact);
+            CREATE TABLE sp_crm.partner () INHERITS (sp_crm.contact, sp_crm.vendor);
+
+            INSERT INTO sp_crm.contact (name, info) SELECT 'Contact ' || g, 'n/a' FROM generate_series(1, 5) g;
+            INSERT INTO sp_crm.person (name, info)
+                SELECT 'Person ' || g, '+7 900 222-33-' || lpad(g::text, 2, '0') FROM generate_series(1, 5) g;
+            INSERT INTO sp_crm.company (name, info, inn)
+                SELECT 'Company ' || g, 'n/a', (7700000000 + g)::text FROM generate_series(1, 5) g;
+            INSERT INTO sp_crm.partner (name, info, code)
+                SELECT 'Partner ' || g, '+7 900 444-55-' || lpad(g::text, 2, '0'), (2000 + g)::text
+                FROM generate_series(1, 5) g;
+            INSERT INTO sp_crm.vendor SELECT (1000 + g)::text FROM generate_series(1, 3) g;
+            """,
+        )
+        if version_num < 100000:
+            return
+
+        default_bound = "DEFAULT" if version_num >= 110000 else "FOR VALUES IN ('kz')"
+        await self.db.execute(
+            db_name,
+            f"""
+            CREATE SCHEMA sp;
+            CREATE SCHEMA sp_archive;
+            CREATE FUNCTION sp.valid_region(value text) RETURNS boolean AS $$ SELECT value IN ('ru', 'kz') $$
+                LANGUAGE sql IMMUTABLE;
+
+            CREATE TABLE sp.orders (
+                id serial,
+                created date NOT NULL,
+                region text CONSTRAINT orders_region_check CHECK (sp.valid_region(region)),
+                email text,
+                note text,
+                tag text
+            ) PARTITION BY RANGE (created);
+            CREATE TABLE sp.orders_2024 PARTITION OF sp.orders
+                FOR VALUES FROM ('2024-01-01') TO ('2025-01-01') PARTITION BY LIST (region);
+            CREATE TABLE sp.orders_2024_ru PARTITION OF sp.orders_2024 FOR VALUES IN ('ru');
+            CREATE TABLE sp.orders_2024_def PARTITION OF sp.orders_2024 {default_bound};
+            CREATE TABLE sp_archive.orders_2023 PARTITION OF sp.orders
+                FOR VALUES FROM ('2023-01-01') TO ('2024-01-01');
+
+            CREATE TABLE sp.empty_root (id int, email text) PARTITION BY RANGE (id);
+
+            INSERT INTO sp.orders (created, region, email, note, tag)
+                SELECT DATE '2023-01-01' + g, (ARRAY['ru', 'kz'])[g % 2 + 1], 'archive' || g || '@example.com',
+                    '+7 900 123-45-' || lpad(g::text, 2, '0'), 'S-' || (100 + g)
+                FROM generate_series(1, 8) g;
+            INSERT INTO sp.orders (created, region, email, note, tag)
+                SELECT DATE '2024-02-01' + g, 'ru', 'ru' || g || '@example.com', 'ok', 'secret'
+                FROM generate_series(1, 6) g;
+            INSERT INTO sp.orders (created, region, email, note, tag)
+                SELECT DATE '2024-03-01' + g, 'kz', 'kz' || g || '@example.com', 'ok', '-'
+                FROM generate_series(1, 6) g;
+            """,
+        )
+
     async def build_inherits_lists(self, db_name: str) -> None:
         """Schema ilist: `notifications` with INHERITS children on two levels, `reads` with a key to it, `accounts`."""
         await self.db.execute(

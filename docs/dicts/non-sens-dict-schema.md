@@ -2,13 +2,16 @@
 > [🏠 Home](../../README.md#-dictionary-schemas) | [🔍 Scan](../operations/scan.md) | [🗂️ Meta Dictionary](meta-dict-schema.md) | [🔐 Sensitive Dictionary](sens-dict-schema.md)
 
 The non-sensitive dictionary is used only during the [create-dict (scan) mode](../operations/scan.md) to speed up processing.
-It defines which fields should be treated as non-sensitive. Fields listed here are **excluded** from all sensitivity checks according to [meta-dictionary](meta-dict-schema.md) rules.
+It defines which fields should be treated as non-sensitive. The scan does not read the data of fields listed here. A rule of the [sensitive dictionary](sens-dict-schema.md) or a match by field name in the [meta-dictionary](meta-dict-schema.md) still wins.
 
 This dictionary can be created manually or generated automatically using [create-dict (scan) mode](../operations/scan.md) with `--output-no-sens-dict-file` option. 
 
 > ⚠️ **Note**
 > 
-> If a field appears both in the [sensitive dictionary](sens-dict-schema.md) and the non-sensitive dictionary, the sensitive dictionary takes priority.
+> The non-sensitive dictionary does not stop masking: it only tells the scan which fields are checked already.
+
+**Partitioned tables.** A record for a partitioned table works for all its partitions. A record for a partition
+works only for this partition. **Tables with `INHERITS`.** A record works only for its own table.
 
 ---
 

@@ -15,6 +15,8 @@ It is used in four operation modes, and its behavior differs slightly across the
     Fields listed in the sensitive dictionary are treated as known **sensitive** fields,
     which skips sensitivity detection for them.
     This speeds up scanning process.
+    The scan keeps the rules for tables of the database in the output dictionary.
+    See [Prepared dictionaries in the scan](../operations/scan.md#prepared-dictionaries-in-the-scan).
 
 3. [🔬 View fields mode](../operations/view-fields.md)
 
@@ -62,11 +64,64 @@ This dictionary can be created manually or generated automatically using [create
 ```
 > ⚠️ **Note**
 > - `sql_condition` in `dictionary` section is optional. It can be used for taking a part of data. Example: getting table data only by last week.
-> - `dictionary_exclude` is optional section.  If a table appears in both the "dictionary_exclude" and "dictionary" sections, then table will be dumped. It can be used for particular dump and debugging of the masking process.
+> - `dictionary_exclude` is optional section. It can be used for particular dump and debugging of the masking process. If a table has a rule and `dictionary_exclude`, the order in [Which rule is used](#partitioned-tables) decides: an exact name wins over a mask; for the same name or mask, the rule wins.
+> - The scan does not use `dictionary_exclude`. See [Prepared dictionaries in the scan](../operations/scan.md#prepared-dictionaries-in-the-scan).
 > - In `dictionary_exclude`, you must use either `schema` or `schema_mask` → not both.
 > - In `dictionary_exclude`, you must use either `table` or `table_mask` → not both.
 > - `dictionary_exclude` leaves out **data only**, also with `table_mask: "*"`: the tables stay in the dump, but empty. To leave out a whole schema, use [`--exclude-schema-name`](../operations/dump.md#exclude-schemas).
 > - A foreign key to a table without data, or to a table dumped with `sql_condition` or `raw_sql`, may be restored as `NOT VALID`: see [Foreign keys](../operations/restore.md#foreign-keys).
+
+---
+
+## Partitioned tables and tables with `INHERITS`
+
+pg_anon works with partitions and with child tables of `INHERITS` in different ways.
+
+### Partitioned tables
+
+A partitioned table and its partitions are one table in parts: the partitions have the same columns, and only the
+partitions have rows. So the rules of a partitioned table work for all its partitions, at any depth and in any schema.
+
+- **A rule for a partitioned table masks all its partitions.** This includes partitions that you create or attach
+  (`ATTACH PARTITION`) later.
+- **A detached partition loses this rule.** After `DETACH PARTITION` the table is an ordinary table, and the rule of
+  its former parent does not work for it. A dictionary made by the scan usually has no rule for a partition. So
+  until the next scan, the dump takes the data of a detached partition without masking.
+- **A rule for a partition is merged with the rules above it, field by field.** A field from the rule of the
+  partition uses the function of this rule. Other fields take the function from the next rule that has them, in the
+  order below. `sql_condition` also comes from the first rule that has it.
+- **Which rule is used.** pg_anon looks for rules in this order:
+  1. the exact name of the table;
+  2. for a partition: the exact names of the partitioned tables above it, the closest first;
+  3. a mask (`schema_mask`, `table_mask`) for the table;
+  4. for a partition: masks for the tables above it.
+
+  The first item that has a rule or `dictionary_exclude` decides. If one item has both, the rule wins and the table
+  is dumped with masking. So an exact name wins over a mask, also over a mask for the partition itself.
+- **To keep a field of one partition as it is,** give this field in the rule of the partition with the field itself as
+  the function: `"note": "\"note\""`.
+
+| Dictionary | `sales.orders_2024` (partition of `sales.orders`) |
+|---|---|
+| `sales.orders {email, note}` | `email` and `note` with the functions of `sales.orders` |
+| `sales.orders {email, note}` and `sales.orders_2024 {note}` | `email` of `sales.orders`, `note` of `sales.orders_2024` |
+| `sales.orders {email}` and `dictionary_exclude` for `sales.orders_2024` | no data |
+| `dictionary_exclude` for `sales.orders` and `sales.orders_2024 {email}` | `email` of `sales.orders_2024` |
+| `sales.orders {email}` and `dictionary_exclude` with `table_mask` for `sales.orders_2024` | `email` of `sales.orders`: the exact name wins over the mask |
+
+A dictionary of pg_anon 1.12 and older has a rule for each partition. It works as it is. See
+[Dictionaries of pg_anon 1.12 and older](../operations/scan.md#partitioned-tables).
+
+### Tables with `INHERITS`
+
+Child tables of `INHERITS` are separate tables with their own rows and often with more columns than the parent.
+That the data of the parent is safe says nothing about a child table. So each table takes only the rules for its
+own name:
+
+- A rule or `dictionary_exclude` for the parent does not work for its child tables. Give each child table its own
+  rule.
+- The dump reads the parent with `ONLY`: the rows of child tables are dumped with the rules of these tables.
+- A new child table has no rule. Until the next scan, the dump takes its data without masking.
 
 ---
 

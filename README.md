@@ -414,9 +414,10 @@ own client.
   low-entropy values (phone numbers, e-mails, identifiers). Keep the salt out of
   the dictionary you commit.
 - **A dictionary ages with the schema.** It is a snapshot of what the scan saw. New
-  tables, new columns or new partitions of a partitioned table are not in it, and a
-  dump made with the old dictionary carries them unmasked. Re-run `create-dict` and
-  review the result whenever the source schema changes.
+  tables, new columns, new child tables of `INHERITS` and detached partitions are
+  not in it, and a dump made with the old dictionary carries them unmasked. New
+  partitions take the rule of their partitioned table, if the dictionary has one.
+  Re-run `create-dict` and review the result whenever the source schema changes.
 - **The source database is written to.** `init` creates the `anon_funcs` schema
   there, and the masking functions run inside the source while the dump is read.
 - **Dumps are ordinary files.** Nothing in a dump is encrypted; a masked dump still

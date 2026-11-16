@@ -1,0 +1,73 @@
+{
+    "dictionary": [
+        {
+            "schema": "sp",
+            "table": "orders",
+            "fields": {
+                "note": "md5(\"note\")",
+                "tag": "'F_CONST'",
+                "email": "md5(\"email\")"
+            }
+        },
+        {
+            "schema": "sp",
+            "table": "orders_2024",
+            "fields": {
+                "tag": "'F_CONST'",
+                "email": "md5(\"email\")"
+            }
+        },
+        {
+            "schema": "sp",
+            "table": "orders_2024_ru",
+            "fields": {
+                "tag": "'F_CONST'",
+                "email": "md5(\"email\")"
+            }
+        },
+        {
+            "schema": "sp_archive",
+            "table": "orders_2023",
+            "fields": {
+                "note": "md5(\"note\")",
+                "tag": "'F_REGEX'",
+                "email": "md5(\"email\")"
+            }
+        },
+        {
+            "schema": "sp_crm",
+            "table": "contact",
+            "fields": {
+                "info": "md5(\"info\")"
+            }
+        },
+        {
+            "schema": "sp_crm",
+            "table": "partner",
+            "fields": {
+                "info": "md5(\"info\")"
+            }
+        },
+        {
+            "schema": "sp_crm",
+            "table": "person",
+            "fields": {
+                "info": "md5(\"info\")"
+            }
+        },
+        {
+            "schema": "sp",
+            "table": "empty_root",
+            "fields": {
+                "email": "md5(\"email\")"
+            }
+        },
+        {
+            "schema": "sp",
+            "table": "orders_2024_def",
+            "fields": {
+                "email": "md5(\"email\")"
+            }
+        }
+    ]
+}

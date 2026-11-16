@@ -1833,6 +1833,12 @@
             "title": "Need No Sens Dict",
             "default": false
           },
+          "keep_unmatched_prepared_rules": {
+            "type": "boolean",
+            "title": "Keep Unmatched Prepared Rules",
+            "description": "Keep all rules of the sensitive dictionaries as they are, also for tables and fields that the database does not have",
+            "default": false
+          },
           "depth": {
             "anyOf": [
               {

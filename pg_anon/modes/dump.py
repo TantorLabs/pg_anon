@@ -58,12 +58,13 @@ from pg_anon.common.utils import (
     build_pg_util_env,
     filter_db_tables,
     format_names_summary,
-    get_dict_rule_for_table,
     get_major_version,
     get_pg_util_version,
     is_max_locks_error,
     log_rules_for_parent_tables,
+    only_partition_ancestors,
     resolve_schemas,
+    resolve_table_rule,
     save_dicts_info_file,
     warn_rules_without_tables,
 )
@@ -520,28 +521,6 @@ class DumpMode:
         result_hash = hashlib.sha256(query.encode()).hexdigest()
         return {result_hash: count_rows}
 
-    def _resolve_table_rule(self, table_schema: str, table_name: str) -> dict | None:
-        dictionary_rules = self.context.prepared_dictionary_obj["dictionary"]
-
-        own_rule = get_dict_rule_for_table(
-            dictionary_rules=dictionary_rules,
-            schema=table_schema,
-            table=table_name,
-        )
-        if own_rule is not None:
-            return own_rule
-
-        for ancestor_schema, ancestor_table in self._partition_ancestors_map.get((table_schema, table_name), []):
-            ancestor_rule = get_dict_rule_for_table(
-                dictionary_rules=dictionary_rules,
-                schema=ancestor_schema,
-                table=ancestor_table,
-            )
-            if ancestor_rule is not None:
-                return ancestor_rule
-
-        return None
-
     async def _prepare_dump_queries(self) -> None:
         self._data_dump_queries = []
         self._data_dump_files = {}
@@ -559,7 +538,12 @@ class DumpMode:
         )
 
         for table_schema, table_name in self.context.tables:
-            table_rule = self._resolve_table_rule(table_schema, table_name)
+            table_rule, excluded = resolve_table_rule(
+                (table_schema, table_name),
+                self.context.prepared_dictionary_obj["dictionary"],
+                self.context.prepared_dictionary_obj.get("dictionary_exclude"),
+                self._partition_ancestors_map,
+            )
 
             query = await get_dump_query(
                 ctx=self.context,
@@ -569,6 +553,7 @@ class DumpMode:
                 files=self._data_dump_files,
                 fields_cache=fields_cache,
                 legacy_inherits_parents=legacy_inherits_parents,
+                excluded=excluded,
             )
 
             if query:
@@ -812,9 +797,11 @@ class DumpMode:
         tables = await get_db_tables(connection, self.context.exclude_schemas)
         tables = await self._exclude_extension_tables(connection, tables)
         self._partition_ancestors_map = await get_partition_ancestors_map(connection, tables)
-        # the lists follow INHERITS parents too, the masking rules follow only partitioned tables
+        # the black list follows INHERITS parents too, the white list and the masking rules only partitioned tables
         self._table_ancestors = await get_table_ancestors_map(connection)
-        self.context.set_tables_lists(tables, self._table_ancestors)
+        self.context.set_tables_lists(
+            tables, ancestors=self._table_ancestors, partition_ancestors=self._partition_ancestors_map
+        )
         if self._skip_pre_data_dump and self._skip_post_data_dump:
             # no structure is dumped, so _prepare_exclusions does not check the lists
             all_tables = await get_all_tables(connection)
@@ -898,12 +885,15 @@ class DumpMode:
         )
 
     def _split_tables(self, graph: DependencyGraph) -> tuple[set[tuple[str, str]], list[tuple[str, str]]]:
-        """Split the tables into kept and excluded ones; a list entry for a parent table covers its child tables."""
+        """Split the tables into kept and excluded ones by the lists and the parents that kept tables need."""
         tables = {table for table in graph.tables().values() if table[0] not in self.context.exclude_schemas}
         partitioned = {(schema, name) for kind, schema, name in graph.relations.values() if kind == "p"}
         ancestors = {table: self._table_ancestors[table] for table in tables if table in self._table_ancestors}
+        partition_ancestors = only_partition_ancestors(ancestors, partitioned)
         white_rules, black_rules = self.context.included_tables_rules, self.context.excluded_tables_rules
-        kept, black_listed, white_listed = filter_db_tables(sorted(tables), white_rules, black_rules, ancestors)
+        kept, black_listed, white_listed = filter_db_tables(
+            sorted(tables), white_rules, black_rules, ancestors=ancestors, partition_ancestors=partition_ancestors
+        )
         kept_tables = set(kept)
         # a partition or a child table cannot be created without its parents
         parents = {parent for table in white_listed for parent in ancestors.get(table, [])}
@@ -913,7 +903,7 @@ class DumpMode:
         warn_rules_without_tables(black_rules, all_tables, "Exclude list", "the database")
         warn_rules_without_tables(white_rules, all_tables, "Include list", "the database")
         log_rules_for_parent_tables(black_rules, tables, ancestors, "excluded")
-        log_rules_for_parent_tables(white_rules, tables - black_listed, ancestors, "included")
+        log_rules_for_parent_tables(white_rules, tables - black_listed, partition_ancestors, "included")
 
         # the restore applies its lists to parent tables by these two descriptions
         self.metadata.partitions = []

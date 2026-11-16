@@ -5,6 +5,11 @@
 
 This mode displays how database fields match the masking rules.
 
+It shows the rule that the dump uses for each field. For a partition, it shows its own rule merged with the rules
+of the partitioned tables above it. A child table of `INHERITS` shows only its own rule. A table that the dump
+takes without data (`dictionary_exclude`) is not shown. See
+[Partitioned tables and tables with `INHERITS`](../dicts/sens-dict-schema.md#partitioned-tables-and-tables-with-inherits).
+
 ## Prerequisites
 - The `anon_funcs` schema with masking functions must already exist. See [init mode](init.md).
 - A sensitive dictionary containing data about database fields and their masking rules must be prepared beforehand. See [create-dict (scan) mode](scan.md).

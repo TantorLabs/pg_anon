@@ -53,6 +53,7 @@ class RunOptions:
     output_no_sens_dict_file: str | None = None
     scan_mode: ScanMode | None = None
     scan_partial_rows: int = DEFAULT_SCAN_PARTIAL_ROWS
+    keep_unmatched_prepared_rules: bool = False
 
     # dump options
     prepared_sens_dict_files: list[str] | None = None

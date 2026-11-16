@@ -238,6 +238,92 @@ def get_dict_rule_for_table(dictionary_rules: list[dict], schema: str, table: st
     return result
 
 
+def _find_exact_and_mask_rule(table: tuple[str, str], rules: list[dict]) -> tuple[dict | None, dict | None]:
+    """Find the first exact rule and the last mask rule for a table, as get_dict_rule_for_table does."""
+    schema, name = table
+    exact = None
+    masked = None
+    for rule in rules:
+        if rule.get("schema") == schema and rule.get("table") == name:
+            if exact is None:
+                exact = rule
+        elif get_dict_rule_for_table([rule], schema, name) is not None:
+            masked = rule
+    return exact, masked
+
+
+def _precision_steps(
+    table: tuple[str, str],
+    rules: list[dict],
+    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None,
+) -> list[tuple[dict | None, tuple[str, str]]]:
+    """List the rule of each step with its table: exact names on all levels, then masks on all levels."""
+    levels = [table, *(partition_ancestors or {}).get(table, [])]
+    exact_steps = []
+    mask_steps = []
+    for level in levels:
+        exact, masked = _find_exact_and_mask_rule(level, rules)
+        exact_steps.append((exact, level))
+        mask_steps.append((masked, level))
+    return exact_steps + mask_steps
+
+
+def find_table_rule(
+    table: tuple[str, str],
+    rules: list[dict],
+    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
+) -> tuple[dict, tuple[str, str]] | None:
+    """Find the most exact rule for a table or its partitioned tables; return it with the table it names."""
+    for rule, level in _precision_steps(table, rules, partition_ancestors):
+        if rule is not None:
+            return rule, level
+    return None
+
+
+def resolve_table_rule(
+    table: tuple[str, str],
+    rules: list[dict],
+    excludes: list[dict] | None = None,
+    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
+) -> tuple[dict | None, bool]:
+    """Find the rule of a table merged with the rules of its partitioned tables, and whether the table is excluded."""
+    found_rules = [rule for rule, _ in _precision_steps(table, rules, partition_ancestors)]
+    found_excludes = [rule for rule, _ in _precision_steps(table, excludes or [], partition_ancestors)]
+    for step in range(len(found_rules)):
+        if found_rules[step] is not None:
+            # this rule and the less precise rules after it are merged by fields
+            rules_to_merge = [rule for rule in found_rules[step:] if rule is not None]
+            return _merge_rules(rules_to_merge), False
+        if found_excludes[step] is not None:
+            return None, True
+    return None, False
+
+
+_RULE_FILTER_KEYS = ("sql_condition", "raw_sql")
+
+
+def _merge_rules(rules: list[dict]) -> dict:
+    """Merge rules by fields: the first rule that names a field gives its function and its file name."""
+    if len(rules) == 1:
+        return rules[0]
+
+    merged = {key: value for key, value in rules[0].items() if key not in _RULE_FILTER_KEYS}
+    merged["fields"] = {}
+    field_files = {}
+    for rule in rules:
+        for field, function in rule.get("fields", {}).items():
+            if field not in merged["fields"]:
+                merged["fields"][field] = function
+                field_files[field] = rule.get("dict_file_name")
+        for key in _RULE_FILTER_KEYS:
+            if rule.get(key) and key not in merged:
+                merged[key] = rule[key]
+    # view-fields shows the file each field function comes from
+    if any(field_files.values()):
+        merged["field_dict_file_names"] = field_files
+    return merged
+
+
 def validate_exists_mode(mode: str) -> bool:
     """Check whether the given mode string is a valid AnonMode."""
     from pg_anon.common.enums import AnonMode  # noqa: PLC0415
@@ -372,14 +458,14 @@ def exception_to_str(exc: Exception, limit: int = TRACEBACK_LINES_COUNT) -> str:
 
 
 def table_matches_rules(
-    rules: list[dict] | None,
     table: tuple[str, str],
-    partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
+    rules: list[dict] | None,
+    ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
 ) -> bool:
-    """Check that the rules name the table or one of the tables above it: partitioned tables or INHERITS parents."""
+    """Check that the rules name the table or one of the given tables above it."""
     if not rules:
         return False
-    names = [table, *(partition_ancestors or {}).get(table, [])]
+    names = [table, *(ancestors or {}).get(table, [])]
     return any(get_dict_rule_for_table(rules, *name) for name in names)
 
 
@@ -387,9 +473,10 @@ def filter_db_tables(
     tables: list[tuple[str, str]],
     white_list_rules: list[dict] | None = None,
     black_list_rules: list[dict] | None = None,
+    ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
     partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
 ) -> tuple[list[tuple[str, str]], set[tuple[str, str]], set[tuple[str, str]]]:
-    """Filter database tables by whitelist and blacklist rules; a rule for a parent table covers its child tables."""
+    """Filter tables by the lists: a black list rule covers child tables, a white list rule covers only partitions."""
     filtered_tables: list[tuple[str, str]] = []
     black_listed_tables: set[tuple[str, str]] = set()
     white_listed_tables: set[tuple[str, str]] = set()
@@ -398,14 +485,14 @@ def filter_db_tables(
 
     for table_data in tables:
         # black list has the highest priority for pg_dump / pg_restore
-        if table_matches_rules(black_list_rules, table_data, partition_ancestors):
+        if table_matches_rules(table_data, black_list_rules, ancestors):
             # if table in black list, this table must be filtered out
             black_listed_tables.add(table_data)
             continue
 
         # white list has the second priority for pg_dump / pg_restore
         if white_list_rules:
-            if table_matches_rules(white_list_rules, table_data, partition_ancestors):
+            if table_matches_rules(table_data, white_list_rules, partition_ancestors):
                 # if white list is using and table in white list, this table must not be filtered
                 white_listed_tables.add(table_data)
                 filtered_tables.append(table_data)
@@ -415,6 +502,13 @@ def filter_db_tables(
         filtered_tables.append(table_data)
 
     return filtered_tables, black_listed_tables, white_listed_tables
+
+
+def only_partition_ancestors(
+    ancestors: dict[tuple[str, str], list[tuple[str, str]]], partitioned: set[tuple[str, str]]
+) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """Keep the ancestors of partitions only; PostgreSQL does not mix partitions and INHERITS in one tree."""
+    return {table: above for table, above in ancestors.items() if above and above[0] in partitioned}
 
 
 def log_rules_for_parent_tables(
@@ -484,6 +578,12 @@ def format_names_summary(names: Iterable[str], noun: str, limit: int = 2) -> str
     rest = count - len(shown)
     listed = ", ".join(shown) + (f", and {rest} more" if rest else "")
     return f"{summary} ({listed})"
+
+
+def format_names_list(names: list[str], limit: int = 3) -> str:
+    """Render names for a log message as "a, b, c, and 2 more"."""
+    rest = len(names) - limit
+    return ", ".join(names[:limit]) + (f", and {rest} more" if rest > 0 else "")
 
 
 def _matches_schema(schema: str, names: list[str] | None, masks: list[str] | None) -> bool:

@@ -84,7 +84,7 @@ Useful for large schemas without sensitive data or for reducing processing time.
     ]
 }
 ```
-### Rule Combinations
+### Rule combinations
 1. `schema` or `schema_mask` — required
    - You must specify one of `schema` or `schema_mask`
    - This defines where the rule applies.
@@ -97,6 +97,13 @@ Useful for large schemas without sensitive data or for reducing processing time.
    - If fields is specified → only these fields are skipped.
    - If fields is omitted → the entire table is skipped.
    - And if no `table` is specified → the entire schema is skipped.
+4. Partitioned tables
+   - A rule that matches a partitioned table also skips all its partitions, at any depth and in any schema. For
+     example, if the partitioned table `sales.orders` has the partition `archive.orders_2023`, the rule
+     `{"schema": "sales"}` skips this partition too.
+   - `fields` of the rule skip the columns with the same names in the partitions.
+   - The scan logs the partitions that the rule skips only because of the partitioned table.
+   - A rule for a parent with `INHERITS` skips only the parent. Its child tables are scanned.
 
 ### ⚙️ Using this section
 
@@ -174,7 +181,7 @@ Useful when:
     ]
 }
 ```
-### Combination rules
+### Rule combinations
 1. `schema` or `schema_mask` — required
    - You must specify one of `schema` or `schema_mask`
    - This defines where the rule applies.
@@ -187,6 +194,13 @@ Useful when:
    - If fields is specified → only these fields are skipped.
    - If fields is omitted → the entire table is skipped.
    - And if no `table` is specified → the entire schema is skipped.
+4. Partitioned tables
+   - A rule that matches a partitioned table also includes all its partitions, at any depth and in any schema. For
+     example, if the partitioned table `sales.orders` has the partition `archive.orders_2023`, the rule
+     `{"schema": "sales"}` includes this partition too.
+   - `fields` of the rule include the columns with the same names in the partitions.
+   - A rule for a parent with `INHERITS` includes only the parent. Its child tables are not included by this rule.
+5. If a field matches both `skip_rules` and `include_rules`, it is skipped.
 
 ### ⚙️ Using this section
 
@@ -371,7 +385,7 @@ Specify custom SQL WHERE conditions to sample the data instead of scanning the w
     ]
 }
 ```
-### Rules
+### Rule combinations
 1. `schema` or `schema_mask` — required
    - You must specify one of `schema` or `schema_mask`
 2. `table` or `table_mask` — required
@@ -380,6 +394,16 @@ Specify custom SQL WHERE conditions to sample the data instead of scanning the w
 3. `sql_condition` — required
    - Must specify SQL condition for `WHERE` section
    - Keyword `WHERE` into `sql_condition` is not required
+4. Partitioned tables
+   - A condition that matches a partitioned table also works for all its partitions, at any depth and in any schema.
+     For example, if the partitioned table `sales.orders` has the partition `archive.orders_2023`, the condition for
+     `sales.orders` is used for this partition too.
+   - A table gets only one condition. The scan takes the first one in this order: the exact name of the table, the
+     exact names of the partitioned tables above it (the closest first), a mask for the table, masks for the tables
+     above it. To read a partition without the condition of its partitioned table, give the partition its own
+     condition by its exact name, for example `"sql_condition": "true"`.
+   - The scan logs the partitions that take the condition of a partitioned table.
+   - A condition for a parent with `INHERITS` works only for the parent. Its child tables are read without it.
 
 ### ⚙️ Using this section
 
@@ -435,7 +459,7 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
 | `anon_func`           | Masking rule for the field. **May contain the `%s` placeholder**, which is replaced with the field name; without it the rule is used as is. |
 | `n_count`             | The field is considered sensitive if the scan function returned `True` at least `n` times for field values. Uses only for `scan_func`. (default: 1) |
 
-### Rule Combinations
+### Rule combinations
 1. `scan_func` or `scan_func_per_field` — required
    - You must specify one of `scan_func` or `scan_func_per_field`
    - This defines where the rule applies.

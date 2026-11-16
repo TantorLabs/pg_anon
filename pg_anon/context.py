@@ -376,6 +376,7 @@ class Context:
     def set_tables_lists(
         self,
         tables: list[tuple[str, str]],
+        ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
         partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] | None = None,
     ) -> None:
         """Filter and assign table lists based on inclusion and exclusion rules."""
@@ -383,5 +384,6 @@ class Context:
             tables=tables,
             white_list_rules=self.included_tables_rules,
             black_list_rules=self.excluded_tables_rules,
+            ancestors=ancestors,
             partition_ancestors=partition_ancestors,
         )

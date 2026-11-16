@@ -99,6 +99,11 @@ class ScanRequest(StatelessRunnerRequest):
     no_sens_dict_contents: list[DictionaryContent] = Field(default_factory=list)
 
     need_no_sens_dict: bool = False
+    keep_unmatched_prepared_rules: bool = Field(
+        False,
+        description="Keep all rules of the sensitive dictionaries as they are, also for tables and fields "
+        "that the database does not have",
+    )
 
     depth: int | None = None
     proc_count: int | None = Field(None, description="Deprecated: has no effect.", deprecated=True)

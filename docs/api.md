@@ -101,6 +101,7 @@ Runs pg_anon in [create-dict (scan) mode](operations/scan.md) in the background.
 | sens_dict_contents    | array of [dictionary content](#dictionarycontent) | No       | Contents of the [sensitive dictionary](dicts/sens-dict-schema.md). Used to improve scan performance.                                                         |
 | no_sens_dict_contents | array of [dictionary content](#dictionarycontent) | No       | Contents of the [non-sensitive dictionary](dicts/non-sens-dict-schema.md). Used to improve scan performance.                                                 |
 | need_no_sens_dict     | boolean                                           | No       | If `true`, generates a [non-sensitive dictionary](dicts/non-sens-dict-schema.md) and returns it in the `no_sens_dict_contents` field of the webhook payload. |
+| keep_unmatched_prepared_rules | boolean                                   | No       | If `true`, the result keeps all rules of `sens_dict_contents` as they are, also rules for tables and fields that the database does not have (for example, tables that you will create later). Default: `false`, such rules and fields are removed. |
 | conn_count            | integer                                           | No       | Number of concurrent database connections. Default: `4`.                                                                                                     |
 | log_level             | string                                            | No       | Log verbosity of the pg_anon run: `info`, `debug` or `error`. Default: `info`.                                                                                |
 | proc_conn_count       | integer                                           | No       | **Deprecated**, use `conn_count`. Still accepted; ignored when `conn_count` is also sent.                                                                     |
@@ -863,8 +864,8 @@ Webhooks use the same codes in the `error_code` field.
 | Field        | Type                                                 | Required | Description                                                              |
 |--------------|------------------------------------------------------|----------|--------------------------------------------------------------------------|
 | table_name   | string                                               | Yes      | Table name                                                               |
-| is_sensitive | boolean                                              | Yes      | Whether the table matches the sensitive dictionary                       |
-| is_excluded  | boolean                                              | Yes      | Whether the table is excluded by `dictionary_exclude`                    |
+| is_sensitive | boolean                                              | Yes      | Whether the table has a masking rule, as in the dump                     |
+| is_excluded  | boolean                                              | Yes      | Whether the dump takes the table without data (`dictionary_exclude`)     |
 | fields       | array of [PreviewFieldContent](#previewfieldcontent)  | No       | List of fields with their types and sensitivity info                     |
 
 ## PreviewFieldContent

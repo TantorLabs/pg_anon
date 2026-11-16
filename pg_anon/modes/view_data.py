@@ -2,9 +2,19 @@ import json
 
 from prettytable import PrettyTable, TableStyle
 
-from pg_anon.common.db_utils import create_connection, get_dump_query, get_fields_list, get_rows_count
+from pg_anon.common.db_utils import (
+    create_connection,
+    get_dump_query,
+    get_fields_list,
+    get_legacy_inheritance_parents,
+    get_partition_ancestors_map,
+    get_partition_leaves,
+    get_partitions_view_query,
+    get_rows_count,
+    PartitionRule,
+)
 from pg_anon.common.errors import ErrorCode, PgAnonError
-from pg_anon.common.utils import get_dict_rule_for_table
+from pg_anon.common.utils import resolve_table_rule
 from pg_anon.context import Context
 
 
@@ -16,6 +26,12 @@ class ViewDataMode:
         self._schema_name: str = context.options.schema_name or ""
         self._table_name: str = context.options.table_name or ""
         self.table_rule: dict | None = None
+        self._excluded: bool = False
+        self._inherits_parents: set[tuple[str, str]] = set()
+        self._leaves: list[tuple[str, str]] = []
+        self._partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        self._partitions: list[PartitionRule] = []
+        self._fields_list: list = []
         self.raw_field_names: list[str] = []
         self.field_names: list[str] = []
         self.rows_count: int = 0
@@ -28,25 +44,18 @@ class ViewDataMode:
         self._need_raw_data: bool = need_raw_data
 
     async def _get_fields_for_view(self) -> None:
-        """Get field names and all fields for view-data mode."""
-        fields_list = await get_fields_list(
-            connection_params=self.context.connection_params,
-            server_settings=self.context.server_settings,
-            table_schema=self._schema_name,
-            table_name=self._table_name,
-        )
-
-        if not fields_list:
-            raise PgAnonError(
-                ErrorCode.TABLE_NOT_FOUND, f'Table "{self._schema_name}.{self._table_name}" hasn\'t exists!'
-            )
-
+        """Fill the field names of the table and mark the masked ones with "*"."""
         if self.raw_field_names is None:
             self.raw_field_names = []
         if self.field_names is None:
             self.field_names = []
 
-        for field in fields_list:
+        masked_fields = set()
+        for rule in [self.table_rule, *(partition.rule for partition in self._partitions)]:
+            if rule:
+                masked_fields.update(rule.get("fields", {}))
+
+        for field in self._fields_list:
             # generated-always columns cannot be included in INSERT / COPY,
             # so `get_dump_query` omits them. Keeping them in raw_field_names
             # would raise a KeyError when we project the fetched record.
@@ -56,7 +65,7 @@ class ViewDataMode:
             field_name = field["column_name"]
             self.raw_field_names.append(field_name)
 
-            if self.table_rule and field_name in self.table_rule["fields"]:
+            if field_name in masked_fields:
                 self.field_names.append("* " + field_name)
             else:
                 self.field_names.append(field_name)
@@ -76,6 +85,7 @@ class ViewDataMode:
             server_settings=self.context.server_settings,
             schema_name=self._schema_name,
             table_name=self._table_name,
+            only=(self._schema_name, self._table_name) in self._inherits_parents,
         )
         return self.rows_count
 
@@ -109,7 +119,64 @@ class ViewDataMode:
             self._prepare_table()
             print(self.table)
 
+    async def _load_fields(self) -> None:
+        """Load the columns of the table; stop when the table does not exist."""
+        self._fields_list = await get_fields_list(
+            connection_params=self.context.connection_params,
+            server_settings=self.context.server_settings,
+            table_schema=self._schema_name,
+            table_name=self._table_name,
+        )
+        if not self._fields_list:
+            raise PgAnonError(
+                ErrorCode.TABLE_NOT_FOUND, f'Table "{self._schema_name}.{self._table_name}" hasn\'t exists!'
+            )
+
+    async def _load_table_tree(self) -> None:
+        """Load the leaf partitions and the tables above them, or the INHERITS parents when there are no partitions."""
+        table = (self._schema_name, self._table_name)
+        connection = await create_connection(
+            self.context.connection_params, server_settings=self.context.server_settings
+        )
+        try:
+            self._leaves = await get_partition_leaves(connection, *table)
+            self._partition_ancestors = await get_partition_ancestors_map(connection, [table, *self._leaves])
+        finally:
+            await connection.close()
+
+        if not self._leaves:
+            self._inherits_parents = await get_legacy_inheritance_parents(
+                connection_params=self.context.connection_params,
+                server_settings=self.context.server_settings,
+            )
+
+    def _choose_rules(self) -> None:
+        """Choose the rule of the table, or of each leaf partition when the table is partitioned."""
+        rules = self.context.prepared_dictionary_obj["dictionary"]
+        excludes = self.context.prepared_dictionary_obj.get("dictionary_exclude")
+        if self._leaves:
+            for leaf in self._leaves:
+                leaf_rule, leaf_excluded = resolve_table_rule(leaf, rules, excludes, self._partition_ancestors)
+                if not leaf_excluded:
+                    self._partitions.append(PartitionRule(*leaf, leaf_rule))
+            self._excluded = not self._partitions
+        else:
+            table = (self._schema_name, self._table_name)
+            self.table_rule, self._excluded = resolve_table_rule(table, rules, excludes, self._partition_ancestors)
+
     async def _prepare_queries(self) -> None:
+        if self._excluded:
+            raise PgAnonError(ErrorCode.TABLE_EXCLUDED, f'Table "{self._schema_name}.{self._table_name}" excluded!')
+
+        page = f" LIMIT {self._limit} OFFSET {self._offset}"
+        if self._partitions:
+            self.query = get_partitions_view_query(self._fields_list, self._partitions) + page
+            if self._need_raw_data:
+                raw_partitions = [
+                    PartitionRule(partition.schema, partition.table, None) for partition in self._partitions
+                ]
+                self.raw_query = get_partitions_view_query(self._fields_list, raw_partitions) + page
+            return
 
         query_without_limit = await get_dump_query(
             ctx=self.context,
@@ -117,11 +184,12 @@ class ViewDataMode:
             table_name=self._table_name,
             table_rule=self.table_rule,
             nulls_last=True,
+            legacy_inherits_parents=self._inherits_parents,
         )
         if not query_without_limit:
             raise PgAnonError(ErrorCode.TABLE_EXCLUDED, f'Table "{self._schema_name}.{self._table_name}" excluded!')
 
-        self.query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
+        self.query = query_without_limit + page
 
         if self._need_raw_data:
             query_without_limit = await get_dump_query(
@@ -130,9 +198,10 @@ class ViewDataMode:
                 table_name=self._table_name,
                 table_rule=None,
                 nulls_last=True,
+                legacy_inherits_parents=self._inherits_parents,
             )
             if query_without_limit:
-                self.raw_query = query_without_limit + f" LIMIT {self._limit} OFFSET {self._offset}"
+                self.raw_query = query_without_limit + page
 
     async def run(self) -> None:
         """Run the view_data mode to display anonymized table rows."""
@@ -146,12 +215,9 @@ class ViewDataMode:
             )
 
         self.context.read_prepared_dict()
-        self.table_rule = get_dict_rule_for_table(
-            dictionary_rules=self.context.prepared_dictionary_obj["dictionary"],
-            schema=self._schema_name,
-            table=self._table_name,
-        )
-
+        await self._load_fields()
+        await self._load_table_tree()
+        self._choose_rules()
         await self._prepare_queries()
         await self._output_fields()
 

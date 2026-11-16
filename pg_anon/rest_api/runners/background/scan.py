@@ -57,6 +57,9 @@ class ScanRunner(BaseRunner):
         if input_no_sens_dict_file_names:
             self.cli_params.append(f"--prepared-no-sens-dict-file={','.join(input_no_sens_dict_file_names)}")
 
+        if self.request.keep_unmatched_prepared_rules:
+            self.cli_params.append("--keep-unmatched-prepared-rules")
+
         if self.request.save_dicts:
             self.cli_params.extend(
                 [

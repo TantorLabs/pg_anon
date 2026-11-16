@@ -1,4 +1,6 @@
-"""A rule that matches a parent table writes one log line with the number of child tables, on dump and on restore."""
+"""A black list rule that matches an INHERITS parent writes one log line with the number of child tables, on dump and
+on restore; a white list rule for an INHERITS parent covers only this table and writes no line.
+"""
 
 from __future__ import annotations
 
@@ -18,20 +20,12 @@ SCENARIOS = {
             "4 child tables are excluded too."
         ],
     ),
-    "white_list_on_parent_with_one_child": (
-        {"include": ["sms_notifications"]},
-        [
-            'The rule {"schema": "ilist", "table": "sms_notifications"} matches a parent table: '
-            "1 child table is included too."
-        ],
-    ),
+    "white_list_on_parent_with_one_child": ({"include": ["sms_notifications"]}, []),
     "both_lists_on_parents": (
         {"include": ["notifications"], "exclude": ["sms_notifications"]},
         [
             'The rule {"schema": "ilist", "table": "sms_notifications"} matches a parent table: '
-            "1 child table is excluded too.",
-            'The rule {"schema": "ilist", "table": "notifications"} matches a parent table: '
-            "2 child tables are included too.",
+            "1 child table is excluded too."
         ],
     ),
     "lists_on_tables_without_children": ({"include": ["sms_urgent", "accounts"], "exclude": ["accounts"]}, []),

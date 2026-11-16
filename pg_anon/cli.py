@@ -197,6 +197,11 @@ def scan_parser() -> argparse.ArgumentParser:
         type=parse_comma_separated_list,
         help="""Input file or file list contains not sensitive dictionary, which was obtained in previous use by option "--output-no-sens-dict-file" or prepared manually. In rules collision case, priority has rules in last file from the list.""",
     )
+    p.add_argument(
+        "--keep-unmatched-prepared-rules",
+        action="store_true",
+        help="""Keep all rules of "--prepared-sens-dict-file" in the output sensitive dictionary as they are. By default the output keeps only the rules that match tables of the database, and only the fields that these tables have. Use it to keep rules for tables that will be created later.""",
+    )
 
     p.add_argument(
         "--output-sens-dict-file",

@@ -30,6 +30,7 @@ from pg_anon.common.db_utils import (
     get_extensions,
     get_foreign_descendants_map,
     get_invalid_partitioned_indexes,
+    get_partitioned_tables,
     run_query_in_pool,
 )
 from pg_anon.common.dependencies import dependency_error, map_toc_entries
@@ -63,6 +64,7 @@ from pg_anon.common.utils import (
     get_major_version_parts,
     get_pg_util_version,
     log_rules_for_parent_tables,
+    only_partition_ancestors,
     parse_version,
     resolve_schemas,
     save_dicts_info_file,
@@ -141,6 +143,7 @@ class RestoreMode:
         )
         self._not_valid_fk: list[dict] = []
         self._table_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        self._partition_ancestors: dict[tuple[str, str], list[tuple[str, str]]] = {}
         self._excluded_schemas: set[str] = set()
         self._dump_tables: set[tuple[str, str]] = set()
         self._structure_tables: set[tuple[str, str]] = set()
@@ -1303,19 +1306,12 @@ class RestoreMode:
         if not self.context.options.drop_custom_check_constr:
             return
 
-        check_constraints = await connection.fetch(get_check_constraint_query())
-
-        if not check_constraints:
-            return
-
-        for check_constraint in check_constraints:
-            schema = check_constraint[0]
-            table = check_constraint[1]
-            constraint = check_constraint[2]
-
-            self.context.logger.info("Removing constraints: %s.%s -> %s", schema, table, constraint)
-            query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
-            await connection.execute(query)
+        # Dropping on a parent drops the inherited copies; a child's own copy is found by the next pass.
+        while check_constraints := await connection.fetch(get_check_constraint_query()):
+            for schema, table, constraint, _ in check_constraints:
+                self.context.logger.info("Removing constraints: %s.%s -> %s", schema, table, constraint)
+                query = f'ALTER TABLE "{schema}"."{table}" DROP CONSTRAINT IF EXISTS "{constraint}" CASCADE'
+                await connection.execute(query)
 
     async def _restore_table_data(
         self,
@@ -1511,7 +1507,24 @@ class RestoreMode:
                     self._needed_tables[tables[0]] = set(tables[1:])
         return self._needed_tables
 
-    def _prepare_tables_lists(self) -> None:
+    async def _get_partitioned_tables(self) -> set[tuple[str, str]]:
+        """Partitioned tables by the dump; a dump of data only does not describe them, so the target is asked."""
+        if self.metadata.partitions is None and self._table_ancestors:
+            connection = await create_connection(
+                self.context.connection_params, server_settings=self.context.server_settings
+            )
+            try:
+                return await get_partitioned_tables(connection)
+            finally:
+                await connection.close()
+
+        partitioned = set()
+        for info in self.metadata.partitions or []:
+            if info.get("is_partitioned"):
+                partitioned.add((info["schema"], info["table"]))
+        return partitioned
+
+    async def _prepare_tables_lists(self) -> None:
         struct_only = self.context.options.mode == AnonMode.SYNC_STRUCT_RESTORE
         if struct_only and self._is_legacy_dump:
             return
@@ -1532,7 +1545,11 @@ class RestoreMode:
             for info in described
             if info.get("ancestors")
         }
-        self.context.set_tables_lists(tables, self._table_ancestors)
+        partitioned = await self._get_partitioned_tables()
+        self._partition_ancestors = only_partition_ancestors(self._table_ancestors, partitioned)
+        self.context.set_tables_lists(
+            tables, ancestors=self._table_ancestors, partition_ancestors=self._partition_ancestors
+        )
 
         if self._whitelist_active and not self.context.white_listed_tables:
             raise PgAnonError(ErrorCode.NO_TABLES_FOR_RESTORE, "None of the requested tables match the dump contents")
@@ -1550,11 +1567,11 @@ class RestoreMode:
         self._dump_tables = data_tables | self._structure_tables
         ancestors = self._table_ancestors
         white_rules, black_rules = self.context.included_tables_rules, self.context.excluded_tables_rules
-        # tables without rows of their own follow the lists too; an entry for a parent table covers its child tables
-        black_listed = {table for table in self._dump_tables if table_matches_rules(black_rules, table, ancestors)}
+        # tables without rows of their own follow the lists too; a black list entry for a parent covers its child tables
+        black_listed = {table for table in self._dump_tables if table_matches_rules(table, black_rules, ancestors)}
         kept = self._dump_tables - black_listed
         if self._whitelist_active:
-            kept = {table for table in kept if table_matches_rules(white_rules, table, ancestors)}
+            kept = {table for table in kept if table_matches_rules(table, white_rules, self._partition_ancestors)}
             # a partition or a child table cannot be created without its parents; the parents get no rows
             parents = {parent for table in kept for parent in ancestors.get(table, [])} & self._dump_tables
             self._tables_without_rows = (parents - kept) & data_tables
@@ -1565,7 +1582,9 @@ class RestoreMode:
         warn_rules_without_tables(black_rules, rule_tables, "Exclude list", "the dump")
         warn_rules_without_tables(white_rules, rule_tables, "Include list", "the dump")
         log_rules_for_parent_tables(black_rules, self._dump_tables, ancestors, "excluded")
-        log_rules_for_parent_tables(white_rules, self._dump_tables - black_listed, ancestors, "included")
+        log_rules_for_parent_tables(
+            white_rules, self._dump_tables - black_listed, self._partition_ancestors, "included"
+        )
 
         kept = {table for table in kept if table[0] not in self._excluded_schemas}
         self._excluded_tables = self._dump_tables - kept
@@ -1772,7 +1791,7 @@ class RestoreMode:
 
             # the lists are checked against the dump before --drop-db changes the target
             self.context.read_partial_tables_dicts()
-            self._prepare_tables_lists()
+            await self._prepare_tables_lists()
             self._resolve_schemas()
             self._prepare_excluded_tables()
             self._check_data_tables_in_structure()

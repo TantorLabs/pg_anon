@@ -192,6 +192,7 @@ def _api_source_db_setup(db_manager, pg_anon_runner, fixtures):
         res = await pg_anon_runner.run("init", API_SOURCE_DB)
         assert res.result_code == ResultCode.DONE
         await fixtures.build_minimal_env(API_SOURCE_DB, rows=30)
+        await fixtures.build_scan_partitions(API_SOURCE_DB)
 
     async def _teardown() -> None:
         await db_manager.drop_db(API_SOURCE_DB)

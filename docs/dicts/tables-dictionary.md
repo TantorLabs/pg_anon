@@ -107,8 +107,13 @@ child tables, see [Parent and child tables](#parent-and-child-tables).
 
 ## Parent and child tables
 
-Partitions (`PARTITION OF`) and child tables (`INHERITS`) follow the same rules. A rule for a parent table works
-like a PostgreSQL command on a parent table without `ONLY`: it covers all child tables, at any depth.
+Partitions (`PARTITION OF`) and child tables (`INHERITS`) follow different rules.
+
+- **Partitions.** A partitioned table and its partitions are one table in parts. A rule for a partitioned table works
+  like a PostgreSQL command on it without `ONLY`: in both lists it covers all its partitions, at any depth.
+- **`INHERITS`.** Child tables are separate tables with their own rows. A whitelist rule for a parent covers only
+  the parent. A blacklist rule for a parent covers its child tables too: a child table cannot be created without
+  its parent.
 
 **🏛️ Example Database Structure**
 
@@ -128,20 +133,20 @@ like a PostgreSQL command on a parent table without `ONLY`: it covers all child 
 | Blacklist: `sales_2024` / `events_old` | `sales`, `sales_2025` | `events`, `events_new` |
 | Blacklist: `sales` / `events` | no tables | no tables |
 | Whitelist: `sales_2024` / `events_old` | `sales`, `sales_2024` | `events` without its own rows, `events_old` |
-| Whitelist: `sales` / `events` | `sales`, `sales_2024`, `sales_2025` | `events`, `events_old`, `events_new` |
+| Whitelist: `sales` / `events` | `sales`, `sales_2024`, `sales_2025` | `events` |
 
 - **A kept child table keeps all its parents:** a table cannot exist without them. You do not need to list the
   parents in the whitelist. A parent with `INHERITS` is created without its own rows.
 - **A left-out parent leaves out all its child tables.** A table with `INHERITS` from two parents is left out if
-  one of them is left out.
+  one of them is left out. The dump and the restore log the number of child tables that are left out with the
+  parent.
 - **The blacklist wins.** If a table is in both lists, it is left out.
-- **Only the parent table:** put the parent in the whitelist and its child tables in the blacklist. This works only
-  if the whitelist has one more table with data. Otherwise the dump stops with `NO_OBJECTS_FOR_DUMP`, and the
-  restore stops with `NO_TABLES_FOR_RESTORE`.
+- **A parent with `INHERITS` and some of its child tables:** put the parent and these child tables in the whitelist.
 - **Foreign tables.** A foreign partition and a foreign child table follow their parent. A foreign server stays in
   the dump with any lists.
 - **Masking rules.** A rule of the [sensitive dictionary](sens-dict-schema.md) for a partitioned table also works
-  for its partitions. Child tables with `INHERITS` do not take the rules of their parent.
+  for its partitions. Child tables of `INHERITS` do not take the rules of their parent. See
+  [Partitioned tables and tables with `INHERITS`](sens-dict-schema.md#partitioned-tables-and-tables-with-inherits).
 
 If only some partitions of a table are left out, foreign keys that point to this table may be created as
 `NOT VALID`: see [Foreign keys](../operations/restore.md#foreign-keys).

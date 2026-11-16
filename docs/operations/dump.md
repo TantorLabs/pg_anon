@@ -105,8 +105,8 @@ Partial dumps use a tables dictionary containing a list of tables.
 This dictionary can act as either a whitelist or a blacklist.
 See [tables dictionary](../dicts/tables-dictionary.md).
 
-- A rule for a parent table also covers its partitions and child tables. A kept child table keeps all its parents,
-  without their own rows. See [Parent and child tables](../dicts/tables-dictionary.md#parent-and-child-tables).
+- Partitions follow their partitioned table. For tables with `INHERITS`, the whitelist and the blacklist work in
+  different ways. See [Parent and child tables](../dicts/tables-dictionary.md#parent-and-child-tables).
 - Views, materialized views and sequences that depend on a left-out table are left out too. Other objects that
   depend on it, such as functions, types and foreign keys of other tables, stay in the dump files, but restore does
   not create them. See [Partial dump](../security.md#partial-dump) in Security.
