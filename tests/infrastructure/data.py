@@ -47,6 +47,15 @@ class _Partitioning:
         return f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {parent} {bound}{tail};"
 
 
+def _values_insert(table: str, column: str, selects: list[str], fixed: dict[str, str] | None = None) -> str:
+    """INSERT of the values of `selects` into one column of a scan_portions table; `fixed` fills other columns."""
+    fixed = fixed or {}
+    columns = ", ".join([*fixed, column])
+    constants = "".join(f"{value}, " for value in fixed.values())
+    values = " UNION ALL ".join(selects)
+    return f"INSERT INTO scan_portions.{table} ({columns}) SELECT {constants}v FROM ({values}) AS s(v);"
+
+
 class Fixtures:
     def __init__(self, db: DBManager) -> None:
         self.db = db
@@ -2209,6 +2218,149 @@ class Fixtures:
             INSERT INTO sp.orders (created, region, email, note, tag)
                 SELECT DATE '2024-03-01' + g, 'kz', 'kz' || g || '@example.com', 'ok', '-'
                 FROM generate_series(1, 6) g;
+            """,
+        )
+
+    async def build_scan_portions(self, db_name: str) -> None:
+        """Schema scan_portions: fields whose values are read in portions, and check functions that count calls."""
+        noise = "SELECT 'noise ' || g FROM generate_series(1, 50) g"
+        b_values = "SELECT 'B:' || g FROM generate_series(1, 30) g"
+        b_five = "SELECT 'B:' || g FROM generate_series(1, 5) g"
+        fields = {
+            "two_regex": [noise, b_values, "SELECT 'A:1'"],
+            "two_sections": [noise, b_values, "SELECT 'A:1'"],
+            "const_word": [noise, b_values, "SELECT 'alpha'"],
+            "const_part": [noise, b_values, "SELECT 'xalphax'"],
+            "type_first": [noise, b_values, "SELECT 'A:1'"],
+            "three_hits": [noise, "SELECT 'A:1'", "SELECT 'A:2'", "SELECT 'A:3'"],
+            "two_hits": [noise, "SELECT 'A:1'", "SELECT 'A:2'"],
+            "one_value_three_rows": [noise, "SELECT 'A:1' FROM generate_series(1, 3)"],
+            "upper_counts": [noise, "SELECT 'A:1'", "SELECT 'A:2'", b_values],
+            "noise_only": [noise],
+            "after_b": [noise, b_five],
+            "same_func": [noise, b_five],
+            "upper_first": [noise, "SELECT 'A:1'"],
+            "wide": [noise],
+        }
+        inserts = [_values_insert("fields", column, selects) for column, selects in fields.items()]
+        await self.db.execute(
+            db_name,
+            f"""
+            CREATE SCHEMA scan_portions;
+
+            CREATE FUNCTION scan_portions.has_a(value text, schema_name text, table_name text, field_name text)
+                RETURNS boolean AS $$ SELECT value LIKE 'A:%' $$ LANGUAGE sql;
+            CREATE FUNCTION scan_portions.has_b(value text, schema_name text, table_name text, field_name text)
+                RETURNS boolean AS $$ SELECT value LIKE 'B:%' $$ LANGUAGE sql;
+            CREATE FUNCTION scan_portions.returns_null(value text, schema_name text, table_name text, field_name text)
+                RETURNS boolean AS $$ SELECT NULL::boolean $$ LANGUAGE sql;
+
+            -- a session setting per field: the scan reads in a read-only transaction, so a table can not be used
+            CREATE FUNCTION scan_portions.field_key(kind text, schema_name text, table_name text, field_name text)
+                RETURNS text AS $$ SELECT 'scan_portions.' || kind || '_' || md5(schema_name || '.' || table_name
+                    || '.' || field_name) $$ LANGUAGE sql;
+
+            CREATE FUNCTION scan_portions.has_b_marked(
+                value text, schema_name text, table_name text, field_name text
+            ) RETURNS boolean AS $$
+            BEGIN
+                IF value LIKE 'B:%' THEN
+                    PERFORM set_config(scan_portions.field_key('b', schema_name, table_name, field_name), 'on', false);
+                    RETURN true;
+                END IF;
+                RETURN false;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE FUNCTION scan_portions.fail_after_b(
+                value text, schema_name text, table_name text, field_name text
+            ) RETURNS boolean AS $$
+            BEGIN
+                IF current_setting(scan_portions.field_key('b', schema_name, table_name, field_name), true) = 'on' THEN
+                    RAISE EXCEPTION 'fail_after_b is called on %.%.% after B matched',
+                        schema_name, table_name, field_name;
+                END IF;
+                RETURN false;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE FUNCTION scan_portions.fail_on_call(
+                value text, schema_name text, table_name text, field_name text
+            ) RETURNS boolean AS $$
+            BEGIN
+                RAISE EXCEPTION 'fail_on_call is called on %.%.%', schema_name, table_name, field_name;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE FUNCTION scan_portions.once_per_session(
+                schema_name text, table_name text, field_name text, field_type text
+            ) RETURNS boolean AS $$
+            DECLARE
+                key text := scan_portions.field_key('calls', schema_name, table_name, field_name);
+            BEGIN
+                IF current_setting(key, true) = 'on' THEN
+                    RAISE EXCEPTION 'once_per_session is called twice on %.%.%', schema_name, table_name, field_name;
+                END IF;
+                PERFORM set_config(key, 'on', false);
+                RETURN field_name IN ('marked', 'empty_marked');
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE FUNCTION scan_portions.fail_per_field(
+                schema_name text, table_name text, field_name text, field_type text
+            ) RETURNS boolean AS $$
+            BEGIN
+                RAISE EXCEPTION 'fail_per_field is called on %.%.%', schema_name, table_name, field_name;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE TABLE scan_portions.fields (
+                {", ".join(f"{column} text" for column in fields)},
+                all_null text,
+                empty_marked text,
+                int_empty integer
+            );
+            {chr(10).join(inserts)}
+            INSERT INTO scan_portions.fields (all_null, empty_marked, int_empty) VALUES (NULL, NULL, NULL);
+
+            CREATE TABLE scan_portions.cond (kind text, val text);
+            {_values_insert("cond", "val", [noise, b_values, "SELECT 'A:1'"], {"kind": "'keep'"})}
+            INSERT INTO scan_portions.cond (kind, val) VALUES ('drop', 'C:1');
+            -- without statistics the condition gives a sorted DISTINCT, and the value of the upper rule comes first
+            ANALYZE scan_portions.cond;
+
+            CREATE TABLE scan_portions.per_field (marked text);
+            {_values_insert("per_field", "marked", [noise])}
+            """,
+        )
+        if await self.db.server_version_num(db_name) < 100000:
+            return
+
+        parts = {
+            "prio": ([noise, b_values, "SELECT 'A:1'"], ["SELECT 'C:1'"]),
+            "sum_two": ([noise, "SELECT 'A:1'"], [noise, "SELECT 'A:2'"]),
+            "same_value": ([noise, "SELECT 'A:1'"], [noise, "SELECT 'A:1'"]),
+            "sum_beats": ([noise, "SELECT 'A:1'", "SELECT 'B:1'"], [noise, "SELECT 'A:2'"]),
+        }
+        inserts = []
+        for column, (first, second) in parts.items():
+            inserts.append(_values_insert("parts", column, first, {"part": "1"}))
+            inserts.append(_values_insert("parts", column, second, {"part": "2"}))
+        await self.db.execute(
+            db_name,
+            f"""
+            CREATE TABLE scan_portions.parts (
+                part int,
+                {", ".join(f"{column} text" for column in parts)}
+            ) PARTITION BY LIST (part);
+            CREATE TABLE scan_portions.parts_1 PARTITION OF scan_portions.parts FOR VALUES IN (1);
+            CREATE TABLE scan_portions.parts_2 PARTITION OF scan_portions.parts FOR VALUES IN (2);
+            {chr(10).join(inserts)}
+
+            CREATE TABLE scan_portions.half_empty (part int, val text) PARTITION BY LIST (part);
+            CREATE TABLE scan_portions.half_empty_1 PARTITION OF scan_portions.half_empty FOR VALUES IN (1);
+            CREATE TABLE scan_portions.half_empty_2 PARTITION OF scan_portions.half_empty FOR VALUES IN (2);
+            {_values_insert("half_empty", "val", [noise, "SELECT 'A:1'"], {"part": "2"})}
             """,
         )
 

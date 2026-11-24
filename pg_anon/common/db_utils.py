@@ -222,11 +222,17 @@ async def get_db_size(
     return result
 
 
-async def exec_data_scan_func_query(connection: Connection, scan_func: str, value: Any, field_info: FieldInfo) -> bool:  # noqa: ANN401
-    """Execute a row-level scan using a custom database function."""
-    query = f"""SELECT {scan_func}($1, $2, $3, $4)"""
-    statement = await connection.prepare(query)
-    return await statement.fetchval(value, field_info.nspname, field_info.relname, field_info.column_name)
+async def get_scan_func_matches(
+    connection: Connection, scan_func: str, values: list[str], field_info: FieldInfo, limit: int
+) -> list[str]:
+    """Get up to `limit` values for which the scan function of a data_func rule returns true."""
+    query = f"""
+    SELECT v.value FROM unnest($1::text[]) AS v(value)
+    WHERE {scan_func}(v.value, $2, $3, $4)
+    LIMIT $5
+    """
+    rows = await connection.fetch(query, values, field_info.nspname, field_info.relname, field_info.column_name, limit)
+    return [row["value"] for row in rows]
 
 
 async def exec_data_scan_func_per_field_query(
@@ -234,8 +240,9 @@ async def exec_data_scan_func_per_field_query(
 ) -> bool:
     """Execute a field-level scan using a custom database function."""
     query = f"""SELECT {scan_func_per_field}($1, $2, $3, $4)"""
-    statement = await connection.prepare(query)
-    return await statement.fetchval(field_info.nspname, field_info.relname, field_info.column_name, field_info.type)
+    return await connection.fetchval(
+        query, field_info.nspname, field_info.relname, field_info.column_name, field_info.type
+    )
 
 
 async def get_partition_ancestors_map(

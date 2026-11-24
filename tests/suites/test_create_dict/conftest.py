@@ -34,5 +34,6 @@ async def source_db(db_manager, pg_anon_runner, fixtures):
     assert res.result_code == ResultCode.DONE
     await fixtures.build_full_env(SOURCE_DB)
     await fixtures.build_scan_partitions(SOURCE_DB)
+    await fixtures.build_scan_portions(SOURCE_DB)
     yield SOURCE_DB
     await db_manager.drop_db(SOURCE_DB)

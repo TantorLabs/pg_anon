@@ -38,7 +38,12 @@ pg_anon create-dict \
 **Partial mode** (`--scan-mode partial`, default) reads the first `--scan-partial-rows` rows where the field is not NULL.
 It reads rows in the order of table storage. On unchanged data, each run reads the same rows.
 
-**Full mode** (`--scan-mode full`) reads all values of each field.
+**Full mode** (`--scan-mode full`) reads all values of each field. The field gets the function of the highest rule of
+the meta-dictionary that matched any of its values, as in partial mode. The result does not depend on the order of
+rows in the table and on the number of connections. See the
+[order of rules](../dicts/meta-dict-schema.md#order-of-checks) of `data_func`.
+
+For a partitioned table, partial mode reads the first rows of each partition.
 
 New rows are often at the end of a big table. Partial mode can miss them.
 Use full mode when you need a full check.
@@ -106,6 +111,9 @@ in the [sensitive dictionary](../dicts/sens-dict-schema.md#partitioned-tables-an
   partitioned table gets only one of them. The scan writes a warning with all functions and partitions: check the
   rule and fix it by hand if needed. A match by field name wins over a match by data. In one section of the
   meta-dictionary, the rule higher in the list wins.
+- **`n_count` of `data_func`.** A `scan_func` rule counts its matches over all read partitions together, and a value
+  that is in two partitions counts once. So a rule can match the partitioned table even if it does not match any
+  of its partitions alone. Partitions that `skip_rules` or `include_rules` leave out of the scan are not counted.
 - **Non-sensitive dictionary.** The output has one record for the top partitioned table: its fields that have no
   sensitive data in any read partition and have no rule for this table or for any of its partitions. The output has
   no records for partitions.

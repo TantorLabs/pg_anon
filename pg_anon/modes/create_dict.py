@@ -1,11 +1,13 @@
 import asyncio
 import copy
+import dataclasses
 import json
 import re
 import shutil
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from contextlib import asynccontextmanager
 from itertools import chain
 from pathlib import Path
 from typing import NamedTuple
@@ -19,12 +21,12 @@ from pg_anon.common.db_utils import (
     create_connection,
     create_pool,
     exec_data_scan_func_per_field_query,
-    exec_data_scan_func_query,
     get_inherited_columns,
     get_legacy_inheritance_parents,
     get_partition_ancestors_map,
     get_partitioned_tables,
     get_scan_fields_list,
+    get_scan_func_matches,
     get_tables_columns,
     InheritedColumn,
 )
@@ -47,6 +49,7 @@ Table = tuple[str, str]
 
 # sections of the search in the order of priority: names of fields, then data
 SEARCH_SECTIONS = ["field.constants", "field.rules", *(source.value for source in MatchSource)]
+DATA_FUNC_SECTION = SEARCH_SECTIONS.index(MatchSource.DATA_FUNC.value)
 
 
 class Finding(NamedTuple):
@@ -97,11 +100,10 @@ def _has_condition_or_query(rule: dict) -> bool:
 
 
 def _first_rule_by_values(
-    fld_data: list, find_rule: Callable[[str, int], SearchRule | None]
+    fld_data: list, find_rule: Callable[[str, int], SearchRule | None], bound: int
 ) -> tuple[SearchRule, str] | None:
-    """Find the first rule of the list that matches at least one value; return it with the matched value."""
+    """Find the first rule above the bound that matches at least one value; return it with the matched value."""
     found = None
-    bound = sys.maxsize
     for value in fld_data:
         if value is None:
             continue
@@ -115,6 +117,71 @@ def _first_rule_by_values(
             if bound == 0:
                 break
     return found
+
+
+class DataFuncRules(NamedTuple):
+    """data_func rules for one field type in one order: rules for the whole field first, then rules for values.
+
+    The rule of each SearchRule is the item of the meta dict, with its scan function and n_count.
+    """
+
+    per_field: list[SearchRule]
+    by_value: list[SearchRule]
+
+
+def _make_data_func_rules(items: list[dict]) -> DataFuncRules:
+    """Give the rules their positions: rules for the whole field first, then rules for values, each in its order."""
+    per_field = [item for item in items if "scan_func_per_field" in item]
+    by_value = [item for item in items if "scan_func_per_field" not in item]
+    rules: list[SearchRule] = []
+    other_func_above = -1
+    for position, item in enumerate([*per_field, *by_value]):
+        if rules and rules[-1].anon_func != item["anon_func"]:
+            other_func_above = position - 1
+        rules.append(SearchRule(item, item["anon_func"], position, other_func_above))
+    return DataFuncRules(rules[: len(per_field)], rules[len(per_field) :])
+
+
+class MatchedRule(NamedTuple):
+    match_key: tuple[int, int]  # (section, position of the rule in the section)
+    rule: SearchRule
+
+
+@dataclasses.dataclass
+class FieldScan:
+    """Scan state of one field: the best rule found so far and the values matched by scan_func rules."""
+
+    field_info: FieldInfo
+    best: MatchedRule | None = None
+    # position of a scan_func rule -> values it matched
+    matched_values: dict[int, set[str]] = dataclasses.field(default_factory=dict)
+
+    def bound(self, section: int) -> int:
+        """Rules of the section with positions below the bound can still give another function."""
+        if self.best is None or section < self.best.match_key[0]:
+            return sys.maxsize
+        if section == self.best.match_key[0]:
+            return self.best.rule.other_func_above + 1
+        return 0
+
+    def set_best(self, section: int, rule: SearchRule) -> None:
+        """Keep the rule as the best found one; the caller checks the bound, so the rule is better than before."""
+        self.best = MatchedRule((section, rule.position), rule)
+
+
+@asynccontextmanager
+async def _read_transaction(connection: Connection, scan_mode: ScanMode | None, condition: str | None) -> AsyncIterator:
+    """Open the transaction in which a scan task reads its field."""
+    if scan_mode == ScanMode.FULL:
+        async with connection.transaction(isolation="repeatable_read", readonly=True):
+            yield
+    elif condition:
+        async with connection.transaction():
+            # A parallel plan under LIMIT returns rows in random order
+            await connection.execute("SET LOCAL max_parallel_workers_per_gather = 0")
+            yield
+    else:
+        yield
 
 
 class CreateDictMode:
@@ -131,6 +198,7 @@ class CreateDictMode:
         self._conditions: dict[Table, str | None] = {}
         # field -> (section, position of the rule in the section) of the rule that found it
         self._match_keys: dict[str, tuple[int, int]] = {}
+        self._data_func_rules: dict[str, DataFuncRules] = {}
 
     def _check_field_match_by_rule(self, field: dict, rule: dict) -> bool:
         schema_matched = False
@@ -353,7 +421,7 @@ class CreateDictMode:
                 self.context.create_dict_no_sens_matches[obj_id] = field_info
 
     def _check_data_by_constants(
-        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
+        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list, bound: int
     ) -> SearchRule | None:
         words = dictionary_obj["data_const"]["constants"]["words"]
         phrases = dictionary_obj["data_const"]["constants"]["phrases"]
@@ -383,7 +451,7 @@ class CreateDictMode:
                     found = rule
             return found
 
-        if matched := _first_rule_by_values(fld_data, find_rule):
+        if matched := _first_rule_by_values(fld_data, find_rule, bound):
             self.context.logger.debug(
                 "========> Process[%s]: Field %s.%s.%s is SENSITIVE by constant %s",
                 name,
@@ -404,7 +472,7 @@ class CreateDictMode:
         return None
 
     def _check_data_by_partial_constants(
-        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
+        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list, bound: int
     ) -> SearchRule | None:
         rules = dictionary_obj["data_const"]["partial_constant_rules"]
         if not rules:
@@ -427,7 +495,7 @@ class CreateDictMode:
                     return rule
             return None
 
-        if matched := _first_rule_by_values(fld_data, find_rule):
+        if matched := _first_rule_by_values(fld_data, find_rule, bound):
             self.context.logger.debug(
                 "========> Process[%s]: Field %s.%s.%s is SENSITIVE by partial constant %s",
                 name,
@@ -447,10 +515,50 @@ class CreateDictMode:
         )
         return None
 
-    async def _check_data_by_functions(  # noqa: C901, PLR0912
-        self, connection: Connection, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list
+    def _get_data_func_rules(self, field_info: FieldInfo) -> DataFuncRules:
+        """Get data_func rules for the type of the field: rules of the type (or its base type), then anyelement."""
+        if field_info.type in self._data_func_rules:
+            return self._data_func_rules[field_info.type]
+
+        data_func = self.context.meta_dictionary_obj["data_func"]
+        rules_by_type = data_func.get(field_info.type) or data_func.get(get_base_field_type(field_info), [])
+        items = []
+        for item in [*rules_by_type, *data_func.get("anyelement", [])]:
+            if "scan_func_per_field" in item or "scan_func" in item:
+                items.append(item)
+            else:
+                self.context.logger.warning("Rule SKIPPED. Wrong data func rule: %s", item)
+
+        rules = _make_data_func_rules(items)
+        self._data_func_rules[field_info.type] = rules
+        return rules
+
+    async def _check_by_per_field_functions(
+        self, connection: Connection, name: str, field_info: FieldInfo
     ) -> SearchRule | None:
-        if not dictionary_obj["data_func"]:
+        """Call scan_func_per_field rules once for the field, before its data is read."""
+        for rule in self._get_data_func_rules(field_info).per_field:
+            if await exec_data_scan_func_per_field_query(
+                connection=connection, scan_func_per_field=rule.rule["scan_func_per_field"], field_info=field_info
+            ):
+                self.context.logger.debug(
+                    "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func per field %s",
+                    name,
+                    field_info.nspname,
+                    field_info.relname,
+                    field_info.column_name,
+                    rule.rule["scan_func_per_field"],
+                )
+                return rule
+        return None
+
+    async def _check_data_by_functions(
+        self, connection: Connection, name: str, scan: FieldScan, fld_data: list, bound: int
+    ) -> SearchRule | None:
+        """Check the values by scan_func rules from the top; a rule matches when it gets n_count values in all."""
+        field_info = scan.field_info
+        rules = [rule for rule in self._get_data_func_rules(field_info).by_value if rule.position < bound]
+        if not rules:
             return None
 
         self.context.logger.debug(
@@ -462,71 +570,22 @@ class CreateDictMode:
             field_info.type,
         )
 
-        rules_by_type = dictionary_obj["data_func"].get(field_info.type, [])
-        if not rules_by_type:
-            rules_by_type = dictionary_obj["data_func"].get(get_base_field_type(field_info), [])
-        rules_for_anyelements = dictionary_obj["data_func"].get("anyelement", [])
-        data_func_rules = [*rules_by_type, *rules_for_anyelements]
-
-        if not data_func_rules:
-            self.context.logger.debug(
-                "========> Process[%s]: Not found data checking functions for field %s.%s.%s (type = %s)",
-                name,
-                field_info.nspname,
-                field_info.relname,
-                field_info.column_name,
-                field_info.type,
-            )
-            return None
-
-        scan_func_per_field_rules = []
-        scan_func_rules = []
-        for rule in data_func_rules:
-            if "scan_func_per_field" in rule:
-                scan_func_per_field_rules.append(rule)
-            elif "scan_func" in rule:
-                scan_func_rules.append(rule)
-            else:
-                self.context.logger.warning("========> Process[%s]: Rule SKIPPED. Wrong data func rule: %s", name, rule)
-
-        for position, rule in enumerate(scan_func_per_field_rules):
-            if await exec_data_scan_func_per_field_query(
-                connection=connection, scan_func_per_field=rule["scan_func_per_field"], field_info=field_info
-            ):
+        values = [value for value in fld_data if value is not None]
+        for rule in rules:
+            n_count = rule.rule.get("n_count", 1)
+            matched = scan.matched_values.setdefault(rule.position, set())
+            limit = n_count - len(matched)
+            matched.update(await get_scan_func_matches(connection, rule.rule["scan_func"], values, field_info, limit))
+            if len(matched) >= n_count:
                 self.context.logger.debug(
-                    "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func per field %s",
+                    "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func %s",
                     name,
                     field_info.nspname,
                     field_info.relname,
                     field_info.column_name,
-                    rule["scan_func_per_field"],
+                    rule.rule["scan_func"],
                 )
-                return SearchRule(rule["scan_func_per_field"], rule["anon_func"], position)
-
-        # one order for the section: per-field rules are checked first, so they get the first positions
-        for position, rule in enumerate(scan_func_rules, start=len(scan_func_per_field_rules)):
-            matched_count = 0
-            rule_expected_matches_count = rule.get("n_count", 1)
-
-            for value in fld_data:
-                if value is None:
-                    continue
-
-                if await exec_data_scan_func_query(
-                    connection=connection, scan_func=rule["scan_func"], value=value, field_info=field_info
-                ):
-                    matched_count += 1
-
-                    if matched_count == rule_expected_matches_count:
-                        self.context.logger.debug(
-                            "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data scan func %s",
-                            name,
-                            field_info.nspname,
-                            field_info.relname,
-                            field_info.column_name,
-                            rule["scan_func"],
-                        )
-                        return SearchRule(rule["scan_func"], rule["anon_func"], position)
+                return rule
 
         self.context.logger.debug(
             "========> Process[%s]: No one data functions found sensitive data in field %s.%s.%s",
@@ -535,15 +594,11 @@ class CreateDictMode:
             field_info.relname,
             field_info.column_name,
         )
-
         return None
 
     def _check_data_by_regexp(
-        self, name: str, dictionary_obj: dict, create_dict_matches: dict, field_info: FieldInfo, fld_data: list
+        self, name: str, dictionary_obj: dict, field_info: FieldInfo, fld_data: list, bound: int
     ) -> SearchRule | None:
-        if field_info.obj_id in create_dict_matches:
-            return None
-
         self.context.logger.debug(
             "========> Process[%s]: checking by regexp data of field %s.%s.%s",
             name,
@@ -561,7 +616,7 @@ class CreateDictMode:
                     return rule
             return None
 
-        if rules and (matched := _first_rule_by_values(fld_data, find_rule)):
+        if rules and (matched := _first_rule_by_values(fld_data, find_rule, bound)):
             self.context.logger.debug(
                 "========> Process[%s]: Field %s.%s.%s is SENSITIVE by data_regex (regex=%s; value=%s)",
                 name,
@@ -582,15 +637,11 @@ class CreateDictMode:
         )
         return None
 
-    async def _check_sensitive_data_in_fld(
-        self,
-        connection: Connection,
-        name: str,
-        dictionary_obj: dict,
-        create_dict_matches: dict,
-        field_info: FieldInfo,
-        fld_data: list,
-    ) -> dict:
+    async def _check_portion(
+        self, connection: Connection, name: str, dictionary_obj: dict, scan: FieldScan, fld_data: list
+    ) -> None:
+        """Check a portion of values by sections in the order of priority, only by rules above the best found rule."""
+        field_info = scan.field_info
         if not fld_data:
             self.context.logger.debug(
                 "---> Process[%s]: Check sensitive skipped cause field %s.%s.%s has not data",
@@ -599,7 +650,7 @@ class CreateDictMode:
                 field_info.relname,
                 field_info.column_name,
             )
-            return {}
+            return
 
         self.context.logger.debug(
             "---> Process[%s]: Started check sensitive data in field - %s.%s.%s. (%s values)",
@@ -611,37 +662,46 @@ class CreateDictMode:
         )
 
         for source in MatchSource:
+            section = SEARCH_SECTIONS.index(source.value)
+            bound = scan.bound(section)
+            if bound == 0:
+                continue
+
             match source:
                 case MatchSource.DATA_FUNC:
-                    rule = await self._check_data_by_functions(connection, name, dictionary_obj, field_info, fld_data)
+                    rule = await self._check_data_by_functions(connection, name, scan, fld_data, bound)
                 case MatchSource.DATA_CONST:
-                    rule = self._check_data_by_constants(name, dictionary_obj, field_info, fld_data)
+                    rule = self._check_data_by_constants(name, dictionary_obj, field_info, fld_data, bound)
                 case MatchSource.DATA_PARTIAL_CONST:
-                    rule = self._check_data_by_partial_constants(name, dictionary_obj, field_info, fld_data)
+                    rule = self._check_data_by_partial_constants(name, dictionary_obj, field_info, fld_data, bound)
                 case MatchSource.DATA_REGEX:
-                    rule = self._check_data_by_regexp(name, dictionary_obj, create_dict_matches, field_info, fld_data)
+                    rule = self._check_data_by_regexp(name, dictionary_obj, field_info, fld_data, bound)
 
             if rule is not None:
-                field_info.rule = rule.anon_func
-                self._match_keys[field_info.obj_id] = (SEARCH_SECTIONS.index(source.value), rule.position)
-                self.context.logger.debug(
-                    "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is SENSITIVE by %s",
-                    name,
-                    field_info.nspname,
-                    field_info.relname,
-                    field_info.column_name,
-                    source.value,
-                )
-                return {field_info.obj_id: field_info}
+                scan.set_best(section, rule)
 
-        self.context.logger.debug(
-            "<--- Process[%s]: Finished check sensitive data in field %s.%s.%s - is INSENSITIVE",
-            name,
-            field_info.nspname,
-            field_info.relname,
-            field_info.column_name,
-        )
-        return {}
+    def _first_value_rule_position(
+        self, dictionary_obj: dict, source: MatchSource, field_info: FieldInfo
+    ) -> int | None:
+        """Position of the first rule of the section that checks values, or None if the section has no such rules."""
+        match source:
+            case MatchSource.DATA_FUNC:
+                rules = self._get_data_func_rules(field_info).by_value
+                return rules[0].position if rules else None
+            case MatchSource.DATA_CONST:
+                return 0 if dictionary_obj["data_const"]["constant_rules"] else None
+            case MatchSource.DATA_PARTIAL_CONST:
+                return 0 if dictionary_obj["data_const"]["partial_constant_rules"] else None
+            case MatchSource.DATA_REGEX:
+                return 0 if dictionary_obj["data_regex"]["rules"] else None
+
+    def _is_field_done(self, dictionary_obj: dict, scan: FieldScan) -> bool:
+        """The rest of the values can not change the result: no rule is left above the found one with another function."""
+        for source in MatchSource:
+            position = self._first_value_rule_position(dictionary_obj, source, scan.field_info)
+            if position is not None and position < scan.bound(SEARCH_SECTIONS.index(source.value)):
+                return False
+        return True
 
     def _field_can_be_sensitive_by_type(self, dictionary_obj: dict, field_info: FieldInfo) -> bool:
         if field_info.type in dictionary_obj["sens_pg_types"]:
@@ -650,20 +710,39 @@ class CreateDictMode:
         base_field_type = get_base_field_type(field_info)
         return base_field_type in dictionary_obj["sens_pg_types"]
 
-    async def _scan_partial_data(
-        self, connection: Connection, name: str, dictionary_obj: dict, field_info: FieldInfo, query: str
-    ) -> dict:
-        fld_data = await connection.fetch(query)
-        return await self._check_sensitive_data_in_fld(
-            connection=connection,
-            name=name,
-            dictionary_obj=dictionary_obj,
-            create_dict_matches=self.context.create_dict_sens_matches,
+    async def _read_field(  # noqa: PLR0913
+        self,
+        connection: Connection,
+        name: str,
+        dictionary_obj: dict,
+        scan: FieldScan,
+        scan_mode: ScanMode | None,
+        scan_partial_rows: int,
+    ) -> None:
+        """Read the values of the field and check them: one portion in the partial mode, all portions in the full mode."""
+        field_info = scan.field_info
+        table = (field_info.nspname, field_info.relname)
+        query = get_data_from_field_query(
             field_info=field_info,
-            fld_data=setof_to_list(fld_data),
+            limit=None if scan_mode == ScanMode.FULL else scan_partial_rows,
+            condition=self._conditions.get(table),
+            only=table in self._inherits_parents,
         )
+        if scan_mode != ScanMode.FULL:
+            fld_data = await connection.fetch(query)
+            await self._check_portion(connection, name, dictionary_obj, scan, setof_to_list(fld_data))
+            return
 
-    async def _scan_obj_func(  # noqa: C901
+        cursor = await connection.cursor(query)
+        while True:
+            fld_data = await cursor.fetch(scan_partial_rows)
+            if not fld_data:
+                break
+            await self._check_portion(connection, name, dictionary_obj, scan, setof_to_list(fld_data))
+            if scan.best is not None and self._is_field_done(dictionary_obj, scan):
+                break
+
+    async def _scan_obj_func(
         self,
         name: str,
         pool: Pool,
@@ -671,7 +750,7 @@ class CreateDictMode:
         scan_mode: ScanMode | None,
         dictionary_obj: dict,
         scan_partial_rows: int,
-    ) -> dict[str, FieldInfo] | None:
+    ) -> FieldScan | None:
         field_full_name = f"{field_info.nspname}.{field_info.relname}.{field_info.column_name}"
 
         self.context.logger.debug(
@@ -685,41 +764,16 @@ class CreateDictMode:
             )
             return None
 
-        res: dict[str, FieldInfo] = {}
-        table = (field_info.nspname, field_info.relname)
-        condition = self._conditions.get(table)
-        only = table in self._inherits_parents
-
+        scan = FieldScan(field_info)
+        condition = self._conditions.get((field_info.nspname, field_info.relname))
         try:
-            async with pool.acquire() as db_conn:
-                if scan_mode == ScanMode.PARTIAL:
-                    query = get_data_from_field_query(
-                        field_info=field_info, limit=scan_partial_rows, condition=condition, only=only
-                    )
-                    if condition:
-                        # A parallel plan under LIMIT returns rows in random order
-                        async with db_conn.transaction():
-                            await db_conn.execute("SET LOCAL max_parallel_workers_per_gather = 0")
-                            res = await self._scan_partial_data(db_conn, name, dictionary_obj, field_info, query)
-                    else:
-                        res = await self._scan_partial_data(db_conn, name, dictionary_obj, field_info, query)
-                elif scan_mode == ScanMode.FULL:
-                    async with db_conn.transaction(isolation="repeatable_read", readonly=True):
-                        query = get_data_from_field_query(field_info=field_info, condition=condition, only=only)
-                        cursor = await db_conn.cursor(query)
-                        next_rows = True
-                        while next_rows:
-                            fld_data = await cursor.fetch(scan_partial_rows)
-                            res = await self._check_sensitive_data_in_fld(
-                                connection=db_conn,
-                                name=name,
-                                dictionary_obj=dictionary_obj,
-                                create_dict_matches=self.context.create_dict_sens_matches,
-                                field_info=field_info,
-                                fld_data=setof_to_list(fld_data),
-                            )
-                            if len(fld_data) == 0 or len(res) > 0:
-                                break
+            async with pool.acquire() as db_conn, _read_transaction(db_conn, scan_mode, condition):
+                rule = await self._check_by_per_field_functions(db_conn, name, field_info)
+                if rule is not None:
+                    # the per-field rules are the first rules of the data: nothing in the data can win over them
+                    scan.set_best(DATA_FUNC_SECTION, rule)
+                else:
+                    await self._read_field(db_conn, name, dictionary_obj, scan, scan_mode, scan_partial_rows)
 
         except Exception as ex:
             field = f"{field_full_name} (type={field_info.type})"
@@ -732,12 +786,21 @@ class CreateDictMode:
                 "Process[%s]: scan_obj_func took %s sec. Task %s", name, round(end_t - start_t, 2), field_info
             )
 
-        self.context.logger.debug(
-            "<<<<==== Process[%s]: Found %s items(s) Finished task %s ", name, len(res), field_info
-        )
-        return res
+        if scan.best is None:
+            self.context.logger.debug("<<<<==== Process[%s]: Field %s is INSENSITIVE", name, field_full_name)
+            return scan
 
-    async def _run_scan_tasks(self, fields_info_list: list[FieldInfo]) -> list:  # noqa: C901
+        field_info.rule = scan.best.rule.anon_func
+        self._match_keys[field_info.obj_id] = scan.best.match_key
+        self.context.logger.debug(
+            "<<<<==== Process[%s]: Field %s is SENSITIVE by %s",
+            name,
+            field_full_name,
+            SEARCH_SECTIONS[scan.best.match_key[0]],
+        )
+        return scan
+
+    async def _run_scan_tasks(self, fields_info_list: list[FieldInfo]) -> list[FieldScan]:  # noqa: C901
         self.context.logger.info("Using %s concurrent connections", self.context.options.db_connections_per_process)
 
         server_settings = self.context.server_settings
@@ -752,7 +815,7 @@ class CreateDictMode:
             max_size=self.context.options.db_connections_per_process,
         )
 
-        results: list = []
+        results: list[FieldScan] = []
         tasks: set[asyncio.Task] = set()
 
         status_ratio = 10
@@ -771,9 +834,8 @@ class CreateDictMode:
                             for t in tasks:
                                 t.cancel()
                             raise exc
-                        r = done_task.result()
-                        if r is not None and len(r) > 0:
-                            results.append(r)
+                        if (scan := done_task.result()) is not None:
+                            results.append(scan)
 
                 task = asyncio.create_task(
                     self._scan_obj_func(
@@ -798,9 +860,8 @@ class CreateDictMode:
                         for t in tasks:
                             t.cancel()
                         raise exc
-                    r = done_task.result()
-                    if r is not None and len(r) > 0:
-                        results.append(r)
+                    if (scan := done_task.result()) is not None:
+                        results.append(scan)
         finally:
             await pool.close()
 
@@ -856,6 +917,45 @@ class CreateDictMode:
                 _partitions_count(len(partitions)),
                 _partition_names(partitions, source[0], mark_other_schema=True),
             )
+
+    def _rule_by_all_partitions(self, partitions: list[FieldScan]) -> SearchRule | None:
+        """The first scan_func rule that gets n_count by the values of all partitions together, without repeats."""
+        values: dict[int, set[str]] = {}
+        for scan in partitions:
+            for position, matched in scan.matched_values.items():
+                values.setdefault(position, set()).update(matched)
+
+        # the columns of all partitions have the type of the root column, so the positions of rules are the same
+        for rule in self._get_data_func_rules(partitions[0].field_info).by_value:
+            if len(values.get(rule.position, set())) >= rule.rule.get("n_count", 1):
+                return rule
+        return None
+
+    def _find_by_all_partitions(self, scans: list[FieldScan]) -> list[FieldInfo]:
+        """Find fields of partitioned tables that a scan_func rule finds only by the values of all partitions."""
+        partitions_by_root: dict[str, list[FieldScan]] = {}
+        roots: dict[str, FieldInfo] = {}
+        for scan in scans:
+            target = self._get_target_field(scan.field_info)
+            if target is not scan.field_info:
+                partitions_by_root.setdefault(target.obj_id, []).append(scan)
+                roots[target.obj_id] = target
+
+        found = []
+        for obj_id, partitions in partitions_by_root.items():
+            # a root field found by its name has a better rule than any rule of data
+            if obj_id in self._match_keys:
+                continue
+            rule = self._rule_by_all_partitions(partitions)
+            if rule is None:
+                continue
+            match_key = (DATA_FUNC_SECTION, rule.position)
+            partition_keys = [scan.best.match_key for scan in partitions if scan.best is not None]
+            if partition_keys and min(partition_keys) <= match_key:
+                continue
+            self._match_keys[obj_id] = match_key
+            found.append(dataclasses.replace(roots[obj_id], rule=rule.anon_func))
+        return found
 
     def _choose_functions(self, sens_fields: list[FieldInfo]) -> list[tuple[FieldInfo, str]]:
         """Choose one function for each field; when partitions give different functions, the first section wins."""
@@ -1046,10 +1146,9 @@ class CreateDictMode:
             field for field in fields_info.values() if (field.nspname, field.relname) not in self._partitioned
         ]
         self._prepare_conditions(fields_to_read)
-        scanned_sens_fields: list[FieldInfo] = []
-        if fields_to_read:
-            for res in await self._run_scan_tasks(fields_to_read):
-                scanned_sens_fields.extend(res.values())
+        scans = await self._run_scan_tasks(fields_to_read) if fields_to_read else []
+        scanned_sens_fields = [scan.field_info for scan in scans if scan.best is not None]
+        scanned_sens_fields.extend(self._find_by_all_partitions(scans))
 
         sens_fields = scanned_sens_fields + list(self.context.create_dict_sens_matches.values())
         chosen = self._choose_functions(sens_fields)

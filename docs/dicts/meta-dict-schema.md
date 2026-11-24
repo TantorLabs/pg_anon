@@ -464,6 +464,28 @@ Using custom SQL functions to detect sensitive fields and apply the appropriate 
    - You must specify one of `scan_func` or `scan_func_per_field`
    - This defines where the rule applies.
 
+### Order of checks
+1. Rules with `scan_func_per_field` go first, wherever they are in the list. Each such function is called once for
+   the field, before the scan reads the data of the field, in both scan modes.
+   - If the function returns `true`, the scan does not read the data of this field.
+   - The function does not get `data_sql_condition` and `--scan-partial-rows`. If it reads data by itself, it reads
+     the table as it is.
+   - The function is called also for a field without values: all values are NULL, the table is empty, or
+     `data_sql_condition` leaves no rows. A function that reads data must be ready for an empty table, for example
+     must not divide by the number of rows.
+2. Then rules with `scan_func` are checked from the top of the list: rules for the field type, then rules for
+   `anyelement`. A rule matches when its function returns `true` for `n_count` values.
+3. The order of rules sets both the result and the cost of the scan:
+   - The field gets the function of the highest rule that matched.
+   - When a rule matches, the functions of rules below it are not called for this field anymore. A function lower in
+     the list is called only while the rules above have not matched.
+   - In full mode, after a match the scan reads the next values of the field and calls only the functions of rules
+     above with another `anon_func`. When no such rules are left, the scan of the field stops.
+
+**`n_count` in full mode** is counted over all values of the field, not over a part of them. For a partitioned table it
+is counted over all read partitions together, and a value that is in two partitions counts once. In partial mode the
+scan reads the first rows of each partition, and `n_count` is counted over these rows of all partitions together.
+
 > ⚠️ **Note**
 > 
 > Functions for `scan_func_per_field` must follow this template:

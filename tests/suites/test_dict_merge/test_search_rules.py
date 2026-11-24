@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from pg_anon.common.dto import FieldInfo
@@ -10,18 +12,20 @@ FUNC_F = "func_f"
 FUNC_G = "func_g"
 
 FIELD_INFO = FieldInfo("public", "t", "c", "text", 1, 1, "obj", "tbl")
+# no rule is found yet: all rules of the section are checked
+NO_BOUND = sys.maxsize
 
 
 def _check_regex(mode, dictionary, data):
-    return mode._check_data_by_regexp("t", dictionary, {}, FIELD_INFO, data)  # noqa: SLF001
+    return mode._check_data_by_regexp("t", dictionary, FIELD_INFO, data, NO_BOUND)  # noqa: SLF001
 
 
 def _check_constants(mode, dictionary, data):
-    return mode._check_data_by_constants("t", dictionary, FIELD_INFO, data)  # noqa: SLF001
+    return mode._check_data_by_constants("t", dictionary, FIELD_INFO, data, NO_BOUND)  # noqa: SLF001
 
 
 def _check_partial_constants(mode, dictionary, data):
-    return mode._check_data_by_partial_constants("t", dictionary, FIELD_INFO, data)  # noqa: SLF001
+    return mode._check_data_by_partial_constants("t", dictionary, FIELD_INFO, data, NO_BOUND)  # noqa: SLF001
 
 
 def _rules(*items: tuple[str, str]) -> list[dict]:
