@@ -211,20 +211,14 @@ class ViewFieldsMode:
             if excluded:
                 continue
 
-            if include_rule:
-                if field.column_name in include_rule.get("fields", {}):
-                    field.rule = include_rule["fields"][field.column_name]
-                    # a merged rule knows the file of each field
-                    field.dict_file_name = include_rule.get("field_dict_file_names", {}).get(
-                        field.column_name, include_rule["dict_file_name"]
-                    )
-                    fields_with_find_rules.append(field)
-                    continue
-                if include_rule.get("raw_sql"):
-                    field.rule = include_rule["raw_sql"]
-                    field.dict_file_name = include_rule["dict_file_name"]
-                    fields_with_find_rules.append(field)
-                    continue
+            if include_rule and field.column_name in include_rule.get("fields", {}):
+                field.rule = include_rule["fields"][field.column_name]
+                # a merged rule knows the file of each field
+                field.dict_file_name = include_rule.get("field_dict_file_names", {}).get(
+                    field.column_name, include_rule["dict_file_name"]
+                )
+                fields_with_find_rules.append(field)
+                continue
 
             if not self.context.options.view_only_sensitive_fields:
                 field.rule = self.empty_data_filler

@@ -1,6 +1,6 @@
 from pg_anon.common.db_utils import create_connection, get_partition_ancestors_map, get_schemas, get_tables_with_fields
 from pg_anon.common.dto import ConnectionParams
-from pg_anon.common.utils import read_dict_data, resolve_table_rule
+from pg_anon.common.utils import check_no_raw_sql, read_dict_data, resolve_table_rule
 from pg_anon.rest_api.pydantic_models import (
     PreviewFieldContent,
     PreviewSchemasRequest,
@@ -39,6 +39,7 @@ class PreviewRunner:
 
         for dict_contents in sens_dict_contents:
             if data := read_dict_data(dict_contents.content, dict_contents.name):
+                check_no_raw_sql(data, dict_contents.name)
                 sens_dict_data["dictionary"].extend(data.get("dictionary", []))
                 sens_dict_data["dictionary_exclude"].extend(data.get("dictionary_exclude", []))
                 sens_dict_data["validate_tables"].extend(data.get("validate_tables", []))
@@ -95,13 +96,9 @@ class PreviewRunner:
                 field_is_sensitive = False
                 field_rule = None
 
-                if include_rule:
-                    if field_name in include_rule.get("fields", {}):
-                        field_is_sensitive = True
-                        field_rule = str(include_rule["fields"][field_name])
-                    elif include_rule.get("raw_sql"):
-                        field_is_sensitive = True
-                        field_rule = str(include_rule["raw_sql"])
+                if include_rule and field_name in include_rule.get("fields", {}):
+                    field_is_sensitive = True
+                    field_rule = str(include_rule["fields"][field_name])
 
                 preview_fields.append(
                     PreviewFieldContent(

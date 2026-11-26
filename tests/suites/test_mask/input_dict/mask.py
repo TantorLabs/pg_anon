@@ -24,11 +24,6 @@
                 "name":   "'CUSTOMER'",
                 "tax_id": "'0000000000'"
             }
-        },
-        {
-            "schema": "ecommerce",
-            "table":  "review",
-            "raw_sql": "SELECT id, product_id, customer_id, rating, 'REDACTED' AS body, posted_at FROM ecommerce.review"
         }
     ]
 }

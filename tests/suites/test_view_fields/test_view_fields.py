@@ -40,7 +40,7 @@ def _count_sens_vs_plain(executor: ViewFieldsMode) -> tuple[int, int]:
                 schema=field.nspname,
                 table=field.relname,
             )
-            if rule and (field.column_name in rule.get("fields", {}) or rule.get("raw_sql")):
+            if rule and field.column_name in rule.get("fields", {}):
                 sens += 1
         else:
             plain += 1
@@ -61,6 +61,15 @@ async def test_view_fields_returns_every_scannable_field_minus_excluded(source_d
     sens, plain = _count_sens_vs_plain(executor)
     assert sens + plain == scan_total - excluded
     assert executor.fields_cut_by_limits is False, "without --fields-count there is no limit"
+
+    customer_rules = {
+        field.column_name: field.rule
+        for field in executor.fields
+        if (field.nspname, field.relname) == ("billing", "customer")
+    }
+    assert customer_rules.pop("name") == "'anon'"
+    assert customer_rules, "fixture invariant: billing.customer has fields besides name"
+    assert set(customer_rules.values()) == {"---"}, "a rule masks only the fields it names"
 
 
 async def test_view_fields_filter_by_schema_name(source_db, db_params):

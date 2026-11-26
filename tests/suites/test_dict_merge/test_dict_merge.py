@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
+from pg_anon.common.errors import ErrorCode, PgAnonError
+from pg_anon.rest_api.pydantic_models import DictionaryContent
+from pg_anon.rest_api.runners.direct.preview import PreviewRunner
+
 
 def _rule_by_table(dictionary: list[dict], schema: str, table: str) -> dict:
     matches = [r for r in dictionary if r.get("schema") == schema and r.get("table") == table]
@@ -320,3 +328,84 @@ class TestPartialTablesMerge:
             {"schema": "public", "table": "b"},
         ]
         assert ctx.excluded_tables_rules == [{"schema": "public", "table": "c"}]
+
+
+RAW_SQL = "SELECT id, 'N' || id AS name, md5(email) AS email, city FROM rs.client WHERE city = 'Moscow'"
+RAW_SQL_ERROR = (
+    "raw_sql is no longer supported: rewrite the rule with fields and sql_condition. File {}, rules with raw_sql: {}"
+)
+
+
+class TestRawSqlIsRejected:
+    @pytest.mark.parametrize(
+        ("rules", "named_rules"),
+        [
+            pytest.param(
+                [{"schema": "rs", "table": "client", "raw_sql": RAW_SQL}],
+                "rs.client",
+                id="only_raw_sql",
+            ),
+            pytest.param(
+                [
+                    {
+                        "schema": "rs",
+                        "table": "client",
+                        "fields": {"email": "md5(email)"},
+                        "sql_condition": "city = 'Moscow'",
+                        "raw_sql": RAW_SQL,
+                    }
+                ],
+                "rs.client",
+                id="with_fields_and_sql_condition",
+            ),
+            pytest.param(
+                [{"schema_mask": "^rs$", "table_mask": "^client$", "raw_sql": RAW_SQL}],
+                "schema_mask=^rs$, table_mask=^client$",
+                id="rule_with_masks",
+            ),
+            pytest.param(
+                [{"schema": "rs", "table": "client", "raw_sql": ""}],
+                "rs.client",
+                id="empty_value",
+            ),
+            pytest.param(
+                [
+                    {"schema": "rs", "table": "client", "raw_sql": RAW_SQL},
+                    {"schema": "rs", "table": "payment", "fields": {"amount": "0"}},
+                    {"schema": "rs", "table": "contact", "raw_sql": "SELECT * FROM rs.contact"},
+                ],
+                "rs.client; rs.contact",
+                id="all_rules_with_raw_sql_are_named",
+            ),
+        ],
+    )
+    def test_sens_dict_with_raw_sql_is_rejected_when_read(self, write_dict, make_context, rules, named_rules):
+        dict_file = write_dict({"dictionary": rules})
+
+        ctx = make_context(prepared_sens_dict_files=[dict_file])
+        with pytest.raises(PgAnonError) as err:
+            ctx.read_prepared_dict()
+
+        assert err.value.code == ErrorCode.INVALID_DICT_FILE
+        assert str(err.value) == RAW_SQL_ERROR.format(Path.cwd() / dict_file, named_rules)
+
+    def test_error_names_the_file_with_raw_sql_when_it_is_not_first(self, write_dict, make_context):
+        file_a = write_dict({"dictionary": [{"schema": "rs", "table": "client", "fields": {"email": "md5(email)"}}]})
+        file_b = write_dict({"dictionary": [{"schema": "rs", "table": "client", "raw_sql": RAW_SQL}]})
+
+        ctx = make_context(prepared_sens_dict_files=[file_a, file_b])
+        with pytest.raises(PgAnonError) as err:
+            ctx.read_prepared_dict()
+
+        assert err.value.code == ErrorCode.INVALID_DICT_FILE
+        assert str(err.value) == RAW_SQL_ERROR.format(Path.cwd() / file_b, "rs.client")
+
+    def test_preview_rejects_sens_dict_with_raw_sql(self):
+        content = repr({"dictionary": [{"schema": "rs", "table": "client", "raw_sql": RAW_SQL}]})
+        dicts = [DictionaryContent(name="clients", content=content)]
+
+        with pytest.raises(PgAnonError) as err:
+            PreviewRunner._prepare_sens_dicts(dicts)
+
+        assert err.value.code == ErrorCode.INVALID_DICT_FILE
+        assert str(err.value) == RAW_SQL_ERROR.format("clients", "rs.client")

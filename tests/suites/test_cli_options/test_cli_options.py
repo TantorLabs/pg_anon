@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from .conftest import input_dict, output_path
 from pg_anon import PgAnonApp
 from pg_anon.cli import build_run_options
@@ -201,3 +203,60 @@ async def test_seq_init_by_max_value_resets_sequences(
         f"--seq-init-by-max-value must reset hr.employee_id_seq past source max; "
         f"max(src.id)={src_max_id}, new id={new_id}"
     )
+
+
+RAW_SQL_DICT = {
+    "dictionary": [
+        {
+            "schema": "billing",
+            "table": "customer",
+            "raw_sql": "SELECT id, 'N' || id AS name FROM billing.customer",
+        }
+    ]
+}
+
+
+@pytest.mark.parametrize("mode", ["dump", "dump_over_old_dump", "view-data", "view-fields", "create-dict"])
+async def test_sens_dict_with_raw_sql_stops_mode_before_any_output(
+    source_db, db_params, pg_anon_runner, tmp_path, mode
+):
+    dict_file = tmp_path / "raw_sql.py"
+    dict_file.write_text(repr(RAW_SQL_DICT))
+    out_dir = tmp_path / "out"
+    old_dump_file = out_dir / "old_dump.backup"
+    sens_out = tmp_path / "output_sens.py"
+    no_sens_out = tmp_path / "output_no_sens.py"
+    args = [f"--prepared-sens-dict-file={dict_file}"]
+    connections = f"--db-connections-per-process={db_params.db_connections_per_process}"
+
+    if mode == "dump":
+        args += [f"--output-dir={out_dir}", connections]
+    elif mode == "dump_over_old_dump":
+        out_dir.mkdir()
+        old_dump_file.write_text("old dump")
+        args += [f"--output-dir={out_dir}", "--clear-output-dir", connections]
+    elif mode == "view-data":
+        args += ["--schema-name=billing", "--table-name=customer", "--limit=10", "--offset=0"]
+    elif mode == "view-fields":
+        args += ["--schema-name=billing"]
+    else:
+        args += [
+            f"--meta-dict-file={input_dict('empty.py')}",
+            f"--output-sens-dict-file={sens_out}",
+            f"--output-no-sens-dict-file={no_sens_out}",
+            connections,
+        ]
+
+    res = await pg_anon_runner.run("dump" if mode.startswith("dump") else mode, source_db, args)
+
+    assert res.result_code == ResultCode.FAIL
+    assert str(res.exception.code) == "INVALID_DICT_FILE"
+    assert str(res.exception).startswith("raw_sql is no longer supported")
+    assert f"File {dict_file}, rules with raw_sql: billing.customer" in str(res.exception)
+    if mode == "dump":
+        assert not out_dir.exists()
+    if mode == "dump_over_old_dump":
+        assert [path.name for path in out_dir.iterdir()] == ["old_dump.backup"]
+    if mode == "create-dict":
+        assert not sens_out.exists()
+        assert not no_sens_out.exists()

@@ -12,7 +12,7 @@
         {
             "schema": "billing",
             "table":  "customer",
-            "raw_sql": "SELECT id, 'anon' AS name, email, tax_id, billing_address, metadata, created_at FROM billing.customer"
+            "fields": {"name": "'anon'"}
         },
         {
             "schema_mask": "^audit$",

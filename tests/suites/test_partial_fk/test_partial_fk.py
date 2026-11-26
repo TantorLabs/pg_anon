@@ -313,29 +313,6 @@ async def test_partitioned_to_plain_key_is_not_created_when_referenced_table_has
     assert await count_rows(db_manager, target_db, "c_src") == 50
 
 
-async def test_plain_key_is_valid_when_raw_sql_keeps_every_referenced_row(
-    source_db, target_db, db_manager, db_params, pg_anon_runner, caplog
-):
-    """A table dumped with raw_sql is handled as a table without all its rows, so pg_anon creates the key itself."""
-    restored = await restore_with_dict("d_ref_raw_sql_all.py", source_db, target_db, db_params, pg_anon_runner, caplog)
-
-    await assert_key_is_valid(db_manager, restored, "d_src_fk")
-    assert key_commands(restored, "d_src_fk") == ["ADD"]
-    assert await count_rows(db_manager, target_db, "d_ref") == 100
-    assert await count_rows(db_manager, target_db, "d_src") == 100
-
-
-async def test_plain_key_is_not_valid_when_raw_sql_drops_referenced_rows(
-    source_db, target_db, db_manager, db_params, pg_anon_runner, caplog
-):
-    restored = await restore_with_dict("d_ref_raw_sql_half.py", source_db, target_db, db_params, pg_anon_runner, caplog)
-
-    await assert_key_is_not_valid(db_manager, restored, "d_src_fk", ("d_src", "d_ref"))
-    assert key_commands(restored, "d_src_fk") == ["ADD", "ADD NOT VALID"]
-    assert await count_rows(db_manager, target_db, "d_ref") == 50
-    assert await count_rows(db_manager, target_db, "d_src") == 100
-
-
 async def assert_full_dump_keeps_keys_valid(full_dump, target_db, db_manager, db_params, pg_anon_runner, caplog, keys):
     restored = await restore(pg_anon_runner, db_params, target_db, caplog, in_dir=full_dump)
 

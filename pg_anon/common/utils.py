@@ -299,15 +299,12 @@ def resolve_table_rule(
     return None, False
 
 
-_RULE_FILTER_KEYS = ("sql_condition", "raw_sql")
-
-
 def _merge_rules(rules: list[dict]) -> dict:
     """Merge rules by fields: the first rule that names a field gives its function and its file name."""
     if len(rules) == 1:
         return rules[0]
 
-    merged = {key: value for key, value in rules[0].items() if key not in _RULE_FILTER_KEYS}
+    merged = {key: value for key, value in rules[0].items() if key != "sql_condition"}
     merged["fields"] = {}
     field_files = {}
     for rule in rules:
@@ -315,9 +312,8 @@ def _merge_rules(rules: list[dict]) -> dict:
             if field not in merged["fields"]:
                 merged["fields"][field] = function
                 field_files[field] = rule.get("dict_file_name")
-        for key in _RULE_FILTER_KEYS:
-            if rule.get(key) and key not in merged:
-                merged[key] = rule[key]
+        if rule.get("sql_condition") and "sql_condition" not in merged:
+            merged["sql_condition"] = rule["sql_condition"]
     # view-fields shows the file each field function comes from
     if any(field_files.values()):
         merged["field_dict_file_names"] = field_files
@@ -646,6 +642,25 @@ def read_dict_data(data: str, dict_name: str | Path) -> dict[str, Any] | None:
         raise PgAnonError(ErrorCode.INVALID_DICT_FILE, f"Received non-dictionary structure from file: {dict_name}")
 
     return dict_data
+
+
+def _rule_name(rule: dict) -> str:
+    """Name a sens dictionary rule as schema.table, or by its schema and table keys."""
+    if "schema" in rule and "table" in rule:
+        return f"{rule['schema']}.{rule['table']}"
+    keys = ("schema", "schema_mask", "table", "table_mask")
+    return ", ".join(f"{key}={rule[key]}" for key in keys if key in rule)
+
+
+def check_no_raw_sql(dict_data: dict, dict_name: str | Path) -> None:
+    """Raise an error if any rule of a sens dictionary has the removed raw_sql key."""
+    invalid_rules = [_rule_name(rule) for rule in dict_data.get("dictionary", []) if "raw_sql" in rule]
+    if invalid_rules:
+        raise PgAnonError(
+            ErrorCode.INVALID_DICT_FILE,
+            "raw_sql is no longer supported: rewrite the rule with fields and sql_condition. "
+            f"File {dict_name}, rules with raw_sql: {'; '.join(invalid_rules)}",
+        )
 
 
 def read_dict_data_from_file(dictionary_file_path: Path) -> dict[str, Any] | None:

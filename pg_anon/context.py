@@ -15,6 +15,7 @@ from pg_anon.common.dto import ConnectionParams, RunOptions, SearchRule
 from pg_anon.common.enums import AnonMode, VerboseOptions
 from pg_anon.common.errors import ErrorCode, PgAnonError
 from pg_anon.common.utils import (
+    check_no_raw_sql,
     exception_handler,
     filter_db_tables,
     normalize_data_type,
@@ -286,6 +287,7 @@ class Context:
 
             if not dict_data:
                 continue
+            check_no_raw_sql(dict_data, dictionary_file_name)
 
             if dictionary_rules := dict_data.get("dictionary", []):
                 for dictionary_rule in dictionary_rules:

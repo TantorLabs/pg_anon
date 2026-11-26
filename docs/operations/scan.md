@@ -66,7 +66,7 @@ after the rules for table names.
   has.
 - **Rules for tables that the database does not have are removed.** This is the default. Rules with masks that
   match no table are removed too. The scan also removes the fields that a table does not have. A rule with
-  `sql_condition` or `raw_sql` stays, also if none of its fields are left. The scan does not write which rules it
+  `sql_condition` stays, also if none of its fields are left. The scan does not write which rules it
   removed.
 
   To keep rules for tables that you will create later, use `--keep-unmatched-prepared-rules`. This is important if
@@ -125,7 +125,7 @@ without masking.
 
 To move to one rule for the partitioned table, pass the old dictionary once as `--prepared-sens-dict-file`. In the
 rules of partitions the scan keeps only the fields that are masked in another way than in the partitioned table, and
-logs them. The dump result does not change. Rules with masks and rules with `sql_condition` or `raw_sql` stay. Check
+logs them. The dump result does not change. Rules with masks and rules with `sql_condition` stay. Check
 that the output has a rule for each partitioned table.
 
 ### Tables with `INHERITS`

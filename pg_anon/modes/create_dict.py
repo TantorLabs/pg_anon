@@ -95,8 +95,8 @@ def _is_exact_rule(rule: dict) -> bool:
     return "schema" in rule and "table" in rule
 
 
-def _has_condition_or_query(rule: dict) -> bool:
-    return bool(rule.get("sql_condition") or rule.get("raw_sql"))
+def _has_condition(rule: dict) -> bool:
+    return bool(rule.get("sql_condition"))
 
 
 def _first_rule_by_values(
@@ -1018,9 +1018,9 @@ class CreateDictMode:
                     continue
                 if len(rule["fields"]) > 1:
                     del rule["fields"][field]
-                elif not _has_condition_or_query(rule):
+                elif not _has_condition(rule):
                     rules.remove(rule)
-                # else: a rule with a condition or a query keeps its last field
+                # else: a rule with a condition keeps its last field
 
     def _log_own_partition_rules(self, rules: list[dict]) -> None:
         by_root: dict[Table, dict[Table, list[str]]] = {}
@@ -1060,8 +1060,8 @@ class CreateDictMode:
             fields = {field: func for field, func in rule["fields"].items() if field in columns}
             if fields:
                 kept.append({**rule, "fields": fields})
-            elif _has_condition_or_query(rule):
-                # the rule is still needed for its condition or query, so it stays as it is
+            elif _has_condition(rule):
+                # the rule is still needed for its condition, so it stays as it is
                 kept.append(rule)
         return kept
 

@@ -71,16 +71,6 @@ async def test_mask_replaces_constants_in_hr_and_billing(
     assert all(r["tax_id"] == "0000000000" for r in customers)
 
 
-async def test_mask_raw_sql_overrides_entire_row(
-    source_db,
-    masked_db,
-    db_manager,
-):
-    rows = await db_manager.fetch(masked_db, "SELECT body FROM ecommerce.review LIMIT 20")
-    assert rows, "review table should be non-empty after restore"
-    assert all(r["body"] == "REDACTED" for r in rows)
-
-
 async def test_mask_does_not_touch_unrelated_tables(
     source_db,
     masked_db,

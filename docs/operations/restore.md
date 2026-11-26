@@ -177,7 +177,7 @@ in the dump:
 
 - the table has no data in the dump, for example, it is in `dictionary_exclude`;
 - some partitions of the table are left out;
-- the table is dumped with `sql_condition` or `raw_sql`.
+- the table is dumped with `sql_condition`.
 
 Then the rows may not match the key, and `pg_anon` creates such a key in this order:
 

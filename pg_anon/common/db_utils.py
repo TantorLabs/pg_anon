@@ -967,10 +967,6 @@ def get_partitions_view_query(fields_list: list[Record], partitions: list[Partit
     parts = []
     for schema, table, table_rule in partitions:
         table_name_full = f'"{schema}"."{table}"'
-        if table_rule and "raw_sql" in table_rule:
-            null_sort_keys = [f"NULL AS {alias}" for alias in sort_aliases]
-            parts.append(f"SELECT {', '.join([names, *null_sort_keys])} FROM ({table_rule['raw_sql']}) AS raw_rows")
-            continue
         expressions = [_column_expression(column, table_rule) for column in columns]
         # sort by the values before masking, as for one table
         for name, alias in zip(sort_columns, sort_aliases, strict=True):
@@ -1059,17 +1055,10 @@ async def get_dump_query(  # noqa: C901, PLR0912
 
     if files is not None:
         files[f"{hashed_name}.bin.gz"] = {"schema": table_schema, "table": table_name}
-        # a condition, a custom query or a debug limit can leave rows out, so foreign keys may not match
-        if is_limited or (table_rule and ("raw_sql" in table_rule or table_rule.get("sql_condition"))):
+        # a condition or a debug limit can leave rows out, so foreign keys may not match
+        if is_limited or (table_rule and table_rule.get("sql_condition")):
             files[f"{hashed_name}.bin.gz"]["partial_data"] = True
 
-    if table_rule and "raw_sql" in table_rule:
-        # the table is transferred using "raw_sql"
-        if is_limited:
-            query = table_rule["raw_sql"] + " " + ctx.validate_limit
-            ctx.logger.info(str(query))
-            return query
-        return table_rule["raw_sql"]
     # the table is transferred with the specific fields for masking or transferred "as is"
     if fields_cache is not None:
         fields_list = fields_cache.get((table_schema, table_name), [])
